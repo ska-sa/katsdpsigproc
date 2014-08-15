@@ -35,7 +35,8 @@ class BackgroundMedianFilterDevice(object):
         self.width = width
         self.wgs = wgs
         self.csplit = csplit
-        source = _lookup.get_template('background_median_filter.cu').render(width=width)
+        source = _lookup.get_template('background_median_filter.cu').render(
+                width=width, wgs=wgs)
         module = SourceModule(source, no_extern_c=True)
         self.kernel = module.get_function('background_median_filter')
 

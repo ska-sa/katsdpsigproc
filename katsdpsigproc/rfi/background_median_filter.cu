@@ -1,7 +1,5 @@
 // Note: does not compile as-is: must be run through mako
 
-// To make printf available
-#include <stdio.h>
 #include <math.h>
 
 __device__ static float absc(float2 v)

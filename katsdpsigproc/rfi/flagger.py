@@ -63,7 +63,7 @@ class FlaggerHostFromDevice(object):
         self.real_flagger = real_flagger
 
     def __call__(self, vis):
-        padded_shape = self.real_flagger.min_padded_shape(self, vis.shape)
+        padded_shape = self.real_flagger.min_padded_shape(vis.shape)
         device_vis = DeviceArray(vis.shape, np.complex64, padded_shape)
         device_vis.set(vis)
         device_flags = DeviceArray(vis.shape, np.uint8, padded_shape)
