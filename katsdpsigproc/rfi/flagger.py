@@ -1,4 +1,4 @@
-from ..accel.array import DeviceArray
+from ..accel import DeviceArray
 import numpy as np
 
 class FlaggerHost(object):
@@ -31,7 +31,6 @@ class FlaggerHost(object):
 
 class FlaggerDevice(object):
     def __init__(self, background, threshold):
-        self.api = background.api
         self.background = background
         self.threshold = threshold
         self.deviations = None
@@ -49,7 +48,7 @@ class FlaggerDevice(object):
         if (self.deviations is None or
                 self.deviations.shape != vis.shape or
                 self.deviations.padded_shape != vis.padded_shape):
-            self.deviations = DeviceArray(self.api, vis.shape, np.float32, vis.padded_shape)
+            self.deviations = DeviceArray(vis.shape, np.float32, vis.padded_shape)
 
         self.background(vis, self.deviations, stream)
         return self.threshold(self.deviations, flags, stream)
@@ -65,8 +64,8 @@ class FlaggerHostFromDevice(object):
 
     def __call__(self, vis):
         padded_shape = self.real_flagger.min_padded_shape(self, vis.shape)
-        device_vis = DeviceArray(self.real_flagger.api, vis.shape, np.complex64, padded_shape)
+        device_vis = DeviceArray(vis.shape, np.complex64, padded_shape)
         device_vis.set(vis)
-        device_flags = DeviceArray(self.real_flagger.api, vis.shape, np.uint8, padded_shape)
+        device_flags = DeviceArray(vis.shape, np.uint8, padded_shape)
         self.real_flagger(device_vis, device_flags)
         return device_flags.get()

@@ -1,5 +1,5 @@
 import numpy as np
-from ..accel.array import DeviceArray
+from ..accel import DeviceArray
 
 class ThresholdHostFromDevice(object):
     def __init__(self, real_threshold):
@@ -7,10 +7,10 @@ class ThresholdHostFromDevice(object):
 
     def __call__(self, deviations):
         padded_shape = self.real_threshold.min_padded_shape(deviations.shape)
-        device_deviations = DeviceArray(self.real_threshold.api,
+        device_deviations = DeviceArray(
                 shape=deviations.shape, dtype=np.float32, padded_shape=padded_shape)
         device_deviations.set(deviations)
-        device_flags = DeviceArray(self.real_threshold.api,
+        device_flags = DeviceArray(
                 shape=deviations.shape, dtype=np.uint8, padded_shape=padded_shape)
         self.real_threshold(device_deviations, device_flags)
         return device_flags.get()
