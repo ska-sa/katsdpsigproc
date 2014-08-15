@@ -51,7 +51,7 @@ class FlaggerDevice(object):
             self.deviations = DeviceArray(vis.shape, np.float32, vis.padded_shape)
 
         self.background(vis, self.deviations, stream)
-        return self.threshold(self.deviations, flags, stream)
+        self.threshold(self.deviations, flags, stream)
 
 class FlaggerHostFromDevice(object):
     """Wrapper that makes a :class:`FlaggerDeviceFromHost` present the
