@@ -78,9 +78,9 @@ class DeviceArray(object):
     has very poor support).
 
     It only supports C-order arrays where the inner-most dimension is
-    contiguous. Transfers are most efficient when the numpy array
-    involved in the transfer have the same memory layout as the
-    target (otherwise a copy is made).
+    contiguous. Transfers are designed to use an :class:`Array` of the
+    same shape and padding, but fall back to using a copy when
+    necessary.
     """
 
     def __init__(self, shape, dtype, padded_shape=None):
