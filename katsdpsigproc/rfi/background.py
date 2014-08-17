@@ -1,4 +1,4 @@
-from ..accel import DeviceArray
+from ..accel import DeviceArray, LinenoLexer
 import numpy as np
 import scipy.signal as signal
 from mako.lookup import TemplateLookup
@@ -6,7 +6,9 @@ from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
 import pycuda.driver as cuda
 import os.path
 
-_lookup = TemplateLookup(os.path.abspath(os.path.dirname(__file__)))
+_lookup = TemplateLookup(
+        os.path.abspath(os.path.dirname(__file__)),
+        lexer_cls = LinenoLexer)
 
 class BackgroundHostFromDevice(object):
     def __init__(self, real_background):

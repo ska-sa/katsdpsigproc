@@ -1,10 +1,41 @@
 import numpy as np
 import pycuda.driver as cuda
+import mako.lexer
+import re
 
 """Utilities for interfacing with accelerator hardware. Currently only CUDA
 is supported, but it is intended to later support OpenCL too. It currently
 only supports a single CUDA context/device.
 """
+
+class LinenoLexer(mako.lexer.Lexer):
+    """A wrapper that inserts #line directives into the source code. It
+    is used by passing `lexer_cls` to the mako template constructor.
+    """
+    def __init__(self, *args, **kw):
+        super(LinenoLexer, self).__init__(*args, **kw)
+        self.preprocessor.insert(0, self.lineno_preproc)
+
+    @classmethod
+    def _escape_filename(cls, filename):
+        """Escapes a string for the C preprocessor"""
+        return '"' + re.sub(r'([\\"])', r'\\\1', filename) + '"'
+
+    def lineno_preproc(self, source):
+        if self.filename is not None:
+            escaped_filename = self._escape_filename(self.filename)
+        else:
+            escaped_filename = ''
+        lines = source.split('\n')
+        # If the last line is \n-terminated, it will cause an empty
+        # final string in lines
+        if len(lines) > 0 and lines[-1] == '':
+            lines.pop()
+        out = []
+        for i, line in enumerate(lines):
+            out.append('#line {0} {1}\n'.format(i + 1, escaped_filename))
+            out.append(line + '\n')
+        return ''.join(out)
 
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a

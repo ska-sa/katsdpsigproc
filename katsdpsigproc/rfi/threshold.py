@@ -4,7 +4,9 @@ from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
 from mako.lookup import TemplateLookup
 import os.path
 
-_lookup = TemplateLookup(os.path.abspath(os.path.dirname(__file__)))
+_lookup = TemplateLookup(
+        os.path.abspath(os.path.dirname(__file__)),
+        lexer_cls = LinenoLexer)
 
 class ThresholdHostFromDevice(object):
     def __init__(self, real_threshold):
