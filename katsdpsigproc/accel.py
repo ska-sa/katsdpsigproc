@@ -16,14 +16,14 @@ class LinenoLexer(mako.lexer.Lexer):
     """
     def __init__(self, *args, **kw):
         super(LinenoLexer, self).__init__(*args, **kw)
-        self.preprocessor.insert(0, self.lineno_preproc)
+        self.preprocessor.insert(0, self._lineno_preproc)
 
     @classmethod
     def _escape_filename(cls, filename):
         """Escapes a string for the C preprocessor"""
         return '"' + re.sub(r'([\\"])', r'\\\1', filename) + '"'
 
-    def lineno_preproc(self, source):
+    def _lineno_preproc(self, source):
         if self.filename is not None:
             escaped_filename = self._escape_filename(self.filename)
         else:
