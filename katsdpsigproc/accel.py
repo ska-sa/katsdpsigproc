@@ -51,7 +51,7 @@ class Array(np.ndarray):
             padded_shape = shape
         assert len(padded_shape) == len(shape)
         assert np.all(np.greater_equal(padded_shape, shape))
-        owner = np.ndarray.__new__(cls, padded_shape, dtype)
+        owner = cuda.pagelocked_empty(padded_shape, dtype).view(Array)
         index = tuple([slice(0, x) for x in shape])
         obj = owner[index]
         obj._accel_safe = True
