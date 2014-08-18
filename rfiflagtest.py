@@ -8,6 +8,7 @@ import katsdpsigproc.rfi.background
 import katsdpsigproc.rfi.threshold
 import katsdpsigproc.rfi.flagger
 import argparse
+import time
 
 def generate_data(channels, baselines):
     real = np.random.randn(channels, baselines)
@@ -73,7 +74,10 @@ def main():
         background = katsdpsigproc.rfi.background.BackgroundMedianFilterHost(args.width)
         threshold = katsdpsigproc.rfi.threshold.ThresholdMADHost(args.sigmas)
         flagger = katsdpsigproc.rfi.flagger.FlaggerHost(background, threshold)
+        start = time.time()
         flags = flagger(data)
+        end = time.time()
+        print "CPU time (ms):", (end - start) * 1000.0
     else:
         import pycuda.autoinit
         import pycuda.driver as cuda
