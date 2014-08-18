@@ -50,7 +50,7 @@ class ThresholdMADDevice(object):
         self.wgsy = wgsy
         self.flag_value = flag_value
         source = _lookup.get_template('threshold_mad.cu').render(
-                wgsx=wgsx, wgsy=wgsy, wgs=wgsx * wgsy,
+                wgsx=wgsx, wgsy=wgsy,
                 flag_value=flag_value)
         with push_context(self.ctx):
             module = SourceModule(source, no_extern_c=True)

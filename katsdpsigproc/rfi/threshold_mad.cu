@@ -166,7 +166,7 @@ __device__ float median_abs_impl(const Ranker &ranker, int N)
 extern "C"
 {
 
-__global__ void __launch_bounds__(${wgs}) threshold_mad(
+__global__ void __launch_bounds__(${wgsx * wgsy}) threshold_mad(
     const float * __restrict in, unsigned char * __restrict flags,
     int channels, int stride, float factor,
     int VT)
