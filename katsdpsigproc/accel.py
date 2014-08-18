@@ -1,5 +1,6 @@
 import numpy as np
 import pycuda.driver as cuda
+import pycuda.gpuarray as gpuarray
 import mako.lexer
 import re
 
@@ -91,8 +92,7 @@ class DeviceArray(object):
         self.shape = shape
         self.dtype = np.dtype(dtype)
         self.padded_shape = padded_shape
-        size = reduce(lambda x, y: x * y, padded_shape) * self.dtype.itemsize
-        self.buffer = cuda.mem_alloc(size)
+        self.buffer = gpuarray.GPUArray(padded_shape, dtype)
 
     @property
     def ndim(self):
@@ -109,7 +109,7 @@ class DeviceArray(object):
         return (Array.safe(ary) and
                 ary.dtype == self.dtype and
                 ary.shape == self.shape and
-                ary.strides == self.strides)
+                ary.padded_shape == self.padded_shape)
 
     def _contiguous(self, ary):
         """Returns a contiguous view of a copyable array, for passing to
@@ -118,9 +118,7 @@ class DeviceArray(object):
         if ary.base is None:
             return ary
         else:
-            # The slice is so that we do not include any extra padding beyond
-            # the last row.
-            return ary.base[0:self.shape[0]]
+            return ary.base
 
     def empty_like(self):
         """Return an array-like object that can be efficiently copied."""
@@ -137,11 +135,12 @@ class DeviceArray(object):
         np.copyto(tmp, ary, casting = 'no')
         return tmp
 
-    def set(self, ary, thread=None):
+    def set(self, ary):
         ary = self.asarray_like(ary)
-        cuda.memcpy_htod(self.buffer, self._contiguous(ary))
+        self.buffer.set(self._contiguous(ary))
 
-    def get(self):
-        ary = self.empty_like()
-        cuda.memcpy_dtoh(self._contiguous(ary), self.buffer)
+    def get(self, ary=None):
+        if ary is None:
+            ary = self.empty_like()
+        self.buffer.get(self._contiguous(ary))
         return ary

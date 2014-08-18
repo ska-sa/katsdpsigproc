@@ -39,7 +39,7 @@ class TestDeviceArray(unittest.TestCase):
         self.array.set(ary)
         # Read back results, check that it matches
         buf = np.zeros(self.padded_shape, dtype=np.int32)
-        cuda.memcpy_dtoh(buf, self.array.buffer)
+        cuda.memcpy_dtoh(buf, self.array.buffer.gpudata)
         buf = buf[0:self.shape[0], 0:self.shape[1]]
         assert np.all(ary == buf)
         # Check that it matches get
