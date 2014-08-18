@@ -57,7 +57,7 @@ class BackgroundMedianFilterDevice(object):
         (channels, baselines) = vis.shape
         N = baselines * channels
         H = self.width // 2
-        VT = channels // self.csplit
+        VT = max(channels // self.csplit, 1)
         xblocks = (baselines + self.wgs - 1) // self.wgs
         yblocks = (channels + VT - 1) // VT
         assert xblocks * self.wgs <= vis.padded_shape[1]
