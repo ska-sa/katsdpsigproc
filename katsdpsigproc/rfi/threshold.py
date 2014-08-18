@@ -8,10 +8,9 @@ from ..accel import DeviceArray, LinenoLexer, push_context
 from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
 from mako.lookup import TemplateLookup
 import os.path
+import pkg_resources
 
-_lookup = TemplateLookup(
-        os.path.abspath(os.path.dirname(__file__)),
-        lexer_cls = LinenoLexer)
+_lookup = TemplateLookup(pkg_resources.resource_filename(__name__, ''))
 
 class ThresholdHostFromDevice(object):
     """Wraps a device-side thresholder to present the host interface"""

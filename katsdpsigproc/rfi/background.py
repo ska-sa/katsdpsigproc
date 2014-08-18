@@ -9,11 +9,9 @@ import scipy.signal as signal
 from mako.lookup import TemplateLookup
 from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
 import pycuda.driver as cuda
-import os.path
+import pkg_resources
 
-_lookup = TemplateLookup(
-        os.path.abspath(os.path.dirname(__file__)),
-        lexer_cls = LinenoLexer)
+_lookup = TemplateLookup(pkg_resources.resource_filename(__name__, ''))
 
 class BackgroundHostFromDevice(object):
     """Wraps a device-side backgrounder to present the host interface"""
