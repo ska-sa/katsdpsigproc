@@ -125,7 +125,9 @@ extern "C"
  * baseline minor, with a separation of @a stride between rows. Each workitem produces
  * (up to) @a VT channels of output. The input must be suitably zero-padded.
  */
-__global__ void background_median_filter(const float2 * __restrict in, float * __restrict out, int channels, int stride, int VT)
+__global__ void __launch_bounds__(${wgs}) background_median_filter(
+    const float2 * __restrict in, float * __restrict out,
+    int channels, int stride, int VT)
 {
     const int WIDTH = ${width};
     int bl = blockDim.x * blockIdx.x + threadIdx.x;
