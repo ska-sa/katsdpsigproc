@@ -1,8 +1,18 @@
 import numpy as np
-from ..accel import Array, DeviceArray
+from ..accel import Array, DeviceArray, LinenoLexer
 import pycuda.autoinit
 import pycuda.driver as cuda
+from mako.template import Template
 from nose.tools import *
+
+class TestLinenoLexer(object):
+    def test_escape_filename(self):
+        assert_equal(r'"abc\"def\\ghi"', LinenoLexer._escape_filename(r'abc"def\ghi'))
+
+    def test_render(self):
+        source = "line 1\nline 2\nline 3"
+        out = Template(source, lexer_cls=LinenoLexer).render()
+        assert_equal("#line 1 \nline 1\n#line 2 \nline 2\n#line 3 \nline 3\n", out)
 
 class TestArray(object):
     def setup(self):
