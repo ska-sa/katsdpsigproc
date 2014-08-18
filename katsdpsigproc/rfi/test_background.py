@@ -1,5 +1,4 @@
 import numpy as np
-from ..accel import Array, DeviceArray
 import background
 import pycuda.autoinit
 from nose.tools import *
@@ -8,7 +7,9 @@ def setup():
     global _vis, _vis_big
     shape = (17, 13)
     _vis = np.array([[1.25, 1.5j, 1.0, 2.0, -1.75, 2.0]]).T.astype(np.complex64)
-    _vis_big = (np.random.randn(*shape) + np.random.randn(*shape) * 1j).astype(np.complex64)
+    # Use a fixed seed to make the test repeatable
+    rs = np.random.RandomState(seed=1)
+    _vis_big = (rs.randn(*shape) + rs.randn(*shape) * 1j).astype(np.complex64)
 
 class TestBackgroundMedianFilterHost(object):
     def setup(self):
@@ -28,6 +29,5 @@ def check_device_class(cls, width, device_args=(), device_kw={}):
             cls(pycuda.autoinit.context, width, *device_args, **device_kw))
     out_host = bg_host(_vis_big)
     out_device = bg_device(_vis_big)
-    print np.fmax(out_host - out_device, 1e-5)
     # Uses an abs tolerance because backgrounding subtracts nearby values
     np.testing.assert_allclose(out_host, out_device, atol=1e-6)
