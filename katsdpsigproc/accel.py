@@ -3,6 +3,7 @@ import pycuda.driver as cuda
 import pycuda.gpuarray as gpuarray
 import mako.lexer
 import re
+from contextlib import contextmanager
 
 """Utilities for interfacing with accelerator hardware. Currently only CUDA
 is supported, but it is intended to later support OpenCL too. It currently
@@ -37,6 +38,12 @@ class LinenoLexer(mako.lexer.Lexer):
             out.append('#line {0} {1}\n'.format(i + 1, escaped_filename))
             out.append(line + '\n')
         return ''.join(out)
+
+@contextmanager
+def push_context(ctx):
+    ctx.push()
+    yield
+    ctx.pop()
 
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
@@ -84,7 +91,7 @@ class DeviceArray(object):
     necessary.
     """
 
-    def __init__(self, shape, dtype, padded_shape=None):
+    def __init__(self, ctx, shape, dtype, padded_shape=None):
         if padded_shape is None:
             padded_shape = shape
         assert len(shape) == len(padded_shape)
@@ -92,7 +99,9 @@ class DeviceArray(object):
         self.shape = shape
         self.dtype = np.dtype(dtype)
         self.padded_shape = padded_shape
-        self.buffer = gpuarray.GPUArray(padded_shape, dtype)
+        self.ctx = ctx
+        with push_context(ctx):
+            self.buffer = gpuarray.GPUArray(padded_shape, dtype)
 
     @property
     def ndim(self):
@@ -137,10 +146,24 @@ class DeviceArray(object):
 
     def set(self, ary):
         ary = self.asarray_like(ary)
-        self.buffer.set(self._contiguous(ary))
+        with push_context(self.ctx):
+            self.buffer.set(self._contiguous(ary))
 
     def get(self, ary=None):
         if ary is None:
             ary = self.empty_like()
-        self.buffer.get(self._contiguous(ary))
+        with push_context(self.ctx):
+            self.buffer.get(self._contiguous(ary))
+        return ary
+
+    def set_async(self, ary, stream=None):
+        ary = self.asarray_like(ary)
+        with push_context(self.ctx):
+            self.buffer.set_async(self._contiguous(ary), stream=stream)
+
+    def get_async(self, ary, stream=None):
+        if ary is None:
+            ary = self.empty_like()
+        with push_context(self.ctx):
+            self.buffer.get_async(self._contiguous(ary), stream=stream)
         return ary

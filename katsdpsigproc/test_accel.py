@@ -20,10 +20,15 @@ class TestArray(unittest.TestCase):
 
 class TestDeviceArray(unittest.TestCase):
     def setUp(self):
+        self.ctx = pycuda.autoinit.context
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
         self.strides = (64, 4)
-        self.array = DeviceArray(shape=self.shape, dtype=np.int32, padded_shape=self.padded_shape)
+        self.array = DeviceArray(
+                ctx=self.ctx,
+                shape=self.shape,
+                dtype=np.int32,
+                padded_shape=self.padded_shape)
 
     def test_strides(self):
         self.assertEqual(self.strides, self.array.strides)
