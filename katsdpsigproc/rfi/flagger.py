@@ -30,6 +30,9 @@ class FlaggerHost(object):
         return flags
 
 class FlaggerDevice(object):
+    """Combine device backgrounder and thresholder implementations to
+    create a flagger.
+    """
     def __init__(self, background, threshold):
         self.background = background
         self.threshold = threshold
@@ -37,11 +40,33 @@ class FlaggerDevice(object):
         self.deviations = None
 
     def min_padded_shape(self, shape):
+        """The minimum padding needed for the inputs and outputs of the
+        flagger."""
         return map(max,
                 self.background.min_padded_shape(shape),
                 self.threshold.min_padded_shape(shape))
 
     def __call__(self, vis, flags, stream=None):
+        """Perform the flagging.
+
+        Note
+        ----
+        Temporary intermediate data is stored in the class and used
+        asynchronously by the device. This means that for concurrent
+        flagging of multiple visibility sets, one must use multiple
+        instances of this class.
+
+        Parameters
+        ----------
+        vis : :class:`katsdpsigproc.accel.DeviceArray`
+            The input visibilities as a 2D array of complex64, indexed
+            by channel and baseline, and with padded size given by
+            :meth:`min_padded_shape`.
+        flags : :class:katsdpsigproc.accel.DeviceArray`
+            The output flags, with the same shape and padding as `vis`.
+        stream : `pycuda.driver.Stream`
+            CUDA stream for enqueuing the operations
+        """
         assert vis.shape == flags.shape
         assert vis.padded_shape == flags.padded_shape
         assert np.all(np.greater_equal(self.min_padded_shape(vis.shape), vis.padded_shape))

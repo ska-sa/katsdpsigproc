@@ -1,3 +1,8 @@
+"""RFI thresholding algorithms. Each algorithm takes as input the
+deviations in amplitude from the background, and emits a set of
+flags.
+"""
+
 import numpy as np
 from ..accel import DeviceArray, LinenoLexer, push_context
 from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
@@ -9,6 +14,7 @@ _lookup = TemplateLookup(
         lexer_cls = LinenoLexer)
 
 class ThresholdHostFromDevice(object):
+    """Wraps a device-side thresholder to present the host interface"""
     def __init__(self, real_threshold):
         self.real_threshold = real_threshold
 
@@ -23,11 +29,24 @@ class ThresholdHostFromDevice(object):
         return device_flags.get()
 
 class ThresholdMADHost(object):
+    """Thresholding on median of absolute deviations."""
     def __init__(self, n_sigma, flag_value=1):
+        """Constructor.
+
+        Parameters
+        ----------
+        n_sigma : float
+            Number of (estimated) standard deviations for the threshold
+        flag_value : int
+            Number stored in returned value to indicate RFI
+        """
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
 
     def median_abs(self, deviations):
+        """Find the median of absolute deviations (amongst the non-zero
+        elements).
+        """
         (channels, baselines) = deviations.shape
         out = np.empty(baselines)
         for i in range(baselines):
@@ -36,14 +55,46 @@ class ThresholdMADHost(object):
         return out
 
     def __call__(self, deviations):
+        """Apply the thresholding
+
+        Parameters
+        ----------
+        deviations : array-like, real
+            Deviations from the background amplitude, indexed by channel
+            then baseline.
+
+        Returns
+        -------
+        array-like
+            Array of `np.uint8`, containing the flag value or 0
+        """
         medians = self.median_abs(deviations)
         flags = (deviations > self.factor * medians).astype(np.uint8)
         return flags * self.flag_value
 
 class ThresholdMADDevice(object):
+    """Device-side thresholding by median of absolute deviations. It
+    should give the same results as :class:`ThresholdMADHost`, up to
+    floating-point accuracy.
+    """
     host_class = ThresholdMADHost
 
-    def __init__(self, ctx, n_sigma, wgsx, wgsy, flag_value=1):
+    def __init__(self, ctx, n_sigma, wgsx=32, wgsy=8, flag_value=1):
+        """Constructor.
+
+        Parameters
+        ----------
+        ctx : pycuda.driver.Context
+            CUDA context
+        n_sigma : float
+            Number of (estimated) standard deviations for the threshold
+        wgsx : int
+            Number of baselines per workgroup
+        wgsy : int
+            Number of channels per workgroup
+        flag_value : int
+            Number stored in returned value to indicate RFI
+        """
         self.ctx = ctx
         self.factor = 1.4826 * n_sigma
         self.wgsx = wgsx
@@ -57,6 +108,7 @@ class ThresholdMADDevice(object):
             self.kernel = module.get_function('threshold_mad')
 
     def min_padded_shape(self, shape):
+        """Minimum padded size for inputs and outputs"""
         (channels, baselines) = shape
         padded_baselines = (baselines + self.wgsx - 1) // self.wgsx * self.wgsx
         return (channels, padded_baselines)
@@ -73,6 +125,19 @@ class ThresholdMADDevice(object):
         return vt
 
     def __call__(self, deviations, flags, stream=None):
+        """Apply the thresholding
+
+        Parameters
+        ----------
+        deviations : :class:`katsdpsigproc.accel.DeviceArray`, float32
+            Deviations from the background amplitude, indexed by channel
+            then baseline. It must have a padded size at least that
+            given by :meth:`min_padded_shape`.
+        flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
+            Output flags
+        stream : pycuda.driver.Stream or None
+            CUDA stream for enqueueing the work
+        """
         assert deviations.shape == flags.shape
         assert deviations.padded_shape == flags.padded_shape
         (channels, baselines) = deviations.shape

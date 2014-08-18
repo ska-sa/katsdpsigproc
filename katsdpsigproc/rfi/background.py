@@ -1,3 +1,8 @@
+"""Backgrounding algorithms. Each algorithm takes a set of complex
+visibilities as input (indexed by channel then baseline), and returns a
+deviation in amplitude from the background, of the same shape.
+"""
+
 from ..accel import DeviceArray, LinenoLexer, push_context
 import numpy as np
 import scipy.signal as signal
@@ -11,6 +16,7 @@ _lookup = TemplateLookup(
         lexer_cls = LinenoLexer)
 
 class BackgroundHostFromDevice(object):
+    """Wraps a device-side backgrounder to present the host interface"""
     def __init__(self, real_background):
         self.real_background = real_background
 
@@ -25,7 +31,17 @@ class BackgroundHostFromDevice(object):
         return device_deviations.get()
 
 class BackgroundMedianFilterHost(object):
+    """Host backgrounder that applies a median filter to each baseline
+    (by amplitude).
+    """
     def __init__(self, width):
+        """Constructor.
+
+        Parameters
+        ----------
+        width : int
+            The kernel width (must be odd)
+        """
         self.width = width
 
     def __call__(self, vis):
@@ -33,9 +49,28 @@ class BackgroundMedianFilterHost(object):
         return amp - signal.medfilt2d(amp, [self.width, 1]).astype(np.float32)
 
 class BackgroundMedianFilterDevice(object):
+    """Device algorithm that applies a median filter to each baseline
+    (in amplitude). It is the same algorithm as
+    :class:`BackgroundMedianFilterHost`, but may give slightly different
+    results due to rounding errors when computing complex magnitude.
+    """
+
     host_class = BackgroundMedianFilterHost
 
-    def __init__(self, ctx, width, wgs, csplit):
+    def __init__(self, ctx, width, wgs=128, csplit=8):
+        """Constructor.
+
+        Parameters
+        ----------
+        ctx : pycuda.driver.Context
+            CUDA context
+        width : int
+            The kernel width (must be odd)
+        wgs : int
+            Number of baselines per workgroup
+        csplit : int
+            Approximate number of thread cooperating on each channel
+        """
         self.ctx = ctx
         self.width = width
         self.wgs = wgs
@@ -47,11 +82,25 @@ class BackgroundMedianFilterDevice(object):
             self.kernel = module.get_function('background_median_filter')
 
     def min_padded_shape(self, shape):
+        """Minimum padded size for inputs and outputs"""
         (channels, baselines) = shape
         padded_baselines = (baselines + self.wgs - 1) // self.wgs * self.wgs
         return (channels, padded_baselines)
 
     def __call__(self, vis, deviations, stream=None):
+        """Perform the backgrounding.
+
+        Parameters
+        ----------
+        vis : :class:`katsdpsigproc.accel.DeviceArray`, complex64
+            Input visibilities: 2D complex64 array indexed by channel
+            then baseline. The padded size must be at least
+            :meth:`min_padded_shape`.
+        deviations : :class:`katsdpsigproc.accel.DeviceArray`
+            Output deviations, of the same shape and padding as `vis`.
+        stream : pycuda.driver.Stream or None
+            CUDA stream to enqueue work to
+        """
         assert vis.shape == deviations.shape
         assert vis.padded_shape == deviations.padded_shape
         (channels, baselines) = vis.shape
