@@ -1,5 +1,28 @@
 // Note: does not compile as-is: must be run through mako
 
+/**
+ * @file
+ *
+ * Median-of-absolute-deviations thresholder. The current design has some
+ * number of threads (in the same workgroup) cooperatively computing the
+ * median for each channel. However, the threads in each warp are spread
+ * across baselines, to ensure efficient memory accesses.
+ *
+ * This prevents an entire channel from being loaded into the register
+ * file, which makes the implementation bandwidth-heavy. A better
+ * approach may be to transpose the data and use a workgroup per
+ * channel.
+ *
+ * Medians are found by a binary search to find the value with the
+ * required rank. This is done over binary representation of the
+ * floating-point values, exploiting the fact that the IEEE-754 encoding
+ * of positive floating-point values has the same ordering as the values
+ * themselves.
+ */
+
+/**
+ * Encapsulates a section of a strided (non-contiguous) 1D array.
+ */
 struct ArrayPiece
 {
     const float *in;
@@ -13,6 +36,11 @@ struct ArrayPiece
     {
     }
 
+    /**
+     * Absolute value, reinterpreted as an int. The sign bit is
+     * explicitly masked off to ensure the compiler doesn't take
+     * any shortcuts with negative zero.
+     */
     __device__ int abs_int(int idx) const
     {
         return __float_as_int(in[idx * stride]) & 0x7fffffff;
@@ -25,9 +53,8 @@ struct ArrayPiece
 };
 
 /**
- * Computes the rank of a value relative to a section of an array, in absolute value.
- *
- * TODO: discuss __float_as_int.
+ * Computes the rank of a value relative to a section of an array, in
+ * absolute value. It also provides related functionality.
  */
 class RankerAbsSerial
 {
@@ -37,6 +64,7 @@ private:
 public:
     __device__ RankerAbsSerial(const ArrayPiece &piece) : piece(piece) {}
 
+    /// Count the number of zero elements
     __device__ int zeros() const
     {
         int c = 0;
@@ -45,6 +73,11 @@ public:
         return c;
     }
 
+    /**
+     * Count the number of elements which absolute value is strictly
+     * less than @a value. The value is provided as a bit pattern rather
+     * than a float.
+     */
     __device__ int rank(int value) const
     {
         int r = 0;
@@ -53,6 +86,11 @@ public:
         return r;
     }
 
+    /**
+     * Return the bit pattern of the largest absolute value that is
+     * strictly less than @a limit (also a bit pattern). Returns 0
+     * if there isn't one.
+     */
     __device__ int max_below(int limit) const
     {
         int ans = 0;
@@ -65,16 +103,27 @@ public:
         return ans;
     }
 
+    /**
+     * Indicates whether this is the first segment of the array.
+     */
     __device__ bool first() const
     {
         return piece.start == 0;
     }
 };
 
+/**
+ * Provides the same interface as @ref RankerAbsSerial, but for
+ * collective operation between cooperating threads. The threads
+ * are expected to partition the entire array (in particular,
+ * exactly one of them must start at the beginning).
+ */
 class RankerAbsParallel
 {
 private:
+    /// Underlying implementation
     RankerAbsSerial serial;
+    /// Shared memory scratch space for reducing counts
     int *scratch;
 
 public:
