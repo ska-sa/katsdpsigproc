@@ -110,7 +110,7 @@ __device__ static void medfilt_serial_sliding(
         filter.slide(absc(in[(i + H) * stride]));
         out[i * stride] = filter.center() - filter.get();
     }
-    for (int i = N - H; i < last; i++)
+    for (int i = max(first, N - H); i < last; i++)
     {
         filter.slide(0);
         out[i * stride] = filter.center() - filter.get();
