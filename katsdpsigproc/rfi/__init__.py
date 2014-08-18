@@ -9,6 +9,6 @@ between the original spectrum and the background, and identifies the
 RFI.
 
 A backgrounding and a thresholding algorithm are combined in
-either :class:`FlaggerHost`, :class:`FlaggerDevice`, or
-`FlaggerHostFromDevice`.
+either :class:`host.FlaggerHost`, :class:`device.FlaggerDevice`, or
+:class:`device.FlaggerHostFromDevice`.
 """

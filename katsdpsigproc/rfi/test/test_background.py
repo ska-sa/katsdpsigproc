@@ -1,5 +1,5 @@
 import numpy as np
-from .. import background
+from .. import host, device
 import pycuda.autoinit
 from nose.tools import *
 
@@ -13,7 +13,7 @@ def setup():
 
 class TestBackgroundMedianFilterHost(object):
     def setup(self):
-        self.background = background.BackgroundMedianFilterHost(3)
+        self.background = host.BackgroundMedianFilterHost(3)
 
     def test(self):
         out = self.background(_vis)
@@ -21,11 +21,11 @@ class TestBackgroundMedianFilterHost(object):
         np.testing.assert_equal(ref, out)
 
 def test_device_classes():
-    yield check_device_class, background.BackgroundMedianFilterDevice, 5, (128, 4)
+    yield check_device_class, device.BackgroundMedianFilterDevice, 5, (128, 4)
 
 def check_device_class(cls, width, device_args=(), device_kw={}):
     bg_host = cls.host_class(width)
-    bg_device = background.BackgroundHostFromDevice(
+    bg_device = device.BackgroundHostFromDevice(
             cls(pycuda.autoinit.context, width, *device_args, **device_kw))
     out_host = bg_host(_vis_big)
     out_device = bg_device(_vis_big)

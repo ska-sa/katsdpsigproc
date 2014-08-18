@@ -1,5 +1,5 @@
 import numpy as np
-from .. import threshold
+from .. import host, device
 import pycuda.autoinit
 from nose.tools import *
 
@@ -14,7 +14,7 @@ def setup():
     _deviations[_spikes] += 50.0
 
 def test_host_classes():
-    yield check_host_class, threshold.ThresholdMADHost, 11.0
+    yield check_host_class, host.ThresholdMADHost, 11.0
 
 def check_host_class(cls, n_sigma):
     threshold = cls(n_sigma)
@@ -22,11 +22,11 @@ def check_host_class(cls, n_sigma):
     np.testing.assert_equal(flags.astype(np.bool_), _spikes)
 
 def test_device_classes():
-    yield check_device_class, threshold.ThresholdMADDevice, 11.0, (4, 3)
+    yield check_device_class, device.ThresholdMADDevice, 11.0, (4, 3)
 
 def check_device_class(cls, n_sigma, device_args=(), device_kw={}):
     th_host = cls.host_class(n_sigma)
-    th_device = threshold.ThresholdHostFromDevice(
+    th_device = device.ThresholdHostFromDevice(
             cls(pycuda.autoinit.context, n_sigma, *device_args, **device_kw))
     flags_host = th_host(_deviations)
     flags_device = th_device(_deviations)
