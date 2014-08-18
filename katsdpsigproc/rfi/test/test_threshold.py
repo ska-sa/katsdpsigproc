@@ -1,5 +1,5 @@
 import numpy as np
-import threshold
+from .. import threshold
 import pycuda.autoinit
 from nose.tools import *
 

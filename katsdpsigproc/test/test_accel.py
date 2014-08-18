@@ -1,5 +1,5 @@
 import numpy as np
-from .accel import Array, DeviceArray
+from ..accel import Array, DeviceArray
 import pycuda.autoinit
 import pycuda.driver as cuda
 from nose.tools import *

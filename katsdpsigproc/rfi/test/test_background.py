@@ -1,5 +1,5 @@
 import numpy as np
-import background
+from .. import background
 import pycuda.autoinit
 from nose.tools import *
 
