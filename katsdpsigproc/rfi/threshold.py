@@ -44,7 +44,7 @@ class ThresholdMADDevice(object):
     host_class = ThresholdMADHost
 
     def __init__(self, ctx, n_sigma, wgsx, wgsy, flag_value=1):
-        self.ctx = ctgx
+        self.ctx = ctx
         self.factor = 1.4826 * n_sigma
         self.wgsx = wgsx
         self.wgsy = wgsy
