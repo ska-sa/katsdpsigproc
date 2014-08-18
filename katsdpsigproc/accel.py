@@ -24,6 +24,9 @@ class LinenoLexer(mako.lexer.Lexer):
         return '"' + re.sub(r'([\\"])', r'\\\1', filename) + '"'
 
     def _lineno_preproc(self, source):
+        """Insert #line directives between every line in `source` and return
+        the result.
+        """
         if self.filename is not None:
             escaped_filename = self._escape_filename(self.filename)
         else:
@@ -41,6 +44,9 @@ class LinenoLexer(mako.lexer.Lexer):
 
 @contextmanager
 def push_context(ctx):
+    """Context manager that pushes a CUDA context on entry and pops it
+    on exit.
+    """
     ctx.push()
     yield
     ctx.pop()
@@ -48,12 +54,31 @@ def push_context(ctx):
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
     :class:`DeviceArray`. It uses C ordering and allows padding, which
-    is always in units of the dtype.
+    is always in units of the dtype. It is allocated from page-locked
+    CUDA memory.
+
+    Because of limitations in numpy and PyCUDA (which do not support
+    non-contiguous memory very well), it works by taking a slice from
+    the origin of contiguous storage, and using that contiguous storage
+    in host-device copies. While one can create views, those views
+    cannot be used in these copied because there is no way to know
+    whether the view is anchored at the origin.
 
     See the numpy documentation on subclassing for an explanation of
     why it is written the way it is.
     """
     def __new__(cls, shape, dtype, padded_shape=None):
+        """Constructor.
+
+        Parameters
+        ----------
+        shape : tuple
+            Shape for the usable data
+        dtype : numpy dtype
+            Data type
+        padded_shape : tuple or `None`
+            Shape for memory allocation (defaults to `shape`)
+        """
         if padded_shape is None:
             padded_shape = shape
         assert len(padded_shape) == len(shape)
@@ -66,6 +91,9 @@ class Array(np.ndarray):
 
     @classmethod
     def safe(cls, obj):
+        """Determines whether self can be copied to/from the GPU
+        directly.
+        """
         try:
             return obj._accel_safe
         except AttributeError:
@@ -92,6 +120,19 @@ class DeviceArray(object):
     """
 
     def __init__(self, ctx, shape, dtype, padded_shape=None):
+        """Constructor.
+
+        Parameters
+        ----------
+        ctx : `pycuda.driver.Context`
+            CUDA context in which to allocate the memory
+        shape : tuple
+            Shape for the usable data
+        dtype : numpy dtype
+            Data type
+        padded_shape : tuple or `None`
+            Shape for memory allocation (defaults to `shape`)
+        """
         if padded_shape is None:
             padded_shape = shape
         assert len(shape) == len(padded_shape)
@@ -115,6 +156,7 @@ class DeviceArray(object):
         return tuple(reversed(s))
 
     def _copyable(self, ary):
+        """Whether `ary` can be copied to/from this array directly"""
         return (Array.safe(ary) and
                 ary.dtype == self.dtype and
                 ary.shape == self.shape and
@@ -145,24 +187,31 @@ class DeviceArray(object):
         return tmp
 
     def set(self, ary):
+        """Synchronous copy from `ary` to self"""
         ary = self.asarray_like(ary)
         with push_context(self.ctx):
             self.buffer.set(self._contiguous(ary))
 
     def get(self, ary=None):
-        if ary is None:
+        """Synchronous copy from self to `ary`. If `ary` is None,
+        or if it is not suitable as a target, the copy is to a newly
+        allocated :class:`Array`. The actual target is returned.
+        """
+        if ary is None or not self._copyable(ary):
             ary = self.empty_like()
         with push_context(self.ctx):
             self.buffer.get(self._contiguous(ary))
         return ary
 
     def set_async(self, ary, stream=None):
+        """Asynchronous copy from `ary` to self"""
         ary = self.asarray_like(ary)
         with push_context(self.ctx):
             self.buffer.set_async(self._contiguous(ary), stream=stream)
 
     def get_async(self, ary, stream=None):
-        if ary is None:
+        """Asynchronous copy from self to `ary` (see `get`)."""
+        if ary is None or not self._copyable(ary):
             ary = self.empty_like()
         with push_context(self.ctx):
             self.buffer.get_async(self._contiguous(ary), stream=stream)
