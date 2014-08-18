@@ -46,7 +46,7 @@ class BackgroundMedianFilterHost(object):
 
     def __call__(self, vis):
         amp = np.abs(vis)
-        return amp - signal.medfilt2d(amp, [self.width, 1]).astype(np.float32)
+        return amp - signal.medfilt2d(amp, [self.width, 1])
 
 class BackgroundMedianFilterDevice(object):
     """Device algorithm that applies a median filter to each baseline
