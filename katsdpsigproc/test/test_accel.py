@@ -1,7 +1,7 @@
 import functools
 import numpy as np
 from mako.template import Template
-from nose.tools import *
+from nose.tools import assert_equal
 from nose.plugins.skip import SkipTest
 try:
     import pycuda.driver as cuda
@@ -28,7 +28,9 @@ cuda_test.__test__ = False
 class TestLinenoLexer(object):
     @cuda_test
     def test_escape_filename(self):
-        assert_equal(r'"abc\"def\\ghi"', LinenoLexer._escape_filename(r'abc"def\ghi'))
+        assert_equal(
+                r'"abc\"def\\ghi"',
+                LinenoLexer._escape_filename(r'abc"def\ghi'))
 
     @cuda_test
     def test_render(self):
@@ -41,7 +43,10 @@ class TestArray(object):
     def setup(self):
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
-        self.constructed = Array(shape=self.shape, dtype=np.int32, padded_shape=self.padded_shape)
+        self.constructed = Array(
+                shape=self.shape,
+                dtype=np.int32,
+                padded_shape=self.padded_shape)
         self.view = np.zeros(self.padded_shape)[2:4, 3:5].view(Array)
         self.sliced = self.constructed[2:4, 3:5]
 

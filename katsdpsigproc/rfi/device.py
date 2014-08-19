@@ -6,11 +6,11 @@ from ..accel import DeviceArray, LinenoLexer, push_context
 import numpy as np
 from mako.lookup import TemplateLookup
 from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
-import pycuda.driver as cuda
 import pkg_resources
 from . import host
 
-_lookup = TemplateLookup(pkg_resources.resource_filename(__name__, ''))
+_lookup = TemplateLookup(
+        pkg_resources.resource_filename(__name__, ''), lexer_cls=LinenoLexer)
 _nvcc_flags = DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
 class BackgroundHostFromDevice(object):
@@ -84,8 +84,6 @@ class BackgroundMedianFilterDevice(object):
         assert vis.shape == deviations.shape
         assert vis.padded_shape == deviations.padded_shape
         (channels, baselines) = vis.shape
-        N = baselines * channels
-        H = self.width // 2
         VT = max(channels // self.csplit, 1)
         xblocks = (baselines + self.wgs - 1) // self.wgs
         yblocks = (channels + VT - 1) // VT
@@ -93,9 +91,13 @@ class BackgroundMedianFilterDevice(object):
 
         with push_context(self.ctx):
             self.kernel(
-                    vis.buffer, deviations.buffer,
-                    np.int32(channels), np.int32(vis.padded_shape[1]), np.int32(VT),
-                    block=(self.wgs, 1, 1), grid=(xblocks, yblocks), stream=stream)
+                    vis.buffer,
+                    deviations.buffer,
+                    np.int32(channels),
+                    np.int32(vis.padded_shape[1]),
+                    np.int32(VT),
+                    block=(self.wgs, 1, 1), grid=(xblocks, yblocks),
+                    stream=stream)
 
 class ThresholdHostFromDevice(object):
     """Wraps a device-side thresholder to present the host interface"""
@@ -180,7 +182,7 @@ class ThresholdMADDevice(object):
         """
         assert deviations.shape == flags.shape
         assert deviations.padded_shape == flags.padded_shape
-        (channels, baselines) = deviations.shape
+        channels = deviations.shape[0]
         blocks = self._blocks(deviations)
         vt = self._vt(deviations)
         with push_context(self.ctx):
@@ -230,12 +232,14 @@ class FlaggerDevice(object):
         """
         assert vis.shape == flags.shape
         assert vis.padded_shape == flags.padded_shape
-        assert np.all(np.greater_equal(self.min_padded_shape(vis.shape), vis.padded_shape))
+        assert np.all(np.greater_equal(
+                self.min_padded_shape(vis.shape), vis.padded_shape))
 
         if (self.deviations is None or
                 self.deviations.shape != vis.shape or
                 self.deviations.padded_shape != vis.padded_shape):
-            self.deviations = DeviceArray(self.ctx, vis.shape, np.float32, vis.padded_shape)
+            self.deviations = DeviceArray(
+                    self.ctx, vis.shape, np.float32, vis.padded_shape)
 
         self.background(vis, self.deviations, stream)
         self.threshold(self.deviations, flags, stream)
@@ -251,8 +255,10 @@ class FlaggerHostFromDevice(object):
 
     def __call__(self, vis):
         padded_shape = self.real_flagger.min_padded_shape(vis.shape)
-        device_vis = DeviceArray(self.real_flagger.ctx, vis.shape, np.complex64, padded_shape)
+        device_vis = DeviceArray(self.real_flagger.ctx, vis.shape,
+                np.complex64, padded_shape)
         device_vis.set(vis)
-        device_flags = DeviceArray(self.real_flagger.ctx, vis.shape, np.uint8, padded_shape)
+        device_flags = DeviceArray(self.real_flagger.ctx, vis.shape,
+                np.uint8, padded_shape)
         self.real_flagger(device_vis, device_flags)
         return device_flags.get()

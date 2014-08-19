@@ -36,11 +36,12 @@ class ThresholdMADHost(object):
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
 
-    def median_abs(self, deviations):
+    @classmethod
+    def median_abs(cls, deviations):
         """Find the median of absolute deviations (amongst the non-zero
         elements).
         """
-        (channels, baselines) = deviations.shape
+        baselines = deviations.shape[1]
         out = np.empty(baselines)
         for i in range(baselines):
             abs_dev = np.abs(deviations[:, i])

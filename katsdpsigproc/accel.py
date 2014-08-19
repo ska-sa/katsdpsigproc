@@ -1,14 +1,14 @@
+"""Utilities for interfacing with accelerator hardware. Currently only CUDA
+is supported, but it is intended to later support OpenCL too. It currently
+only supports a single CUDA context/device.
+"""
+
 import numpy as np
 import pycuda.driver as cuda
 import pycuda.gpuarray as gpuarray
 import mako.lexer
 import re
 from contextlib import contextmanager
-
-"""Utilities for interfacing with accelerator hardware. Currently only CUDA
-is supported, but it is intended to later support OpenCL too. It currently
-only supports a single CUDA context/device.
-"""
 
 class LinenoLexer(mako.lexer.Lexer):
     """A wrapper that inserts #line directives into the source code. It
@@ -146,14 +146,16 @@ class DeviceArray(object):
 
     @property
     def ndim(self):
+        """Number of dimensions"""
         return len(self.shape)
 
     @property
     def strides(self):
-        s = [self.dtype.itemsize]
+        """Strides, as in numpy"""
+        ans = [self.dtype.itemsize]
         for i in range(len(self.padded_shape) - 1, 0, -1):
-            s.append(s[-1] * self.padded_shape[i])
-        return tuple(reversed(s))
+            ans.append(ans[-1] * self.padded_shape[i])
+        return tuple(reversed(ans))
 
     def _copyable(self, ary):
         """Whether `ary` can be copied to/from this array directly"""
@@ -162,7 +164,8 @@ class DeviceArray(object):
                 ary.shape == self.shape and
                 ary.padded_shape == self.padded_shape)
 
-    def _contiguous(self, ary):
+    @classmethod
+    def _contiguous(cls, ary):
         """Returns a contiguous view of a copyable array, for passing to
         PyCUDA functions (which require a contiguous view).
         """
@@ -183,7 +186,7 @@ class DeviceArray(object):
         if self._copyable(ary):
             return ary
         tmp = self.empty_like()
-        np.copyto(tmp, ary, casting = 'no')
+        np.copyto(tmp, ary, casting='no')
         return tmp
 
     def set(self, ary):
