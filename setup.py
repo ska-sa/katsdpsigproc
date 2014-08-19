@@ -11,7 +11,10 @@ setup(
     scripts = ["scripts/rfiflagtest.py"],
     url = "http://ska.ac.za",
     install_requires = [
-        "numpy", "scipy", "mako", "pycuda"
+        "numpy", "scipy"
     ],
+    extras_require = {
+        "CUDA": ["mako", "pycuda"]
+    },
     zip_safe = False
 )
