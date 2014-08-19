@@ -1,10 +1,14 @@
 import numpy as np
-from .. import host, device
-import pycuda.autoinit
+from .. import host
 from nose.tools import *
+from ...test.test_accel import cuda_test, have_cuda
+if have_cuda:
+    import pycuda.autoinit
+    from .. import device
 
 def setup():
     global _vis, _vis_big
+    global _deviations, _spikes
     shape = (17, 13)
     _vis = np.array([[1.25, 1.5j, 1.0, 2.0, -1.75, 2.0]]).T.astype(np.complex64)
     # Use a fixed seed to make the test repeatable
@@ -21,9 +25,11 @@ class TestBackgroundMedianFilterHost(object):
         np.testing.assert_equal(ref, out)
 
 def test_device_classes():
-    yield check_device_class, device.BackgroundMedianFilterDevice, 5, (128, 4)
+    yield check_device_class, 'BackgroundMedianFilterDevice', 5, (128, 4)
 
-def check_device_class(cls, width, device_args=(), device_kw={}):
+@cuda_test
+def check_device_class(cls_name, width, device_args=(), device_kw={}):
+    cls = getattr(device, cls_name)
     bg_host = cls.host_class(width)
     bg_device = device.BackgroundHostFromDevice(
             cls(pycuda.autoinit.context, width, *device_args, **device_kw))
