@@ -3,12 +3,19 @@
 """Test script that runs RFI flagging on random or real data."""
 
 import numpy as np
-from katsdpsigproc.accel import DeviceArray
-import katsdpsigproc.rfi.background
-import katsdpsigproc.rfi.threshold
-import katsdpsigproc.rfi.flagger
+import katsdpsigproc.rfi.host
 import argparse
 import time
+import sys
+try:
+    import pycuda.driver as cuda
+    import pycuda.autoinit
+    have_cuda = True
+except ImportError:
+    have_cuda = False
+if have_cuda:
+    from katsdpsigproc.accel import DeviceArray
+    import katsdpsigproc.rfi.device
 
 def generate_data(channels, baselines):
     real = np.random.randn(channels, baselines)
@@ -70,24 +77,24 @@ def main():
     if data.shape[0] <= args.width:
         raise argparse.ArgumentError('Channels cannot be less than the filter width')
 
+    if not have_cuda and not args.host:
+        print >>sys.stderr, "CUDA is not available. Executing on the CPU."
+        args.host = True
     if args.host:
-        background = katsdpsigproc.rfi.background.BackgroundMedianFilterHost(args.width)
-        threshold = katsdpsigproc.rfi.threshold.ThresholdMADHost(args.sigmas)
-        flagger = katsdpsigproc.rfi.flagger.FlaggerHost(background, threshold)
+        background = katsdpsigproc.rfi.host.BackgroundMedianFilterHost(args.width)
+        threshold = katsdpsigproc.rfi.host.ThresholdMADHost(args.sigmas)
+        flagger = katsdpsigproc.rfi.host.FlaggerHost(background, threshold)
         start = time.time()
         flags = flagger(data)
         end = time.time()
         print "CPU time (ms):", (end - start) * 1000.0
     else:
-        import pycuda.autoinit
-        import pycuda.driver as cuda
-
         ctx = pycuda.autoinit.context
-        background = katsdpsigproc.rfi.background.BackgroundMedianFilterDevice(
+        background = katsdpsigproc.rfi.device.BackgroundMedianFilterDevice(
                 ctx, args.width, args.bg_wgs, args.bg_csplit)
-        threshold = katsdpsigproc.rfi.threshold.ThresholdMADDevice(
+        threshold = katsdpsigproc.rfi.device.ThresholdMADDevice(
                 ctx, args.sigmas, args.th_wgsx, args.th_wgsy)
-        flagger = katsdpsigproc.rfi.flagger.FlaggerDevice(background, threshold)
+        flagger = katsdpsigproc.rfi.device.FlaggerDevice(background, threshold)
 
         padded_shape = flagger.min_padded_shape(data.shape)
         data_device = DeviceArray(ctx, data.shape, data.dtype, padded_shape)
