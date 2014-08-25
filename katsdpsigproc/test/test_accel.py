@@ -11,7 +11,7 @@ except ImportError:
     have_cuda = False
 
 if have_cuda:
-    from ..accel import Array, DeviceArray, LinenoLexer
+    from ..accel import Array, DeviceArray, LinenoLexer, Transpose
 
 def cuda_test(test):
     """Decorator that causes a test to be skipped if CUDA is not available"""
@@ -93,3 +93,25 @@ class TestDeviceArray(object):
         # Check that it matches get
         buf = self.array.get()
         np.testing.assert_equal(ary, buf)
+
+class TestTranspose(object):
+    def test_transpose(self):
+        yield self.check_transpose, 4, 5
+        yield self.check_transpose, 53, 7
+        yield self.check_transpose, 53, 81
+        yield self.check_transpose, 32, 64
+
+    @cuda_test
+    def setup(self):
+        self.ctx = pycuda.autoinit.context
+        self.transpose = Transpose(self.ctx, 'float')
+
+    @cuda_test
+    def check_transpose(self, R, C):
+        ary = np.random.randn(R, C).astype(np.float32)
+        src = DeviceArray(self.ctx, (R, C), dtype=np.float32, padded_shape=(R + 1, C + 4))
+        dest = DeviceArray(self.ctx, (C, R), dtype=np.float32, padded_shape=(C + 2, R + 3))
+        src.set(ary)
+        self.transpose(dest, src)
+        out = dest.get()
+        np.testing.assert_equal(ary.T, out)

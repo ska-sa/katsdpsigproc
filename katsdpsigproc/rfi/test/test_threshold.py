@@ -13,7 +13,7 @@ def setup():
     rs = np.random.RandomState(seed=1)
     # Pick 1/4 of samples to be RFI
     _spikes = rs.random_sample(shape) < 0.25
-    _deviations = np.random.randn(*shape).astype(np.float32)
+    _deviations = rs.randn(*shape).astype(np.float32)
     _deviations[_spikes] += 50.0
 
 def test_host_classes():
@@ -27,6 +27,7 @@ def check_host_class(cls_name, n_sigma):
 
 def test_device_classes():
     yield check_device_class, 'ThresholdMADDevice', 11.0, (4, 3)
+    yield check_device_class, 'ThresholdMADTDevice', 11.0, (4096,)
 
 @cuda_test
 def check_device_class(cls_name, n_sigma, device_args=(), device_kw={}):

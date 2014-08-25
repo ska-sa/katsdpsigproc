@@ -2,7 +2,7 @@
 CUDA).
 """
 
-from ..accel import DeviceArray, LinenoLexer, push_context
+from ..accel import DeviceArray, LinenoLexer, push_context, Transpose
 import numpy as np
 from mako.lookup import TemplateLookup
 from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
@@ -105,6 +105,8 @@ class ThresholdHostFromDevice(object):
         self.real_threshold = real_threshold
 
     def __call__(self, deviations):
+        if self.real_threshold.transposed:
+            deviations = deviations.T
         padded_shape = self.real_threshold.min_padded_shape(deviations.shape)
         device_deviations = DeviceArray(self.real_threshold.ctx,
                 shape=deviations.shape, dtype=np.float32, padded_shape=padded_shape)
@@ -112,7 +114,10 @@ class ThresholdHostFromDevice(object):
         device_flags = DeviceArray(self.real_threshold.ctx,
                 shape=deviations.shape, dtype=np.uint8, padded_shape=padded_shape)
         self.real_threshold(device_deviations, device_flags)
-        return device_flags.get()
+        flags = device_flags.get()
+        if self.real_threshold.transposed:
+            flags = flags.T
+        return flags
 
 class ThresholdMADDevice(object):
     """Device-side thresholding by median of absolute deviations. It
@@ -120,6 +125,7 @@ class ThresholdMADDevice(object):
     floating-point accuracy.
     """
     host_class = host.ThresholdMADHost
+    transposed = False
 
     def __init__(self, ctx, n_sigma, wgsx=32, wgsy=8, flag_value=1):
         """Constructor.
@@ -192,6 +198,73 @@ class ThresholdMADDevice(object):
                     np.float32(self.factor), np.int32(vt),
                     block=(self.wgsx, self.wgsy, 1), grid=(blocks, 1), stream=stream)
 
+class ThresholdMADTDevice(object):
+    """Device-side thresholding by median of absolute deviations. It
+    should give the same results as :class:`ThresholdMADHost`, up to
+    floating-point accuracy.
+    """
+    host_class = host.ThresholdMADHost
+    transposed = True
+    _vt = 16
+    _wgsy = 1
+
+    def __init__(self, ctx, n_sigma, max_channels, flag_value=1):
+        """Constructor.
+
+        Parameters
+        ----------
+        ctx : pycuda.driver.Context
+            CUDA context
+        n_sigma : float
+            Number of (estimated) standard deviations for the threshold
+        max_channels : int
+            Maximum number of channels. Choosing too large a value will
+            reduce performance.
+        flag_value : int
+            Number stored in returned value to indicate RFI
+        """
+        self.ctx = ctx
+        self.factor = 1.4826 * n_sigma
+        self.flag_value = flag_value
+        source = _lookup.get_template('threshold_mad_t.cu').render(
+                vt=self._vt,
+                wgsy=self._wgsy,
+                flag_value=flag_value)
+        with push_context(self.ctx):
+            module = SourceModule(source, options=_nvcc_flags, no_extern_c=True)
+            self.kernel = module.get_function('threshold_mad_t')
+
+    def min_padded_shape(self, shape):
+        """Minimum padded size for inputs and outputs"""
+        (baselines, channels) = shape
+        padded_channels = (channels + 31) // 32 * 32
+        return (baselines, padded_channels)
+
+    def __call__(self, deviations, flags, stream=None):
+        """Apply the thresholding
+
+        Parameters
+        ----------
+        deviations : :class:`katsdpsigproc.accel.DeviceArray`, float32
+            Deviations from the background amplitude, indexed by baseline
+            then channel. It must have a padded size at least that
+            given by :meth:`min_padded_shape`.
+        flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
+            Output flags
+        stream : pycuda.driver.Stream or None
+            CUDA stream for enqueueing the work
+        """
+        assert deviations.shape == flags.shape
+        assert deviations.padded_shape == flags.padded_shape
+        (baselines, channels) = deviations.shape
+        block_width = (channels + self._vt - 1) // self._vt
+        with push_context(self.ctx):
+            self.kernel(
+                    deviations.buffer, flags.buffer,
+                    np.int32(channels), np.int32(deviations.padded_shape[1]),
+                    np.float32(self.factor),
+                    block=(block_width, 1, 1), grid=(1, baselines), stream=stream)
+
 class FlaggerDevice(object):
     """Combine device backgrounder and thresholder implementations to
     create a flagger.
@@ -200,14 +273,22 @@ class FlaggerDevice(object):
         self.background = background
         self.threshold = threshold
         self.ctx = self.background.ctx
-        self.deviations = None
+        self._deviations = None
+        if threshold.transposed:
+            self._deviations_t = None
+            self._flags_t = None
+            self._transpose_deviations = Transpose(self.ctx, 'float')
+            self._transpose_flags = Transpose(self.ctx, 'unsigned char')
 
     def min_padded_shape(self, shape):
         """The minimum padding needed for the inputs and outputs of the
         flagger."""
-        return map(max,
-                self.background.min_padded_shape(shape),
-                self.threshold.min_padded_shape(shape))
+        if self.threshold.transposed:
+            return self.background.min_padded_shape(shape)
+        else:
+            return map(max,
+                    self.background.min_padded_shape(shape),
+                    self.threshold.min_padded_shape(shape))
 
     def __call__(self, vis, flags, stream=None):
         """Perform the flagging.
@@ -235,14 +316,29 @@ class FlaggerDevice(object):
         assert np.all(np.greater_equal(
                 self.min_padded_shape(vis.shape), vis.padded_shape))
 
-        if (self.deviations is None or
-                self.deviations.shape != vis.shape or
-                self.deviations.padded_shape != vis.padded_shape):
-            self.deviations = DeviceArray(
+        if (self._deviations is None or
+                self._deviations.shape != vis.shape or
+                self._deviations.padded_shape != vis.padded_shape):
+            self._deviations = DeviceArray(
                     self.ctx, vis.shape, np.float32, vis.padded_shape)
+        if self.threshold.transposed:
+            shape_t = (vis.shape[1], vis.shape[0])
+            padded_shape_t = self.threshold.min_padded_shape(shape_t)
+            if (self._deviations_t is None or
+                    self._deviations_t.shape != shape_t or
+                    self._deviations_t.padded_shape != padded_shape_t):
+                self._deviations_t = DeviceArray(
+                        self.ctx, shape_t, np.float32, padded_shape_t)
+                self._flags_t = DeviceArray(
+                        self.ctx, shape_t, np.uint8, padded_shape_t)
 
-        self.background(vis, self.deviations, stream)
-        self.threshold(self.deviations, flags, stream)
+        self.background(vis, self._deviations, stream)
+        if self.threshold.transposed:
+            self._transpose_deviations(self._deviations_t, self._deviations, stream)
+            self.threshold(self._deviations_t, self._flags_t, stream)
+            self._transpose_flags(flags, self._flags_t, stream)
+        else:
+            self.threshold(self._deviations, flags, stream)
 
 class FlaggerHostFromDevice(object):
     """Wrapper that makes a :class:`FlaggerDeviceFromHost` present the

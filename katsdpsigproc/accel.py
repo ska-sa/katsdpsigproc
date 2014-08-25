@@ -6,7 +6,10 @@ only supports a single CUDA context/device.
 import numpy as np
 import pycuda.driver as cuda
 import pycuda.gpuarray as gpuarray
+from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
 import mako.lexer
+from mako.lookup import TemplateLookup
+import pkg_resources
 import re
 from contextlib import contextmanager
 
@@ -50,6 +53,10 @@ def push_context(ctx):
     ctx.push()
     yield
     ctx.pop()
+
+_lookup = TemplateLookup(
+        pkg_resources.resource_filename(__name__, ''), lexer_cls=LinenoLexer)
+_nvcc_flags = DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
@@ -219,3 +226,27 @@ class DeviceArray(object):
         with push_context(self.ctx):
             self.buffer.get_async(self._contiguous(ary), stream=stream)
         return ary
+
+class Transpose(object):
+    def __init__(self, ctx, ctype):
+        self.ctx = ctx
+        self.block = 32
+        source = _lookup.get_template("transpose.cu").render(
+                block=self.block, ctype=ctype)
+        module = SourceModule(source, options=_nvcc_flags)
+        self.kernel = module.get_function("transpose")
+
+    def __call__(self, dest, src, stream=None):
+        assert src.dtype == dest.dtype
+        assert src.shape[0] == dest.shape[1]
+        assert src.shape[1] == dest.shape[0]
+        in_row_blocks = (src.shape[0] + self.block - 1) // self.block
+        in_col_blocks = (src.shape[1] + self.block - 1) // self.block
+        self.kernel(
+                dest.buffer, src.buffer,
+                np.int32(src.shape[0]), np.int32(src.shape[1]),
+                np.int32(dest.padded_shape[1]),
+                np.int32(src.padded_shape[1]),
+                block=(self.block, self.block, 1),
+                grid=(in_col_blocks, in_row_blocks),
+                stream=stream)

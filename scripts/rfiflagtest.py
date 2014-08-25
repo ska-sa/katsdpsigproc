@@ -42,10 +42,6 @@ def main():
     parser.add_argument('--bg-wgs', type=int, default=128, help='work group size')
     parser.add_argument('--bg-csplit', type=int, default=4, help='work items per channel')
 
-    parser.add_argument_group('Thresholder tuning')
-    parser.add_argument('--th-wgsx', type=int, default=32, help='work group size (baselines)')
-    parser.add_argument('--th-wgsy', type=int, default=16, help='work group size (channels)')
-
     args = parser.parse_args()
 
     if args.file is not None:
@@ -92,8 +88,8 @@ def main():
         ctx = pycuda.autoinit.context
         background = katsdpsigproc.rfi.device.BackgroundMedianFilterDevice(
                 ctx, args.width, args.bg_wgs, args.bg_csplit)
-        threshold = katsdpsigproc.rfi.device.ThresholdMADDevice(
-                ctx, args.sigmas, args.th_wgsx, args.th_wgsy)
+        threshold = katsdpsigproc.rfi.device.ThresholdMADTDevice(
+                ctx, args.sigmas, 10240)
         flagger = katsdpsigproc.rfi.device.FlaggerDevice(background, threshold)
 
         padded_shape = flagger.min_padded_shape(data.shape)
