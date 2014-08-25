@@ -206,7 +206,6 @@ class ThresholdMADTDevice(object):
     host_class = host.ThresholdMADHost
     transposed = True
     _vt = 16
-    _wgsy = 1
 
     def __init__(self, ctx, n_sigma, max_channels, flag_value=1):
         """Constructor.
@@ -226,9 +225,10 @@ class ThresholdMADTDevice(object):
         self.ctx = ctx
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
+        self._wgsx = (max_channels + 32 * self._vt - 1) // (32 * self._vt) * 32
         source = _lookup.get_template('threshold_mad_t.cu').render(
                 vt=self._vt,
-                wgsy=self._wgsy,
+                wgsx=self._wgsx,
                 flag_value=flag_value)
         with push_context(self.ctx):
             module = SourceModule(source, options=_nvcc_flags, no_extern_c=True)
@@ -257,13 +257,12 @@ class ThresholdMADTDevice(object):
         assert deviations.shape == flags.shape
         assert deviations.padded_shape == flags.padded_shape
         (baselines, channels) = deviations.shape
-        block_width = (channels + self._vt - 1) // self._vt
         with push_context(self.ctx):
             self.kernel(
                     deviations.buffer, flags.buffer,
                     np.int32(channels), np.int32(deviations.padded_shape[1]),
                     np.float32(self.factor),
-                    block=(block_width, 1, 1), grid=(1, baselines), stream=stream)
+                    block=(self._wgsx, 1, 1), grid=(1, baselines), stream=stream)
 
 class FlaggerDevice(object):
     """Combine device backgrounder and thresholder implementations to

@@ -14,7 +14,16 @@
  * themselves.
  */
 
+#include <cub/cub.cuh>
 #define VT ${vt}
+#define WGSX ${wgsx}
+
+typedef cub::BlockReduce<int, WGSX> Reduce;
+struct Scratch
+{
+    typename Reduce::TempStorage reduce;
+    int output;
+};
 
 __device__ static int abs_int(float x)
 {
@@ -93,52 +102,49 @@ private:
     /// Underlying implementation
     RankerAbsSerial serial;
     /// Shared memory scratch space for reducing counts
-    int *scratch;
+    Scratch *scratch;
     bool first;
+
+    __device__ int sum(int value) const
+    {
+        int total = Reduce(scratch->reduce).Sum(value);
+        if (first)
+            scratch->output = total;
+        __syncthreads();
+        return scratch->output;
+    }
+
+    __device__ int max(int value) const
+    {
+        int top = Reduce(scratch->reduce).Reduce(value, cub::Max());
+        if (first)
+            scratch->output = top;
+        __syncthreads();
+        return scratch->output;
+    }
 
 public:
     __device__ RankerAbsParallel(
         const float *data, int start, int step, int N,
-        int *scratch, bool first)
+        Scratch *scratch, bool first)
         : serial(data, start, step, N), scratch(scratch), first(first) {}
 
     __device__ int zeros() const
     {
-        if (first)
-            scratch[0] = 0;
-        __syncthreads();
-
         int c = serial.zeros();
-        atomicAdd(scratch, c);
-        __syncthreads();
-
-        return scratch[0];
+        return sum(c);
     }
 
     __device__ int rank(int value) const
     {
-        if (first)
-            scratch[0] = 0;
-        __syncthreads();
-
         int r = serial.rank(value);
-        atomicAdd(scratch, r);
-        __syncthreads();
-
-        return scratch[0];
+        return sum(r);
     }
 
     __device__ int max_below(int limit) const
     {
-        if (first)
-            scratch[0] = 0;
-        __syncthreads();
-
         int s = serial.max_below(limit);
-        atomicMax(scratch, s);
-        __syncthreads();
-
-        return scratch[0];
+        return max(s);
     }
 };
 
@@ -187,19 +193,17 @@ __device__ float median_abs_impl(const Ranker &ranker, int N)
 extern "C"
 {
 
-__global__ void threshold_mad_t(
+__global__ void __launch_bounds__(WGSX) threshold_mad_t(
     const float * __restrict in, unsigned char * __restrict flags,
     int channels, int stride, float factor)
 {
-    __shared__ int scratch[${wgsy}];
+    __shared__ Scratch scratch;
 
-    int bl = blockDim.y * blockIdx.y + threadIdx.y;
-    int start = threadIdx.x * VT;
-    int end = min(start + VT, channels);
-    // TODO: should interleave memory accesses
-    RankerAbsParallel ranker(in + bl * stride, threadIdx.x, blockDim.x, channels, scratch + threadIdx.y, start == 0);
+    int bl = blockIdx.y;
+    RankerAbsParallel ranker(in + bl * stride, threadIdx.x,
+                             WGSX, channels, &scratch, threadIdx.x == 0);
     float threshold = factor * median_abs_impl(ranker, channels);
-    for (int i = threadIdx.x; i < channels; i += blockDim.x)
+    for (int i = threadIdx.x; i < channels; i += WGSX)
     {
         int addr = bl * stride + i;
         flags[addr] = (in[addr] > threshold) ? ${flag_value} : 0;
