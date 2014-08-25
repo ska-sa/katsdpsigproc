@@ -32,10 +32,14 @@ private:
 
 public:
     __device__ RankerAbsSerial(
-        const float *data, int N)
+        const float *data, int start, int step, int N)
     {
+        int p = start;
         for (int i = 0; i < VT; i++)
-            values[i] = (i < N) ? abs_int(data[i]) : 0x7FFFFFFF;
+        {
+            values[i] = (p < N) ? abs_int(data[p]) : 0x7FFFFFFF;
+            p += step;
+        }
     }
 
     /// Count the number of zero elements
@@ -93,8 +97,10 @@ private:
     bool first;
 
 public:
-    __device__ RankerAbsParallel(const float *data, int N, int *scratch, bool first)
-        : serial(data, N), scratch(scratch), first(first) {}
+    __device__ RankerAbsParallel(
+        const float *data, int start, int step, int N,
+        int *scratch, bool first)
+        : serial(data, start, step, N), scratch(scratch), first(first) {}
 
     __device__ int zeros() const
     {
@@ -191,9 +197,9 @@ __global__ void threshold_mad_t(
     int start = threadIdx.x * VT;
     int end = min(start + VT, channels);
     // TODO: should interleave memory accesses
-    RankerAbsParallel ranker(in + (bl * stride + start), end - start, scratch + threadIdx.y, start == 0);
+    RankerAbsParallel ranker(in + bl * stride, threadIdx.x, blockDim.x, channels, scratch + threadIdx.y, start == 0);
     float threshold = factor * median_abs_impl(ranker, channels);
-    for (int i = start; i < end; i++)
+    for (int i = threadIdx.x; i < channels; i += blockDim.x)
     {
         int addr = bl * stride + i;
         flags[addr] = (in[addr] > threshold) ? ${flag_value} : 0;
