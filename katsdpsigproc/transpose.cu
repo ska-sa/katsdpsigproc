@@ -13,7 +13,9 @@ __global__ void transpose(
     int out_stride,
     int in_stride)
 {
-    __shared__ T arr[BLOCK][BLOCK + 1];
+    // The inner dimension is padded so that column-major accesses will
+    // hit different banks, for 4-byte banks and 1, 2 or 4-byte elements.
+    __shared__ T arr[BLOCK][BLOCK + (sizeof(T) > 4 ? 1 : 4 / sizeof(T))];
 
     int lx = threadIdx.x;
     int ly = threadIdx.y;
