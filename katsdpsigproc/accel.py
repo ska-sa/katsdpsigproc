@@ -58,6 +58,30 @@ _lookup = TemplateLookup(
         pkg_resources.resource_filename(__name__, ''), lexer_cls=LinenoLexer)
 _nvcc_flags = DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
+def build(name, render_kws = None, extra_flags = None):
+    """Build a source module from a mako template.
+
+    Parameters
+    ----------
+    name : str
+        Source file name, relative to the katsdpsigproc module
+    render_kws : dict (optional)
+        Context arguments to pass to mako
+    extra_flags : list (optional)
+        Flags to pass to the compiler
+
+    Returns
+    -------
+    `pycuda.compiler.SourceModule`
+        Compiled module
+    """
+    if render_kws is None:
+        render_kws = {}
+    if extra_flags is None:
+        extra_flags = []
+    source = _lookup.get_template(name).render(**render_kws)
+    return SourceModule(source, options=_nvcc_flags + extra_flags, no_extern_c=True)
+
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
     :class:`DeviceArray`. It uses C ordering and allows padding, which
@@ -231,9 +255,7 @@ class Transpose(object):
     def __init__(self, ctx, ctype):
         self.ctx = ctx
         self.block = 32
-        source = _lookup.get_template("transpose.cu").render(
-                block=self.block, ctype=ctype)
-        module = SourceModule(source, options=_nvcc_flags)
+        module = build("transpose.cu", {'block': self.block, 'ctype': ctype})
         self.kernel = module.get_function("transpose")
 
     def __call__(self, dest, src, stream=None):

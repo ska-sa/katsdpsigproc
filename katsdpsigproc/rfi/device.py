@@ -2,16 +2,10 @@
 CUDA).
 """
 
+from .. import accel
 from ..accel import DeviceArray, LinenoLexer, push_context, Transpose
 import numpy as np
-from mako.lookup import TemplateLookup
-from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
-import pkg_resources
 from . import host
-
-_lookup = TemplateLookup(
-        pkg_resources.resource_filename(__name__, ''), lexer_cls=LinenoLexer)
-_nvcc_flags = DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
 class BackgroundHostFromDevice(object):
     """Wraps a device-side backgrounder to present the host interface"""
@@ -55,10 +49,9 @@ class BackgroundMedianFilterDevice(object):
         self.width = width
         self.wgs = wgs
         self.csplit = csplit
-        source = _lookup.get_template('background_median_filter.cu').render(
-                width=width, wgs=wgs)
         with push_context(self.ctx):
-            module = SourceModule(source, options=_nvcc_flags, no_extern_c=True)
+            module = accel.build('rfi/background_median_filter.cu',
+                    {'width': width, 'wgs': wgs})
             self.kernel = module.get_function('background_median_filter')
 
     def min_padded_shape(self, shape):
@@ -148,11 +141,9 @@ class ThresholdMADDevice(object):
         self.wgsx = wgsx
         self.wgsy = wgsy
         self.flag_value = flag_value
-        source = _lookup.get_template('threshold_mad.cu').render(
-                wgsx=wgsx, wgsy=wgsy,
-                flag_value=flag_value)
         with push_context(self.ctx):
-            module = SourceModule(source, options=_nvcc_flags, no_extern_c=True)
+            module = accel.build('rfi/threshold_mad.cu',
+                    {'wgsx': wgsx, 'wgsy': wgsy, 'flag_value': flag_value})
             self.kernel = module.get_function('threshold_mad')
 
     def min_padded_shape(self, shape):
@@ -226,12 +217,9 @@ class ThresholdMADTDevice(object):
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
         self._wgsx = (max_channels + 32 * self._vt - 1) // (32 * self._vt) * 32
-        source = _lookup.get_template('threshold_mad_t.cu').render(
-                vt=self._vt,
-                wgsx=self._wgsx,
-                flag_value=flag_value)
         with push_context(self.ctx):
-            module = SourceModule(source, options=_nvcc_flags, no_extern_c=True)
+            module = accel.build('rfi/threshold_mad_t.cu',
+                    {'vt': self._vt, 'wgsx': self._wgsx, 'flag_value': flag_value})
             self.kernel = module.get_function('threshold_mad_t')
 
     def min_padded_shape(self, shape):
