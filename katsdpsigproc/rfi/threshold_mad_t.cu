@@ -14,16 +14,13 @@
  * themselves.
  */
 
-#include <cub/cub.cuh>
 #define VT ${vt}
 #define WGSX ${wgsx}
 
-typedef cub::BlockReduce<int, WGSX> Reduce;
-struct Scratch
-{
-    typename Reduce::TempStorage reduce;
-    int output;
-};
+<%namespace name="wg_reduce" file="/wg_reduce.cu"/>
+${wg_reduce.define_scratch('int', wgsx, 'Scratch')}
+${wg_reduce.define_function('int', wgsx, 'reduce_sum', 'Scratch')}
+${wg_reduce.define_function('int', wgsx, 'reduce_max', 'Scratch', wg_reduce.op_max)}
 
 __device__ static int abs_int(float x)
 {
@@ -107,20 +104,12 @@ private:
 
     __device__ int sum(int value) const
     {
-        int total = Reduce(scratch->reduce).Sum(value);
-        if (first)
-            scratch->output = total;
-        __syncthreads();
-        return scratch->output;
+        return reduce_sum(value, threadIdx.x, scratch);
     }
 
     __device__ int max(int value) const
     {
-        int top = Reduce(scratch->reduce).Reduce(value, cub::Max());
-        if (first)
-            scratch->output = top;
-        __syncthreads();
-        return scratch->output;
+        return reduce_max(value, threadIdx.x, scratch);
     }
 
 public:

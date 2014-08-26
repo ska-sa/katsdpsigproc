@@ -8,7 +8,7 @@ if have_cuda:
 
 def setup():
     global _deviations, _spikes
-    shape = (17, 13)
+    shape = (117, 273)
     # Use a fixed seed to make the test repeatable
     rs = np.random.RandomState(seed=1)
     # Pick 1/4 of samples to be RFI
