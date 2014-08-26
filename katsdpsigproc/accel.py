@@ -252,23 +252,50 @@ class DeviceArray(object):
         return ary
 
 class Transpose(object):
+    """Kernel for transposing a 2D array of data"""
     def __init__(self, ctx, ctype):
+        """Constructor.
+
+        Parameters
+        ----------
+        ctx : `pycuda.driver.Context`
+            Context used for the kernel
+        ctype : str
+            Type (in C/CUDA, not numpy) of data elements
+        """
         self.ctx = ctx
-        self.block = 32
-        module = build("transpose.cu", {'block': self.block, 'ctype': ctype})
-        self.kernel = module.get_function("transpose")
+        self.ctype = ctype
+        self._block = 32
+        with push_context(ctx):
+            module = build("transpose.cu", {'block': self._block, 'ctype': ctype})
+            self.kernel = module.get_function("transpose")
 
     def __call__(self, dest, src, stream=None):
+        """Apply the transposition. The input and output must have
+        transposed shapes, but the padded shapes may be arbitrary.
+
+        Parameters
+        ----------
+        dest : :class:`DeviceArray`
+            Output array
+        src : :class:`DeviceArray`
+            Input array
+        stream : `pycuda.driver.Stream`
+            Stream on which to enqueue work
+        """
+        assert src.ndim == 2
+        assert dest.ndim == 2
         assert src.dtype == dest.dtype
         assert src.shape[0] == dest.shape[1]
         assert src.shape[1] == dest.shape[0]
-        in_row_blocks = (src.shape[0] + self.block - 1) // self.block
-        in_col_blocks = (src.shape[1] + self.block - 1) // self.block
+        # Round up to number of blocks in each dimension
+        in_row_blocks = (src.shape[0] + self._block - 1) // self._block
+        in_col_blocks = (src.shape[1] + self._block - 1) // self._block
         self.kernel(
                 dest.buffer, src.buffer,
                 np.int32(src.shape[0]), np.int32(src.shape[1]),
                 np.int32(dest.padded_shape[1]),
                 np.int32(src.padded_shape[1]),
-                block=(self.block, self.block, 1),
+                block=(self._block, self._block, 1),
                 grid=(in_col_blocks, in_row_blocks),
                 stream=stream)

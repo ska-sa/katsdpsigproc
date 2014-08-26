@@ -1,5 +1,16 @@
-#define BLOCK 32
+/**
+ * @file
+ *
+ * Simple transposition kernel. It is not particularly optimal, and could benefit from some
+ * thread coarsening, and possibly some specialisation to eliminate branches if there is
+ * suitable padding.
+ *
+ * Mako parameters:
+ * - @a ctype: C type of the elements
+ * - @a block: Each thread block processes @a block x @a block elements
+ */
 
+#define BLOCK ${block}
 typedef ${ctype} T;
 
 extern "C"
@@ -20,6 +31,7 @@ __global__ void transpose(
     int lx = threadIdx.x;
     int ly = threadIdx.y;
 
+    // Load a chunk into shared memory
     int in_row0 = blockIdx.y * blockDim.y;
     int in_row = in_row0 + ly;
     int in_col0 = blockIdx.x * blockDim.x;
@@ -29,6 +41,7 @@ __global__ void transpose(
 
     __syncthreads();
 
+    // Write chunk bank to global memory, transposed
     int out_row = in_col0 + ly;
     int out_col = in_row0 + lx;
     if (out_row < in_cols && out_col < in_rows)
