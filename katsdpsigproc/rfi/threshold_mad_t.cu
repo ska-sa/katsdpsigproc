@@ -14,6 +14,8 @@
  * themselves.
  */
 
+#include <float.h> // For FLT_MAX
+
 #define VT ${vt}
 #define WGSX ${wgsx}
 
@@ -21,7 +23,7 @@
 <%namespace name="rank" file="/rank.cu"/>
 <%include file="threshold_mad_common.cu"/>
 
-<%rank:ranker_serial class_name="RankerAbsSerial" type="int">
+<%rank:ranker_serial class_name="RankerAbsSerial" type="float">
     <%def name="foreach()">
         #pragma unroll
         for (int i = 0; i < VT; i++)
@@ -31,7 +33,7 @@
     </%def>
 
 private:
-    int values[VT];
+    float values[VT];
 
 public:
     __device__ RankerAbsSerial(
@@ -40,13 +42,13 @@ public:
         int p = start;
         for (int i = 0; i < VT; i++)
         {
-            values[i] = (p < N) ? abs_int(data[p]) : 0x7FFFFFFF;
+            values[i] = (p < N) ? fabs(data[p]) : FLT_MAX;
             p += step;
         }
     }
 </%rank:ranker_serial>
 
-<%rank:ranker_parallel class_name="RankerAbsParallel" serial_class="RankerAbsSerial" type="int" size="${wgsx}">
+<%rank:ranker_parallel class_name="RankerAbsParallel" serial_class="RankerAbsSerial" type="float" size="${wgsx}">
 public:
     __device__ RankerAbsParallel(
         const float *data, int start, int step, int N,
