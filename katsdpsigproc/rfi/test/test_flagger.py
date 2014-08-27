@@ -41,3 +41,13 @@ def test_flagger_device():
     flagger = device.FlaggerHostFromDevice(flagger_device)
     flags = flagger(_vis)
     np.testing.assert_equal(_spikes, flags)
+
+@cuda_test
+def test_flagger_device_transpose():
+    """Test device flagger with a transposed thresholder"""
+    background = device.BackgroundMedianFilterDevice(pycuda.autoinit.context, 13)
+    threshold = device.ThresholdMADTDevice(pycuda.autoinit.context, 11.0, 1024)
+    flagger_device = device.FlaggerDevice(background, threshold)
+    flagger = device.FlaggerHostFromDevice(flagger_device)
+    flags = flagger(_vis)
+    np.testing.assert_equal(_spikes, flags)
