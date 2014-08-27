@@ -25,7 +25,7 @@ __device__ float find_rank_abs(Ranker &ranker, int rank, bool halfway)
     for (int i = 30; i >= 0; i--)
     {
         int test = cur | (1 << i);
-        int r = ranker.rank(test);
+        int r = ranker.rank(__int_as_float(test));
         if (r <= rank)
             cur = test;
     }
@@ -33,10 +33,10 @@ __device__ float find_rank_abs(Ranker &ranker, int rank, bool halfway)
     float result = __int_as_float(cur);
     if (halfway)
     {
-        int r = ranker.rank(cur);
+        int r = ranker.rank(result);
         if (r == rank)
         {
-            float prev = __int_as_float(ranker.max_below(cur));
+            float prev = ranker.max_below(result);
             result = (result + prev) * 0.5f;
         }
     }

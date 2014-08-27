@@ -45,11 +45,11 @@ struct ArrayPiece
     }
 };
 
-<%rank:ranker_serial class_name="RankerAbsSerial" type="int">
+<%rank:ranker_serial class_name="RankerAbsSerial" type="float">
     <%def name="foreach()">
         for (int i = piece.start; i < piece.end; i++)
         {
-            ${caller.body('abs_int(piece[i])')}
+            ${caller.body('fabs(piece[i])')}
         }
     </%def>
 
@@ -60,7 +60,7 @@ public:
     __device__ RankerAbsSerial(const ArrayPiece &piece) : piece(piece) {}
 </%rank:ranker_serial>
 
-<%rank:ranker_parallel class_name="RankerAbsParallel" serial_class="RankerAbsSerial" type="int" size="${wgsy}">
+<%rank:ranker_parallel class_name="RankerAbsParallel" serial_class="RankerAbsSerial" type="float" size="${wgsy}">
 public:
     __device__ RankerAbsParallel(const ArrayPiece &piece, Scratch *scratch, int tid)
         : serial(piece), scratch(scratch), tid(tid) {}
