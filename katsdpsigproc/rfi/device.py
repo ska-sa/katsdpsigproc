@@ -1,5 +1,10 @@
 """RFI flagging algorithms that run on an accelerator (currently only
 CUDA).
+
+The thresholding functions may take data in either channel-major or
+baseline-major order (the flags are emitted in the same order). In the former
+case, the `transposed` member is `False`, otherwise it is `True`. The flagger
+classes automatically detect this and apply a transposition kernel.
 """
 
 from .. import accel
@@ -116,6 +121,8 @@ class ThresholdMADDevice(object):
     """Device-side thresholding by median of absolute deviations. It
     should give the same results as :class:`ThresholdMADHost`, up to
     floating-point accuracy.
+
+    See :class:`ThresholdMADTDevice` for a more efficient implementation.
     """
     host_class = host.ThresholdMADHost
     transposed = False
@@ -192,11 +199,32 @@ class ThresholdMADDevice(object):
 class ThresholdMADTDevice(object):
     """Device-side thresholding by median of absolute deviations. It
     should give the same results as :class:`ThresholdMADHost`, up to
-    floating-point accuracy.
+    floating-point accuracy. It uses transposed (baseline-major) memory
+    order, which allows an entire baseline to be efficiently loaded into
+    registers.
+
+    Attributes
+    ----------
+    factor : float
+        Multiple of median absolute deviation at which detection occurs
+    max_channels : int
+        Maximum number of channels that can be supported
+    _vt : int
+        Number of elements handled by each thread
+    _wgsx : int
+        Number of work-items per baseline
+
+    Notes
+    -----
+    There is a tradeoff in selecting the workgroup size: a large value gives
+    more parallelism and reduces the register pressure, but increases the
+    overhead of reduction operations.
+
+    This class may fail for very large numbers of channels (10k can
+    definitely be supported), in which case ThresholdMADDevice may be used.
     """
     host_class = host.ThresholdMADHost
     transposed = True
-    _vt = 16
 
     def __init__(self, ctx, n_sigma, max_channels, flag_value=1):
         """Constructor.
@@ -216,7 +244,10 @@ class ThresholdMADTDevice(object):
         self.ctx = ctx
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
-        self._wgsx = (max_channels + 32 * self._vt - 1) // (32 * self._vt) * 32
+        self.max_channels = max_channels
+        self._vt = 16
+        self._wgsx = 512
+        self._vt = (max_channels + self._wgsx - 1) // self._wgsx
         with push_context(self.ctx):
             module = accel.build('rfi/threshold_mad_t.cu',
                     {'vt': self._vt, 'wgsx': self._wgsx, 'flag_value': flag_value})
@@ -245,6 +276,7 @@ class ThresholdMADTDevice(object):
         assert deviations.shape == flags.shape
         assert deviations.padded_shape == flags.padded_shape
         (baselines, channels) = deviations.shape
+        assert channels <= self.max_channels
         with push_context(self.ctx):
             self.kernel(
                     deviations.buffer, flags.buffer,
