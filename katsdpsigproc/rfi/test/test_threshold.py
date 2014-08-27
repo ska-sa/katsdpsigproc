@@ -3,10 +3,11 @@
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
-from ...test.test_accel import cuda_test, have_cuda
+from ...test.test_accel import cuda_test, have_cuda, test_command_queue
 if have_cuda:
     import pycuda.autoinit
     from .. import device
+    from ... import cuda
 
 def setup():
     global _deviations, _spikes
@@ -36,7 +37,7 @@ def check_device_class(cls_name, n_sigma, device_args=(), device_kw={}):
     cls = getattr(device, cls_name)
     th_host = cls.host_class(n_sigma)
     th_device = device.ThresholdHostFromDevice(
-            cls(pycuda.autoinit.context, n_sigma, *device_args, **device_kw))
+            cls(test_command_queue, n_sigma, *device_args, **device_kw))
     flags_host = th_host(_deviations)
     flags_device = th_device(_deviations)
     np.testing.assert_equal(flags_host, flags_device)

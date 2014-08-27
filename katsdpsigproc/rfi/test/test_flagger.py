@@ -5,10 +5,11 @@ properly."""
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
-from ...test.test_accel import cuda_test, have_cuda
+from ...test.test_accel import cuda_test, have_cuda, test_command_queue
 if have_cuda:
     import pycuda.autoinit
     from .. import device
+    from ... import cuda
 
 def setup():
     global _vis, _spikes
@@ -35,8 +36,8 @@ def test_flagger_host():
 
 @cuda_test
 def test_flagger_device():
-    background = device.BackgroundMedianFilterDevice(pycuda.autoinit.context, 13)
-    threshold = device.ThresholdMADDevice(pycuda.autoinit.context, 11.0, 8, 8)
+    background = device.BackgroundMedianFilterDevice(test_command_queue, 13)
+    threshold = device.ThresholdMADDevice(test_command_queue, 11.0, 8, 8)
     flagger_device = device.FlaggerDevice(background, threshold)
     flagger = device.FlaggerHostFromDevice(flagger_device)
     flags = flagger(_vis)
@@ -45,8 +46,8 @@ def test_flagger_device():
 @cuda_test
 def test_flagger_device_transpose():
     """Test device flagger with a transposed thresholder"""
-    background = device.BackgroundMedianFilterDevice(pycuda.autoinit.context, 13)
-    threshold = device.ThresholdMADTDevice(pycuda.autoinit.context, 11.0, 1024)
+    background = device.BackgroundMedianFilterDevice(test_command_queue, 13)
+    threshold = device.ThresholdMADTDevice(test_command_queue, 11.0, 1024)
     flagger_device = device.FlaggerDevice(background, threshold)
     flagger = device.FlaggerHostFromDevice(flagger_device)
     flags = flagger(_vis)

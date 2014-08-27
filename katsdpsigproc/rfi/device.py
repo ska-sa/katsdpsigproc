@@ -8,7 +8,7 @@ classes automatically detect this and apply a transposition kernel.
 """
 
 from .. import accel
-from ..accel import DeviceArray, LinenoLexer, push_context, Transpose
+from ..accel import DeviceArray, LinenoLexer, Transpose
 import numpy as np
 from . import host
 
@@ -20,12 +20,12 @@ class BackgroundHostFromDevice(object):
     def __call__(self, vis):
         padded_shape = self.real_background.min_padded_shape(vis.shape)
         device_vis = DeviceArray(
-                self.real_background.ctx, vis.shape, np.complex64, padded_shape)
-        device_vis.set(vis)
+                self.real_background.command_queue.context, vis.shape, np.complex64, padded_shape)
+        device_vis.set(self.real_background.command_queue, vis)
         device_deviations = DeviceArray(
-                self.real_background.ctx, vis.shape, np.float32, padded_shape)
+                self.real_background.command_queue.context, vis.shape, np.float32, padded_shape)
         self.real_background(device_vis, device_deviations)
-        return device_deviations.get()
+        return device_deviations.get(self.real_background.command_queue)
 
 class BackgroundMedianFilterDevice(object):
     """Device algorithm that applies a median filter to each baseline
@@ -36,12 +36,12 @@ class BackgroundMedianFilterDevice(object):
 
     host_class = host.BackgroundMedianFilterHost
 
-    def __init__(self, ctx, width, wgs=128, csplit=8):
+    def __init__(self, command_queue, width, wgs=128, csplit=8):
         """Constructor.
 
         Parameters
         ----------
-        ctx : pycuda.driver.Context
+        context : pycuda.driver.Context
             CUDA context
         width : int
             The kernel width (must be odd)
@@ -50,14 +50,13 @@ class BackgroundMedianFilterDevice(object):
         csplit : int
             Approximate number of thread cooperating on each channel
         """
-        self.ctx = ctx
+        self.command_queue = command_queue
         self.width = width
         self.wgs = wgs
         self.csplit = csplit
-        with push_context(self.ctx):
-            module = accel.build('rfi/background_median_filter.cu',
-                    {'width': width, 'wgs': wgs})
-            self.kernel = module.get_function('background_median_filter')
+        program = accel.build(command_queue.context, 'rfi/background_median_filter.cu',
+                {'width': width, 'wgs': wgs})
+        self.kernel = program.get_kernel('background_median_filter')
 
     def min_padded_shape(self, shape):
         """Minimum padded size for inputs and outputs"""
@@ -65,7 +64,7 @@ class BackgroundMedianFilterDevice(object):
         padded_baselines = (baselines + self.wgs - 1) // self.wgs * self.wgs
         return (channels, padded_baselines)
 
-    def __call__(self, vis, deviations, stream=None):
+    def __call__(self, vis, deviations):
         """Perform the backgrounding.
 
         Parameters
@@ -76,8 +75,6 @@ class BackgroundMedianFilterDevice(object):
             :meth:`min_padded_shape`.
         deviations : :class:`katsdpsigproc.accel.DeviceArray`
             Output deviations, of the same shape and padding as `vis`.
-        stream : pycuda.driver.Stream or None
-            CUDA stream to enqueue work to
         """
         assert vis.shape == deviations.shape
         assert vis.padded_shape == deviations.padded_shape
@@ -87,15 +84,17 @@ class BackgroundMedianFilterDevice(object):
         yblocks = (channels + VT - 1) // VT
         assert xblocks * self.wgs <= vis.padded_shape[1]
 
-        with push_context(self.ctx):
-            self.kernel(
+        self.command_queue.enqueue_kernel(
+                self.kernel,
+                [
                     vis.buffer,
                     deviations.buffer,
                     np.int32(channels),
                     np.int32(vis.padded_shape[1]),
-                    np.int32(VT),
-                    block=(self.wgs, 1, 1), grid=(xblocks, yblocks),
-                    stream=stream)
+                    np.int32(VT)
+                ],
+                global_size=(xblocks * self.wgs, yblocks),
+                local_size=(self.wgs, 1))
 
 class ThresholdHostFromDevice(object):
     """Wraps a device-side thresholder to present the host interface"""
@@ -106,13 +105,13 @@ class ThresholdHostFromDevice(object):
         if self.real_threshold.transposed:
             deviations = deviations.T
         padded_shape = self.real_threshold.min_padded_shape(deviations.shape)
-        device_deviations = DeviceArray(self.real_threshold.ctx,
+        device_deviations = DeviceArray(self.real_threshold.command_queue.context,
                 shape=deviations.shape, dtype=np.float32, padded_shape=padded_shape)
-        device_deviations.set(deviations)
-        device_flags = DeviceArray(self.real_threshold.ctx,
+        device_deviations.set(self.real_threshold.command_queue, deviations)
+        device_flags = DeviceArray(self.real_threshold.command_queue.context,
                 shape=deviations.shape, dtype=np.uint8, padded_shape=padded_shape)
         self.real_threshold(device_deviations, device_flags)
-        flags = device_flags.get()
+        flags = device_flags.get(self.real_threshold.command_queue)
         if self.real_threshold.transposed:
             flags = flags.T
         return flags
@@ -127,12 +126,12 @@ class ThresholdMADDevice(object):
     host_class = host.ThresholdMADHost
     transposed = False
 
-    def __init__(self, ctx, n_sigma, wgsx=32, wgsy=8, flag_value=1):
+    def __init__(self, command_queue, n_sigma, wgsx=32, wgsy=8, flag_value=1):
         """Constructor.
 
         Parameters
         ----------
-        ctx : pycuda.driver.Context
+        context : pycuda.driver.Context
             CUDA context
         n_sigma : float
             Number of (estimated) standard deviations for the threshold
@@ -143,15 +142,14 @@ class ThresholdMADDevice(object):
         flag_value : int
             Number stored in returned value to indicate RFI
         """
-        self.ctx = ctx
+        self.command_queue = command_queue
         self.factor = 1.4826 * n_sigma
         self.wgsx = wgsx
         self.wgsy = wgsy
         self.flag_value = flag_value
-        with push_context(self.ctx):
-            module = accel.build('rfi/threshold_mad.cu',
-                    {'wgsx': wgsx, 'wgsy': wgsy, 'flag_value': flag_value})
-            self.kernel = module.get_function('threshold_mad')
+        program = accel.build(command_queue.context, 'rfi/threshold_mad.cu',
+                {'wgsx': wgsx, 'wgsy': wgsy, 'flag_value': flag_value})
+        self.kernel = program.get_kernel('threshold_mad')
 
     def min_padded_shape(self, shape):
         """Minimum padded size for inputs and outputs"""
@@ -170,7 +168,7 @@ class ThresholdMADDevice(object):
         vt = (channels + self.wgsy - 1) // self.wgsy
         return vt
 
-    def __call__(self, deviations, flags, stream=None):
+    def __call__(self, deviations, flags):
         """Apply the thresholding
 
         Parameters
@@ -181,20 +179,21 @@ class ThresholdMADDevice(object):
             given by :meth:`min_padded_shape`.
         flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
             Output flags
-        stream : pycuda.driver.Stream or None
-            CUDA stream for enqueueing the work
         """
         assert deviations.shape == flags.shape
         assert deviations.padded_shape == flags.padded_shape
         channels = deviations.shape[0]
         blocks = self._blocks(deviations)
         vt = self._vt(deviations)
-        with push_context(self.ctx):
-            self.kernel(
+        self.command_queue.enqueue_kernel(
+                self.kernel,
+                [
                     deviations.buffer, flags.buffer,
                     np.int32(channels), np.int32(deviations.padded_shape[1]),
-                    np.float32(self.factor), np.int32(vt),
-                    block=(self.wgsx, self.wgsy, 1), grid=(blocks, 1), stream=stream)
+                    np.float32(self.factor), np.int32(vt)
+                ],
+                global_size=(blocks * self.wgsx, self.wgsy),
+                local_size=(self.wgsx, self.wgsy))
 
 class ThresholdMADTDevice(object):
     """Device-side thresholding by median of absolute deviations. It
@@ -226,12 +225,12 @@ class ThresholdMADTDevice(object):
     host_class = host.ThresholdMADHost
     transposed = True
 
-    def __init__(self, ctx, n_sigma, max_channels, flag_value=1):
+    def __init__(self, command_queue, n_sigma, max_channels, flag_value=1):
         """Constructor.
 
         Parameters
         ----------
-        ctx : pycuda.driver.Context
+        context : pycuda.driver.Context
             CUDA context
         n_sigma : float
             Number of (estimated) standard deviations for the threshold
@@ -241,17 +240,16 @@ class ThresholdMADTDevice(object):
         flag_value : int
             Number stored in returned value to indicate RFI
         """
-        self.ctx = ctx
+        self.command_queue = command_queue
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
         self.max_channels = max_channels
         self._vt = 16
         self._wgsx = 512
         self._vt = (max_channels + self._wgsx - 1) // self._wgsx
-        with push_context(self.ctx):
-            module = accel.build('rfi/threshold_mad_t.cu',
-                    {'vt': self._vt, 'wgsx': self._wgsx, 'flag_value': flag_value})
-            self.kernel = module.get_function('threshold_mad_t')
+        program = accel.build(command_queue.context, 'rfi/threshold_mad_t.cu',
+                {'vt': self._vt, 'wgsx': self._wgsx, 'flag_value': flag_value})
+        self.kernel = program.get_kernel('threshold_mad_t')
 
     def min_padded_shape(self, shape):
         """Minimum padded size for inputs and outputs"""
@@ -259,7 +257,7 @@ class ThresholdMADTDevice(object):
         padded_channels = (channels + 31) // 32 * 32
         return (baselines, padded_channels)
 
-    def __call__(self, deviations, flags, stream=None):
+    def __call__(self, deviations, flags):
         """Apply the thresholding
 
         Parameters
@@ -270,19 +268,20 @@ class ThresholdMADTDevice(object):
             given by :meth:`min_padded_shape`.
         flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
             Output flags
-        stream : pycuda.driver.Stream or None
-            CUDA stream for enqueueing the work
         """
         assert deviations.shape == flags.shape
         assert deviations.padded_shape == flags.padded_shape
         (baselines, channels) = deviations.shape
         assert channels <= self.max_channels
-        with push_context(self.ctx):
-            self.kernel(
+        self.command_queue.enqueue_kernel(
+                self.kernel,
+                [
                     deviations.buffer, flags.buffer,
                     np.int32(channels), np.int32(deviations.padded_shape[1]),
-                    np.float32(self.factor),
-                    block=(self._wgsx, 1, 1), grid=(1, baselines), stream=stream)
+                    np.float32(self.factor)
+                ],
+                global_size=(self._wgsx, baselines),
+                local_size=(self._wgsx, 1))
 
 class FlaggerDevice(object):
     """Combine device backgrounder and thresholder implementations to
@@ -291,13 +290,14 @@ class FlaggerDevice(object):
     def __init__(self, background, threshold):
         self.background = background
         self.threshold = threshold
-        self.ctx = self.background.ctx
+        assert self.background.command_queue is self.threshold.command_queue
+        self.command_queue = self.background.command_queue
         self._deviations = None
         if threshold.transposed:
             self._deviations_t = None
             self._flags_t = None
-            self._transpose_deviations = Transpose(self.ctx, 'float')
-            self._transpose_flags = Transpose(self.ctx, 'unsigned char')
+            self._transpose_deviations = Transpose(self.command_queue, 'float')
+            self._transpose_flags = Transpose(self.command_queue, 'unsigned char')
 
     def min_padded_shape(self, shape):
         """The minimum padding needed for the inputs and outputs of the
@@ -309,7 +309,7 @@ class FlaggerDevice(object):
                     self.background.min_padded_shape(shape),
                     self.threshold.min_padded_shape(shape))
 
-    def __call__(self, vis, flags, stream=None):
+    def __call__(self, vis, flags):
         """Perform the flagging.
 
         Note
@@ -327,8 +327,6 @@ class FlaggerDevice(object):
             :meth:`min_padded_shape`.
         flags : :class:katsdpsigproc.accel.DeviceArray`
             The output flags, with the same shape and padding as `vis`.
-        stream : `pycuda.driver.Stream`
-            CUDA stream for enqueuing the operations
         """
         assert vis.shape == flags.shape
         assert vis.padded_shape == flags.padded_shape
@@ -339,7 +337,7 @@ class FlaggerDevice(object):
                 self._deviations.shape != vis.shape or
                 self._deviations.padded_shape != vis.padded_shape):
             self._deviations = DeviceArray(
-                    self.ctx, vis.shape, np.float32, vis.padded_shape)
+                    self.command_queue.context, vis.shape, np.float32, vis.padded_shape)
         if self.threshold.transposed:
             shape_t = (vis.shape[1], vis.shape[0])
             padded_shape_t = self.threshold.min_padded_shape(shape_t)
@@ -347,17 +345,17 @@ class FlaggerDevice(object):
                     self._deviations_t.shape != shape_t or
                     self._deviations_t.padded_shape != padded_shape_t):
                 self._deviations_t = DeviceArray(
-                        self.ctx, shape_t, np.float32, padded_shape_t)
+                        self.command_queue.context, shape_t, np.float32, padded_shape_t)
                 self._flags_t = DeviceArray(
-                        self.ctx, shape_t, np.uint8, padded_shape_t)
+                        self.command_queue.context, shape_t, np.uint8, padded_shape_t)
 
-        self.background(vis, self._deviations, stream)
+        self.background(vis, self._deviations)
         if self.threshold.transposed:
-            self._transpose_deviations(self._deviations_t, self._deviations, stream)
-            self.threshold(self._deviations_t, self._flags_t, stream)
-            self._transpose_flags(flags, self._flags_t, stream)
+            self._transpose_deviations(self._deviations_t, self._deviations)
+            self.threshold(self._deviations_t, self._flags_t)
+            self._transpose_flags(flags, self._flags_t)
         else:
-            self.threshold(self._deviations, flags, stream)
+            self.threshold(self._deviations, flags)
 
 class FlaggerHostFromDevice(object):
     """Wrapper that makes a :class:`FlaggerDeviceFromHost` present the
@@ -370,10 +368,10 @@ class FlaggerHostFromDevice(object):
 
     def __call__(self, vis):
         padded_shape = self.real_flagger.min_padded_shape(vis.shape)
-        device_vis = DeviceArray(self.real_flagger.ctx, vis.shape,
+        device_vis = DeviceArray(self.real_flagger.command_queue.context, vis.shape,
                 np.complex64, padded_shape)
-        device_vis.set(vis)
-        device_flags = DeviceArray(self.real_flagger.ctx, vis.shape,
+        device_vis.set(self.real_flagger.command_queue, vis)
+        device_flags = DeviceArray(self.real_flagger.command_queue.context, vis.shape,
                 np.uint8, padded_shape)
         self.real_flagger(device_vis, device_flags)
-        return device_flags.get()
+        return device_flags.get(self.real_flagger.command_queue)

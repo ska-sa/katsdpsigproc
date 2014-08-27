@@ -4,19 +4,22 @@ from mako.template import Template
 from nose.tools import assert_equal
 from nose.plugins.skip import SkipTest
 try:
-    import pycuda.driver as cuda
     import pycuda.autoinit
     have_cuda = True
 except ImportError:
     have_cuda = False
 
+test_context = None
+test_command_queue = None
 if have_cuda:
     from ..accel import Array, DeviceArray, LinenoLexer, Transpose
+    from .. import cuda
+    test_context = cuda.Context(pycuda.autoinit.context)
+    test_command_queue = cuda.CommandQueue(test_context, None)
 
 def cuda_test(test):
     """Decorator that causes a test to be skipped if CUDA is not available"""
     def wrapper(*args, **kw):
-        global have_cuda
         if not have_cuda:
             raise SkipTest('CUDA not found')
         return test(*args, **kw)
@@ -60,12 +63,13 @@ class TestArray(object):
 class TestDeviceArray(object):
     @cuda_test
     def setup(self):
-        self.ctx = pycuda.autoinit.context
+        self.context = cuda.Context(pycuda.autoinit.context)
+        self.command_queue = cuda.CommandQueue(self.context, None)
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
         self.strides = (64, 4)
         self.array = DeviceArray(
-                ctx=self.ctx,
+                context=self.context,
                 shape=self.shape,
                 dtype=np.int32,
                 padded_shape=self.padded_shape)
@@ -84,14 +88,15 @@ class TestDeviceArray(object):
     @cuda_test
     def test_set_get(self):
         ary = np.random.randint(0, 100, self.shape).astype(np.int32)
-        self.array.set(ary)
+        self.array.set(self.command_queue, ary)
         # Read back results, check that it matches
         buf = np.zeros(self.padded_shape, dtype=np.int32)
-        cuda.memcpy_dtoh(buf, self.array.buffer.gpudata)
+        with self.context:
+            pycuda.driver.memcpy_dtoh(buf, self.array.buffer.gpudata)
         buf = buf[0:self.shape[0], 0:self.shape[1]]
         np.testing.assert_equal(ary, buf)
         # Check that it matches get
-        buf = self.array.get()
+        buf = self.array.get(self.command_queue)
         np.testing.assert_equal(ary, buf)
 
 class TestTranspose(object):
@@ -103,15 +108,16 @@ class TestTranspose(object):
 
     @cuda_test
     def setup(self):
-        self.ctx = pycuda.autoinit.context
-        self.transpose = Transpose(self.ctx, 'float')
+        self.context = cuda.Context(pycuda.autoinit.context)
+        self.command_queue = cuda.CommandQueue(self.context, None)
+        self.transpose = Transpose(self.command_queue, 'float')
 
     @cuda_test
     def check_transpose(self, R, C):
         ary = np.random.randn(R, C).astype(np.float32)
-        src = DeviceArray(self.ctx, (R, C), dtype=np.float32, padded_shape=(R + 1, C + 4))
-        dest = DeviceArray(self.ctx, (C, R), dtype=np.float32, padded_shape=(C + 2, R + 3))
-        src.set(ary)
+        src = DeviceArray(self.context, (R, C), dtype=np.float32, padded_shape=(R + 1, C + 4))
+        dest = DeviceArray(self.context, (C, R), dtype=np.float32, padded_shape=(C + 2, R + 3))
+        src.set_async(self.command_queue, ary)
         self.transpose(dest, src)
-        out = dest.get()
+        out = dest.get(self.command_queue)
         np.testing.assert_equal(ary.T, out)

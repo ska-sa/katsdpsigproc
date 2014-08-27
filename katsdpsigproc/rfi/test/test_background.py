@@ -1,7 +1,7 @@
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
-from ...test.test_accel import cuda_test, have_cuda
+from ...test.test_accel import cuda_test, have_cuda, test_command_queue
 if have_cuda:
     import pycuda.autoinit
     from .. import device
@@ -32,7 +32,7 @@ def check_device_class(cls_name, width, device_args=(), device_kw={}):
     cls = getattr(device, cls_name)
     bg_host = cls.host_class(width)
     bg_device = device.BackgroundHostFromDevice(
-            cls(pycuda.autoinit.context, width, *device_args, **device_kw))
+            cls(test_command_queue, width, *device_args, **device_kw))
     out_host = bg_host(_vis_big)
     out_device = bg_device(_vis_big)
     # Uses an abs tolerance because backgrounding subtracts nearby values

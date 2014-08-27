@@ -4,14 +4,10 @@ only supports a single CUDA context/device.
 """
 
 import numpy as np
-import pycuda.driver as cuda
-import pycuda.gpuarray as gpuarray
-from pycuda.compiler import SourceModule, DEFAULT_NVCC_FLAGS
 import mako.lexer
 from mako.lookup import TemplateLookup
 import pkg_resources
 import re
-from contextlib import contextmanager
 
 class LinenoLexer(mako.lexer.Lexer):
     """A wrapper that inserts #line directives into the source code. It
@@ -45,20 +41,10 @@ class LinenoLexer(mako.lexer.Lexer):
             out.append(line + '\n')
         return ''.join(out)
 
-@contextmanager
-def push_context(ctx):
-    """Context manager that pushes a CUDA context on entry and pops it
-    on exit.
-    """
-    ctx.push()
-    yield
-    ctx.pop()
-
 _lookup = TemplateLookup(
         pkg_resources.resource_filename(__name__, ''), lexer_cls=LinenoLexer)
-_nvcc_flags = DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
-def build(name, render_kws = None, extra_flags = None):
+def build(context, name, render_kws=None, extra_flags=None):
     """Build a source module from a mako template.
 
     Parameters
@@ -80,7 +66,7 @@ def build(name, render_kws = None, extra_flags = None):
     if extra_flags is None:
         extra_flags = []
     source = _lookup.get_template(name).render(**render_kws)
-    return SourceModule(source, options=_nvcc_flags + extra_flags, no_extern_c=True)
+    return context.compile(source, extra_flags)
 
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
@@ -114,7 +100,7 @@ class Array(np.ndarray):
             padded_shape = shape
         assert len(padded_shape) == len(shape)
         assert np.all(np.greater_equal(padded_shape, shape))
-        owner = cuda.pagelocked_empty(padded_shape, dtype).view(Array)
+        owner = np.empty(padded_shape, dtype).view(Array)
         index = tuple([slice(0, x) for x in shape])
         obj = owner[index]
         obj._accel_safe = True
@@ -150,12 +136,12 @@ class DeviceArray(object):
     necessary.
     """
 
-    def __init__(self, ctx, shape, dtype, padded_shape=None):
+    def __init__(self, context, shape, dtype, padded_shape=None):
         """Constructor.
 
         Parameters
         ----------
-        ctx : `pycuda.driver.Context`
+        context : `pycuda.driver.Context`
             CUDA context in which to allocate the memory
         shape : tuple
             Shape for the usable data
@@ -171,9 +157,8 @@ class DeviceArray(object):
         self.shape = shape
         self.dtype = np.dtype(dtype)
         self.padded_shape = padded_shape
-        self.ctx = ctx
-        with push_context(ctx):
-            self.buffer = gpuarray.GPUArray(padded_shape, dtype)
+        self.context = context
+        self.buffer = context.allocate(padded_shape, dtype)
 
     @property
     def ndim(self):
@@ -220,57 +205,52 @@ class DeviceArray(object):
         np.copyto(tmp, ary, casting='no')
         return tmp
 
-    def set(self, ary):
+    def set(self, command_queue, ary):
         """Synchronous copy from `ary` to self"""
         ary = self.asarray_like(ary)
-        with push_context(self.ctx):
-            self.buffer.set(self._contiguous(ary))
+        command_queue.enqueue_write_buffer(self.buffer, self._contiguous(ary))
 
-    def get(self, ary=None):
+    def get(self, command_queue, ary=None):
         """Synchronous copy from self to `ary`. If `ary` is None,
         or if it is not suitable as a target, the copy is to a newly
         allocated :class:`Array`. The actual target is returned.
         """
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
-        with push_context(self.ctx):
-            self.buffer.get(self._contiguous(ary))
+        command_queue.enqueue_read_buffer(self.buffer, self._contiguous(ary))
         return ary
 
-    def set_async(self, ary, stream=None):
+    def set_async(self, command_queue, ary):
         """Asynchronous copy from `ary` to self"""
         ary = self.asarray_like(ary)
-        with push_context(self.ctx):
-            self.buffer.set_async(self._contiguous(ary), stream=stream)
+        command_queue.enqueue_write_buffer(self.buffer, self._contiguous(ary), blocking=False)
 
-    def get_async(self, ary, stream=None):
+    def get_async(self, command_queue, ary=None):
         """Asynchronous copy from self to `ary` (see `get`)."""
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
-        with push_context(self.ctx):
-            self.buffer.get_async(self._contiguous(ary), stream=stream)
+        command_queue.enqueue_read_buffer(self.buffer, self._contiguous(ary), blocking=False)
         return ary
 
 class Transpose(object):
     """Kernel for transposing a 2D array of data"""
-    def __init__(self, ctx, ctype):
+    def __init__(self, command_queue, ctype):
         """Constructor.
 
         Parameters
         ----------
-        ctx : `pycuda.driver.Context`
+        context : `pycuda.driver.Context`
             Context used for the kernel
         ctype : str
             Type (in C/CUDA, not numpy) of data elements
         """
-        self.ctx = ctx
+        self.command_queue = command_queue
         self.ctype = ctype
         self._block = 32
-        with push_context(ctx):
-            module = build("transpose.cu", {'block': self._block, 'ctype': ctype})
-            self.kernel = module.get_function("transpose")
+        program = build(command_queue.context, "transpose.cu", {'block': self._block, 'ctype': ctype})
+        self.kernel = program.get_kernel("transpose")
 
-    def __call__(self, dest, src, stream=None):
+    def __call__(self, dest, src):
         """Apply the transposition. The input and output must have
         transposed shapes, but the padded shapes may be arbitrary.
 
@@ -280,8 +260,6 @@ class Transpose(object):
             Output array
         src : :class:`DeviceArray`
             Input array
-        stream : `pycuda.driver.Stream`
-            Stream on which to enqueue work
         """
         assert src.ndim == 2
         assert dest.ndim == 2
@@ -291,11 +269,13 @@ class Transpose(object):
         # Round up to number of blocks in each dimension
         in_row_blocks = (src.shape[0] + self._block - 1) // self._block
         in_col_blocks = (src.shape[1] + self._block - 1) // self._block
-        self.kernel(
-                dest.buffer, src.buffer,
-                np.int32(src.shape[0]), np.int32(src.shape[1]),
-                np.int32(dest.padded_shape[1]),
-                np.int32(src.padded_shape[1]),
-                block=(self._block, self._block, 1),
-                grid=(in_col_blocks, in_row_blocks),
-                stream=stream)
+        self.command_queue.enqueue_kernel(
+                self.kernel,
+                [
+                    dest.buffer, src.buffer,
+                    np.int32(src.shape[0]), np.int32(src.shape[1]),
+                    np.int32(dest.padded_shape[1]),
+                    np.int32(src.padded_shape[1])
+                ],
+                global_size=(in_col_blocks * self._block, in_row_blocks * self._block),
+                local_size=(self._block, self._block))
