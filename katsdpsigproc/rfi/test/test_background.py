@@ -13,7 +13,7 @@ def setup():
     _vis = np.array([[1.25, 1.5j, 1.0, 2.0, -1.75, 2.0]]).T.astype(np.complex64)
     # Use a fixed seed to make the test repeatable
     rs = np.random.RandomState(seed=1)
-    _vis_big = (rs.randn(*shape) + rs.randn(*shape) * 1j).astype(np.complex64)
+    _vis_big = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(np.complex64)
 
 class TestBackgroundMedianFilterHost(object):
     def setup(self):
