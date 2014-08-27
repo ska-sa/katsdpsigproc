@@ -1,3 +1,5 @@
+"""Tests for RFI thresholding algorithms"""
+
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
@@ -13,7 +15,7 @@ def setup():
     rs = np.random.RandomState(seed=1)
     # Pick 1/4 of samples to be RFI
     _spikes = rs.random_sample(shape) < 0.25
-    _deviations = rs.randn(*shape).astype(np.float32)
+    _deviations = rs.standard_normal(shape).astype(np.float32)
     _deviations[_spikes] += 50.0
 
 def test_host_classes():
