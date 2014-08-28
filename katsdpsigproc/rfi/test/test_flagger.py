@@ -5,7 +5,7 @@ properly."""
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
-from ...test.test_accel import cuda_test, test_command_queue
+from ...test.test_accel import device_test, test_command_queue
 if test_command_queue:
     from .. import device
 
@@ -32,7 +32,7 @@ def test_flagger_host():
     flags = flagger(_vis)
     np.testing.assert_equal(_spikes, flags)
 
-@cuda_test
+@device_test
 def test_flagger_device():
     background = device.BackgroundMedianFilterDevice(test_command_queue, 13)
     threshold = device.ThresholdMADDevice(test_command_queue, 11.0, 8, 8)
@@ -41,7 +41,7 @@ def test_flagger_device():
     flags = flagger(_vis)
     np.testing.assert_equal(_spikes, flags)
 
-@cuda_test
+@device_test
 def test_flagger_device_transpose():
     """Test device flagger with a transposed thresholder"""
     background = device.BackgroundMedianFilterDevice(test_command_queue, 13)

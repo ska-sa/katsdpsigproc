@@ -1,7 +1,7 @@
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
-from ...test.test_accel import cuda_test, test_command_queue
+from ...test.test_accel import device_test, test_command_queue
 if test_command_queue:
     from .. import device
 
@@ -26,7 +26,7 @@ class TestBackgroundMedianFilterHost(object):
 def test_device_classes():
     yield check_device_class, 'BackgroundMedianFilterDevice', 5, (128, 4)
 
-@cuda_test
+@device_test
 def check_device_class(cls_name, width, device_args=(), device_kw={}):
     cls = getattr(device, cls_name)
     bg_host = cls.host_class(width)
