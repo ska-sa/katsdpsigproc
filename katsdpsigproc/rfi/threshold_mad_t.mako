@@ -14,7 +14,7 @@
  * themselves.
  */
 
-#include <float.h> // For FLT_MAX
+<%include file="/port.mako"/>
 
 #define VT ${vt}
 #define WGSX ${wgsx}
@@ -34,9 +34,9 @@
     float values[VT];
 </%rank:ranker_serial>
 
-__device__ void ranker_abs_serial_init(
+DEVICE_FN void ranker_abs_serial_init(
     ranker_abs_serial *self,
-    const float *data, int start, int step, int N)
+    GLOBAL const float *data, int start, int step, int N)
 {
     int p = start;
     for (int i = 0; i < VT; i++)
@@ -48,10 +48,10 @@ __device__ void ranker_abs_serial_init(
 
 <%rank:ranker_parallel class_name="ranker_abs_parallel" serial_class="ranker_abs_serial" type="float" size="${wgsx}"/>
 
-__device__ void ranker_abs_parallel_init(
+DEVICE_FN void ranker_abs_parallel_init(
     ranker_abs_parallel *self,
-    const float *data, int start, int step, int N,
-    ranker_abs_parallel_scratch *scratch, int tid)
+    GLOBAL const float * RESTRICT data, int start, int step, int N,
+    LOCAL ranker_abs_parallel_scratch *scratch, int tid)
 {
     ranker_abs_serial_init(&self->serial, data, start, step, N);
     self->scratch = scratch;
@@ -60,19 +60,19 @@ __device__ void ranker_abs_parallel_init(
 
 <%common:median_non_zero ranker_class="ranker_abs_parallel"/>
 
-__global__ void __launch_bounds__(WGSX) threshold_mad_t(
-    const float * __restrict in, unsigned char * __restrict flags,
+KERNEL REQD_WORK_GROUP_SIZE(WGSX, 1, 1) void threshold_mad_t(
+    GLOBAL const float * RESTRICT in, GLOBAL unsigned char * RESTRICT flags,
     int channels, int stride, float factor)
 {
-    __shared__ ranker_abs_parallel_scratch scratch;
+    LOCAL_DECL ranker_abs_parallel_scratch scratch;
 
-    int bl = blockIdx.y;
+    int bl = get_group_id(1);
     ranker_abs_parallel ranker;
     ranker_abs_parallel_init(
-        &ranker, in + bl * stride, threadIdx.x,
-        WGSX, channels, &scratch, threadIdx.x);
+        &ranker, in + bl * stride, get_local_id(0),
+        WGSX, channels, &scratch, get_local_id(0));
     float threshold = factor * median_non_zero(&ranker, channels);
-    for (int i = threadIdx.x; i < channels; i += WGSX)
+    for (int i = get_local_id(0); i < channels; i += WGSX)
     {
         int addr = bl * stride + i;
         flags[addr] = (in[addr] > threshold) ? ${flag_value} : 0;

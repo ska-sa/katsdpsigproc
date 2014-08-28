@@ -17,7 +17,7 @@ typedef struct ${class_name}
 } ${class_name};
 
 /// Count the number of zero elements
-__device__ int ${class_name}_zeros(${class_name} *self)
+DEVICE_FN int ${class_name}_zeros(${class_name} *self)
 {
     int c = 0;
     <%call expr="caller.foreach('self')" args="v">
@@ -29,7 +29,7 @@ __device__ int ${class_name}_zeros(${class_name} *self)
 /**
  * Count the number of elements which strictly less than @a value.
  */
-__device__ int ${class_name}_rank(${class_name} *self, ${type} value)
+DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
 {
     int r = 0;
     <%call expr="caller.foreach('self')" args="v">
@@ -42,7 +42,7 @@ __device__ int ${class_name}_rank(${class_name} *self, ${type} value)
  * Return the largest value that is strictly less than @a limit.
  * Returns 0 if there isn't one.
  */
-__device__ ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
+DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 {
     ${type} ans = 0;
     <%call expr="caller.foreach('self')" args="v">
@@ -77,26 +77,26 @@ typedef struct ${class_name}
     /// Underlying implementation
     ${serial_class} serial;
     /// Shared memory scratch space for reducing counts
-    ${class_name}_scratch *scratch;
+    LOCAL ${class_name}_scratch *scratch;
     /// Thread ID (must range from 0 to @a size - 1)
     int tid;
 
     ${caller.body()}
 } ${class_name};
 
-__device__ int ${class_name}_zeros(${class_name} *self)
+DEVICE_FN int ${class_name}_zeros(${class_name} *self)
 {
     int c = ${serial_class}_zeros(&self->serial);
     return ${class_name}_reduce_sum(c, self->tid, &self->scratch->sum);
 }
 
-__device__ int ${class_name}_rank(${class_name} *self, int value)
+DEVICE_FN int ${class_name}_rank(${class_name} *self, int value)
 {
     int r = ${serial_class}_rank(&self->serial, value);
     return ${class_name}_reduce_sum(r, self->tid, &self->scratch->sum);
 }
 
-__device__ ${type} ${class_name}_max_below(${class_name} *self, int limit)
+DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, int limit)
 {
     ${type} s = ${serial_class}_max_below(&self->serial, limit);
     return ${class_name}_reduce_max(s, self->tid, &self->scratch->max);

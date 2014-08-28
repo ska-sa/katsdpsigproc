@@ -11,10 +11,10 @@ typedef struct ${scratch_type}
 
 <%def name="define_function(type, size, function, scratch_type, op=None)">
 <% if op is None: op = op_plus %>
-__device__ ${type} ${function}(${type} value, int idx, ${scratch_type} *scratch)
+DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scratch)
 {
     scratch->data[idx] = value;
-    __syncthreads();
+    BARRIER();
 <% N = size %>
 % while N > 1:
     // N = ${N}
@@ -23,7 +23,7 @@ __device__ ${type} ${function}(${type} value, int idx, ${scratch_type} *scratch)
         value = ${op('value', 'scratch->data[idx + %d]' % ((N + 1) // 2))};
         scratch->data[idx] = value;
     }
-    __syncthreads();
+    BARRIER();
 <% N = (N + 1) // 2 %>
 % endwhile
     return scratch->data[0];

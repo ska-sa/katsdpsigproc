@@ -20,6 +20,7 @@
  * themselves.
  */
 
+<%include file="/port.mako"/>
 <%namespace name="rank" file="/rank.mako"/>
 <%namespace name="common" file="threshold_mad_common.mako"/>
 
@@ -28,15 +29,15 @@
  */
 typedef struct array_piece
 {
-    const float *in;
+    const GLOBAL float *in;
     int start;
     int end;
     int stride;
 } array_piece;
 
-__device__ void array_piece_init(
+DEVICE_FN void array_piece_init(
     array_piece *self,
-    const float *in, int start, int end, int stride)
+    const GLOBAL float *in, int start, int end, int stride)
 {
     self->in = in;
     self->start = start;
@@ -44,7 +45,7 @@ __device__ void array_piece_init(
     self->stride = stride;
 }
 
-__device__ float array_piece_get(const array_piece *self, int idx)
+DEVICE_FN float array_piece_get(const array_piece *self, int idx)
 {
     return self->in[idx * self->stride];
 }
@@ -59,17 +60,17 @@ __device__ float array_piece_get(const array_piece *self, int idx)
     array_piece piece;
 </%rank:ranker_serial>
 
-__device__ void ranker_abs_serial_init(ranker_abs_serial *self, const array_piece *piece)
+DEVICE_FN void ranker_abs_serial_init(ranker_abs_serial *self, const array_piece *piece)
 {
     self->piece = *piece;
 }
 
 <%rank:ranker_parallel class_name="ranker_abs_parallel" serial_class="ranker_abs_serial" type="float" size="${wgsy}">
 </%rank:ranker_parallel>
-__device__ void ranker_abs_parallel_init(
+DEVICE_FN void ranker_abs_parallel_init(
     ranker_abs_parallel *self,
     const array_piece *piece,
-    ranker_abs_parallel_scratch *scratch,
+    LOCAL ranker_abs_parallel_scratch *scratch,
     int tid)
 {
     ranker_abs_serial_init(&self->serial, piece);
@@ -79,20 +80,20 @@ __device__ void ranker_abs_parallel_init(
 
 <%common:median_non_zero ranker_class="ranker_abs_parallel"/>
 
-__global__ void __launch_bounds__(${wgsx * wgsy}) threshold_mad(
-    const float * __restrict in, unsigned char * __restrict flags,
+KERNEL REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) void threshold_mad(
+    const GLOBAL float * RESTRICT in, GLOBAL unsigned char * RESTRICT flags,
     int channels, int stride, float factor,
     int VT)
 {
-    __shared__ ranker_abs_parallel_scratch scratch[${wgsx}];
+    LOCAL_DECL ranker_abs_parallel_scratch scratch[${wgsx}];
 
-    int bl = blockDim.x * blockIdx.x + threadIdx.x;
-    int start = threadIdx.y * VT;
+    int bl = get_global_id(0);
+    int start = get_local_id(1) * VT;
     int end = min(start + VT, channels);
     array_piece piece;
     array_piece_init(&piece, in + bl, start, end, stride);
     ranker_abs_parallel ranker;
-    ranker_abs_parallel_init(&ranker, &piece, scratch + threadIdx.x, threadIdx.y);
+    ranker_abs_parallel_init(&ranker, &piece, scratch + get_local_id(0), get_local_id(1));
     float threshold = factor * median_non_zero(&ranker, channels);
     for (int i = piece.start; i < piece.end; i++)
         flags[bl + i * stride] = (array_piece_get(&piece, i) > threshold) ? ${flag_value} : 0;

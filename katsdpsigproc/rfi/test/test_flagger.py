@@ -5,11 +5,9 @@ properly."""
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
-from ...test.test_accel import cuda_test, have_cuda, test_command_queue
-if have_cuda:
-    import pycuda.autoinit
+from ...test.test_accel import cuda_test, test_command_queue
+if test_command_queue:
     from .. import device
-    from ... import cuda
 
 def setup():
     global _vis, _spikes

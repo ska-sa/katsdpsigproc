@@ -8,7 +8,7 @@ import argparse
 import time
 import sys
 try:
-    import pycuda.driver as cuda
+    import pycuda.driver
     import pycuda.autoinit
     have_cuda = True
 except ImportError:
@@ -16,6 +16,7 @@ except ImportError:
 if have_cuda:
     from katsdpsigproc.accel import DeviceArray
     import katsdpsigproc.rfi.device
+    from katsdpsigproc import cuda
 
 def generate_data(channels, baselines):
     real = np.random.randn(channels, baselines)
@@ -85,20 +86,21 @@ def main():
         end = time.time()
         print "CPU time (ms):", (end - start) * 1000.0
     else:
-        ctx = pycuda.autoinit.context
+        context = cuda.Context(pycuda.autoinit.context)
+        command_queue = cuda.CommandQueue(context, None)
         background = katsdpsigproc.rfi.device.BackgroundMedianFilterDevice(
-                ctx, args.width, args.bg_wgs, args.bg_csplit)
+                command_queue, args.width, args.bg_wgs, args.bg_csplit)
         threshold = katsdpsigproc.rfi.device.ThresholdMADTDevice(
-                ctx, args.sigmas, 10240)
+                command_queue, args.sigmas, 10240)
         flagger = katsdpsigproc.rfi.device.FlaggerDevice(background, threshold)
 
         padded_shape = flagger.min_padded_shape(data.shape)
-        data_device = DeviceArray(ctx, data.shape, data.dtype, padded_shape)
-        flags_device = DeviceArray(ctx, data.shape, np.uint8, padded_shape)
-        start_event = cuda.Event()
-        end_event = cuda.Event()
+        data_device = DeviceArray(context, data.shape, data.dtype, padded_shape)
+        flags_device = DeviceArray(context, data.shape, np.uint8, padded_shape)
+        start_event = pycuda.driver.Event()
+        end_event = pycuda.driver.Event()
 
-        data_device.set(data)
+        data_device.set(command_queue, data)
         # Run once for warmup (allocates memory)
         flagger(data_device, flags_device)
         # Run again, timing it
@@ -107,7 +109,7 @@ def main():
         end_event.record()
         end_event.synchronize()
         print "GPU time (ms):", end_event.time_since(start_event)
-        flags = flags_device.get()
+        flags = flags_device.get(command_queue)
 
     print flags
 

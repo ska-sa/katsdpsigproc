@@ -9,6 +9,12 @@ try:
 except ImportError:
     have_cuda = False
 
+try:
+    import pyopencl
+    have_opencl = True
+except ImportError:
+    have_opencl = False
+
 test_context = None
 test_command_queue = None
 if have_cuda:
@@ -16,12 +22,17 @@ if have_cuda:
     from .. import cuda
     test_context = cuda.Context(pycuda.autoinit.context)
     test_command_queue = cuda.CommandQueue(test_context, None)
+elif have_opencl:
+    from ..accel import Array, DeviceArray, LinenoLexer, Transpose
+    from .. import opencl
+    test_context = opencl.Context(pyopencl.create_some_context(False))
+    test_command_queue = opencl.CommandQueue(test_context)
 
 def cuda_test(test):
     """Decorator that causes a test to be skipped if CUDA is not available"""
     def wrapper(*args, **kw):
-        if not have_cuda:
-            raise SkipTest('CUDA not found')
+        if not test_context:
+            raise SkipTest('CUDA/OpenCL not found')
         return test(*args, **kw)
     return functools.update_wrapper(wrapper, test)
 
@@ -63,13 +74,11 @@ class TestArray(object):
 class TestDeviceArray(object):
     @cuda_test
     def setup(self):
-        self.context = cuda.Context(pycuda.autoinit.context)
-        self.command_queue = cuda.CommandQueue(self.context, None)
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
         self.strides = (64, 4)
         self.array = DeviceArray(
-                context=self.context,
+                context=test_context,
                 shape=self.shape,
                 dtype=np.int32,
                 padded_shape=self.padded_shape)
@@ -88,15 +97,19 @@ class TestDeviceArray(object):
     @cuda_test
     def test_set_get(self):
         ary = np.random.randint(0, 100, self.shape).astype(np.int32)
-        self.array.set(self.command_queue, ary)
+        self.array.set(test_command_queue, ary)
         # Read back results, check that it matches
         buf = np.zeros(self.padded_shape, dtype=np.int32)
-        with self.context:
+        if have_cuda and isinstance(test_context, cuda.Context):
             pycuda.driver.memcpy_dtoh(buf, self.array.buffer.gpudata)
+        else:
+            pyopencl.enqueue_copy(
+                    test_command_queue._pyopencl_command_queue,
+                    buf, self.array.buffer.data)
         buf = buf[0:self.shape[0], 0:self.shape[1]]
         np.testing.assert_equal(ary, buf)
         # Check that it matches get
-        buf = self.array.get(self.command_queue)
+        buf = self.array.get(test_command_queue)
         np.testing.assert_equal(ary, buf)
 
 class TestTranspose(object):
@@ -108,16 +121,14 @@ class TestTranspose(object):
 
     @cuda_test
     def setup(self):
-        self.context = cuda.Context(pycuda.autoinit.context)
-        self.command_queue = cuda.CommandQueue(self.context, None)
-        self.transpose = Transpose(self.command_queue, 'float')
+        self.transpose = Transpose(test_command_queue, 'float')
 
     @cuda_test
     def check_transpose(self, R, C):
         ary = np.random.randn(R, C).astype(np.float32)
-        src = DeviceArray(self.context, (R, C), dtype=np.float32, padded_shape=(R + 1, C + 4))
-        dest = DeviceArray(self.context, (C, R), dtype=np.float32, padded_shape=(C + 2, R + 3))
-        src.set_async(self.command_queue, ary)
+        src = DeviceArray(test_context, (R, C), dtype=np.float32, padded_shape=(R + 1, C + 4))
+        dest = DeviceArray(test_context, (C, R), dtype=np.float32, padded_shape=(C + 2, R + 3))
+        src.set_async(test_command_queue, ary)
         self.transpose(dest, src)
-        out = dest.get(self.command_queue)
+        out = dest.get(test_command_queue)
         np.testing.assert_equal(ary.T, out)

@@ -16,14 +16,14 @@
  * median filter.
  */
 
-#include <math.h>
+<%include file="/port.mako"/>
 
 #define WIDTH ${width}
 
 /// Complex absolute value
-__device__ static float absc(float2 v)
+DEVICE_FN float absc(float2 v)
 {
-    return hypotf(v.x, v.y);
+    return hypot(v.x, v.y);
 }
 
 /**
@@ -48,7 +48,7 @@ typedef struct median_filter
 /**
  * Initialise the filter using zero-valued samples.
  */
-__device__ void median_filter_init(median_filter *self)
+DEVICE_FN void median_filter_init(median_filter *self)
 {
     for (int i = 0; i < WIDTH; i++)
     {
@@ -58,7 +58,7 @@ __device__ void median_filter_init(median_filter *self)
 }
 
 /// Return the median of the current samples
-__device__ float median_filter_get(const median_filter *self)
+DEVICE_FN float median_filter_get(const median_filter *self)
 {
     const int H = WIDTH / 2;
     float result = 0.0f;
@@ -69,12 +69,12 @@ __device__ float median_filter_get(const median_filter *self)
     return result;
 }
 
-__device__ float median_filter_center(const median_filter *self)
+DEVICE_FN float median_filter_center(const median_filter *self)
 {
     return self->samples[WIDTH / 2];
 }
 
-__device__ void median_filter_slide(median_filter *self, float new_sample)
+DEVICE_FN void median_filter_slide(median_filter *self, float new_sample)
 {
     float old_sample = self->samples[0];
     int new_rank = WIDTH - 1;
@@ -96,8 +96,8 @@ __device__ void median_filter_slide(median_filter *self, float new_sample)
  * values to produce is [@a first, @a last), out of a total array of
  * size @a N.
  */
-__device__ static void medfilt_serial_sliding(
-    const float2 * __restrict in, float * __restrict out,
+DEVICE_FN static void medfilt_serial_sliding(
+    const GLOBAL float2 * RESTRICT in, GLOBAL float * __restrict out,
     int first, int last, int N, int stride)
 {
     const int H = WIDTH / 2;
@@ -131,12 +131,12 @@ __device__ static void medfilt_serial_sliding(
  * input must be suitably padded (in the baseline access) for the number
  * of threads.
  */
-__global__ void __launch_bounds__(${wgs}) background_median_filter(
-    const float2 * __restrict in, float * __restrict out,
+KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
+    const GLOBAL float2 * RESTRICT in, GLOBAL float * RESTRICT out,
     int channels, int stride, int VT)
 {
-    int bl = blockDim.x * blockIdx.x + threadIdx.x;
-    int sub = blockDim.y * blockIdx.y + threadIdx.y;
+    int bl = get_global_id(0);
+    int sub = get_global_id(1);
     int start_channel = sub * VT;
     int end_channel = min(start_channel + VT, channels);
     medfilt_serial_sliding(in + bl, out + bl, start_channel, end_channel, channels, stride);

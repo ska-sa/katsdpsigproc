@@ -10,12 +10,14 @@
  * - @a block: Each thread block processes @a block x @a block elements
  */
 
+<%include file="/port.mako"/>
+
 #define BLOCK ${block}
 typedef ${ctype} T;
 
-__global__ void transpose(
-    T *out,
-    const T * __restrict in,
+KERNEL REQD_WORK_GROUP_SIZE(BLOCK, BLOCK, 1) void transpose(
+    GLOBAL T *out,
+    const GLOBAL T * RESTRICT in,
     int in_rows,
     int in_cols,
     int out_stride,
@@ -23,20 +25,20 @@ __global__ void transpose(
 {
     // The inner dimension is padded so that column-major accesses will
     // hit different banks, for 4-byte banks and 1, 2 or 4-byte elements.
-    __shared__ T arr[BLOCK][BLOCK + (sizeof(T) > 4 ? 1 : 4 / sizeof(T))];
+    LOCAL_DECL T arr[BLOCK][BLOCK + (sizeof(T) > 4 ? 1 : 4 / sizeof(T))];
 
-    int lx = threadIdx.x;
-    int ly = threadIdx.y;
+    int lx = get_local_id(0);
+    int ly = get_local_id(1);
 
     // Load a chunk into shared memory
-    int in_row0 = blockIdx.y * blockDim.y;
+    int in_row0 = get_group_id(1) * BLOCK;
     int in_row = in_row0 + ly;
-    int in_col0 = blockIdx.x * blockDim.x;
+    int in_col0 = get_group_id(0) * BLOCK;
     int in_col = in_col0 + lx;
     if (in_row < in_rows && in_col < in_cols)
         arr[ly][lx] = in[in_row * in_stride + in_col];
 
-    __syncthreads();
+    BARRIER();
 
     // Write chunk bank to global memory, transposed
     int out_row = in_col0 + ly;
