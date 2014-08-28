@@ -244,7 +244,6 @@ class ThresholdMADTDevice(object):
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
         self.max_channels = max_channels
-        self._vt = 16
         self._wgsx = 512
         self._vt = (max_channels + self._wgsx - 1) // self._wgsx
         program = accel.build(command_queue.context, 'rfi/threshold_mad_t.mako',
