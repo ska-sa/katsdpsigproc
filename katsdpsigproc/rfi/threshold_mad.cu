@@ -21,69 +21,79 @@
  */
 
 <%namespace name="rank" file="/rank.cu"/>
-<%include file="threshold_mad_common.cu"/>
+<%namespace name="common" file="threshold_mad_common.cu"/>
 
 /**
  * Encapsulates a section of a strided (non-contiguous) 1D array.
  */
-struct ArrayPiece
+typedef struct array_piece
 {
     const float *in;
     int start;
     int end;
     int stride;
+} array_piece;
 
-    __device__ ArrayPiece() {}
-    __device__ ArrayPiece(const float *in, int start, int end, int stride)
-        : in(in), start(start), end(end), stride(stride)
-    {
-    }
+__device__ void array_piece_init(
+    array_piece *self,
+    const float *in, int start, int end, int stride)
+{
+    self->in = in;
+    self->start = start;
+    self->end = end;
+    self->stride = stride;
+}
 
-    __device__ float operator[](int idx) const
-    {
-        return in[idx * stride];
-    }
-};
+__device__ float array_piece_get(const array_piece *self, int idx)
+{
+    return self->in[idx * self->stride];
+}
 
-<%rank:ranker_serial class_name="RankerAbsSerial" type="float">
-    <%def name="foreach()">
-        for (int i = piece.start; i < piece.end; i++)
+<%rank:ranker_serial class_name="ranker_abs_serial" type="float">
+    <%def name="foreach(self)">
+        for (int i = (${self})->piece.start; i < (${self})->piece.end; i++)
         {
-            ${caller.body('fabs(piece[i])')}
+            ${caller.body('fabs(array_piece_get(&(%s)->piece, i))' % (self,))}
         }
     </%def>
-
-private:
-    ArrayPiece piece;
-
-public:
-    __device__ RankerAbsSerial(const ArrayPiece &piece) : piece(piece) {}
+    array_piece piece;
 </%rank:ranker_serial>
 
-<%rank:ranker_parallel class_name="RankerAbsParallel" serial_class="RankerAbsSerial" type="float" size="${wgsy}">
-public:
-    __device__ RankerAbsParallel(const ArrayPiece &piece, Scratch *scratch, int tid)
-        : serial(piece), scratch(scratch), tid(tid) {}
-</%rank:ranker_parallel>
-
-extern "C"
+__device__ void ranker_abs_serial_init(ranker_abs_serial *self, const array_piece *piece)
 {
+    self->piece = *piece;
+}
+
+<%rank:ranker_parallel class_name="ranker_abs_parallel" serial_class="ranker_abs_serial" type="float" size="${wgsy}">
+</%rank:ranker_parallel>
+__device__ void ranker_abs_parallel_init(
+    ranker_abs_parallel *self,
+    const array_piece *piece,
+    ranker_abs_parallel_scratch *scratch,
+    int tid)
+{
+    ranker_abs_serial_init(&self->serial, piece);
+    self->scratch = scratch;
+    self->tid = tid;
+}
+
+<%common:median_non_zero ranker_class="ranker_abs_parallel"/>
 
 __global__ void __launch_bounds__(${wgsx * wgsy}) threshold_mad(
     const float * __restrict in, unsigned char * __restrict flags,
     int channels, int stride, float factor,
     int VT)
 {
-    __shared__ RankerAbsParallel::Scratch scratch[${wgsx}];
+    __shared__ ranker_abs_parallel_scratch scratch[${wgsx}];
 
     int bl = blockDim.x * blockIdx.x + threadIdx.x;
     int start = threadIdx.y * VT;
     int end = min(start + VT, channels);
-    ArrayPiece piece(in + bl, start, end, stride);
-    RankerAbsParallel ranker(piece, scratch + threadIdx.x, threadIdx.y);
-    float threshold = factor * median_abs_impl(ranker, channels);
+    array_piece piece;
+    array_piece_init(&piece, in + bl, start, end, stride);
+    ranker_abs_parallel ranker;
+    ranker_abs_parallel_init(&ranker, &piece, scratch + threadIdx.x, threadIdx.y);
+    float threshold = factor * median_non_zero(&ranker, channels);
     for (int i = piece.start; i < piece.end; i++)
-        flags[bl + i * stride] = (piece[i] > threshold) ? ${flag_value} : 0;
+        flags[bl + i * stride] = (array_piece_get(&piece, i) > threshold) ? ${flag_value} : 0;
 }
-
-} // extern "C"

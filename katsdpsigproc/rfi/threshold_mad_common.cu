@@ -4,28 +4,21 @@
  * Code shared (via mako inclusion) between threshold_mad.cu and threshold_mad_t.cu.
  */
 
+<%def name="median_non_zero(ranker_class)">
 /**
- * Reinterpret a float as integer, and take absolute value.
- */
-__device__ static int abs_int(float x)
-{
-    return __float_as_int(x) & 0x7FFFFFFF;
-}
-
-/**
- * Return the element of @a in whose absolute values has rank @a rank.
+ * Return the value which has rank @a rank within the given ranker. The
+ * ranker must operate on positive 32-bit floats.
  *
  * If @a halfway is true, then it returns the average of ranks @a rank and @a
  * rank - 1.
  */
-template<typename Ranker>
-__device__ float find_rank_abs(Ranker &ranker, int rank, bool halfway)
+__device__ float find_rank(${ranker_class} *ranker, int rank, bool halfway)
 {
     int cur = 0;
     for (int i = 30; i >= 0; i--)
     {
         int test = cur | (1 << i);
-        int r = ranker.rank(__int_as_float(test));
+        int r = ${ranker_class}_rank(ranker, __int_as_float(test));
         if (r <= rank)
             cur = test;
     }
@@ -33,10 +26,10 @@ __device__ float find_rank_abs(Ranker &ranker, int rank, bool halfway)
     float result = __int_as_float(cur);
     if (halfway)
     {
-        int r = ranker.rank(result);
+        int r = ${ranker_class}_rank(ranker, result);
         if (r == rank)
         {
-            float prev = ranker.max_below(result);
+            float prev = ${ranker_class}_max_below(ranker, result);
             result = (result + prev) * 0.5f;
         }
     }
@@ -44,12 +37,14 @@ __device__ float find_rank_abs(Ranker &ranker, int rank, bool halfway)
 }
 
 /**
- * Finds the median absolute value in @a in, ignoring zeros.
+ * Finds the median value in the ranker, ignoring zeros. The result is
+ * undefined if N is zero or all values are zero. The ranker must operate
+ * on positive 32-bit floats.
  */
-template<typename Ranker>
-__device__ float median_abs_impl(Ranker &ranker, int N)
+__device__ float median_non_zero(${ranker_class} *ranker, int N)
 {
-    int zeros = ranker.zeros();
+    int zeros = ${ranker_class}_zeros(ranker);
     int rank2 = N + zeros;
-    return find_rank_abs(ranker, rank2 / 2, !(rank2 & 1));
+    return find_rank(ranker, rank2 / 2, !(rank2 & 1));
 }
+</%def>

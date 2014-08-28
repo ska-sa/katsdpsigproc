@@ -42,7 +42,8 @@ class LinenoLexer(mako.lexer.Lexer):
         return ''.join(out)
 
 _lookup = TemplateLookup(
-        pkg_resources.resource_filename(__name__, ''), lexer_cls=LinenoLexer)
+        pkg_resources.resource_filename(__name__, ''), lexer_cls=LinenoLexer,
+        strict_undefined=True)
 
 def build(context, name, render_kws=None, extra_flags=None):
     """Build a source module from a mako template.

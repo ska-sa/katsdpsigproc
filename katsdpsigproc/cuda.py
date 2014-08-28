@@ -22,7 +22,7 @@ class Context(object):
 
     def compile(self, source, extra_flags=None):
         with self:
-            module = pycuda.compiler.SourceModule(source, options=_nvcc_flags + extra_flags, no_extern_c=True)
+            module = pycuda.compiler.SourceModule(source, options=_nvcc_flags + extra_flags)
             return Program(module)
 
     def allocate(self, shape, dtype):

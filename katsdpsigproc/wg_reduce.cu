@@ -3,10 +3,10 @@
 <%def name="op_min(a, b)">min(${a}, ${b})</%def>
 
 <%def name="define_scratch(type, size, scratch_type)">
-struct ${scratch_type}
+typedef struct ${scratch_type}
 {
     ${type} data[${size}];
-};
+} ${scratch_type};
 </%def>
 
 <%def name="define_function(type, size, function, scratch_type, op=None)">

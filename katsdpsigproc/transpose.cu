@@ -13,9 +13,6 @@
 #define BLOCK ${block}
 typedef ${ctype} T;
 
-extern "C"
-{
-
 __global__ void transpose(
     T *out,
     const T * __restrict in,
@@ -47,5 +44,3 @@ __global__ void transpose(
     if (out_row < in_cols && out_col < in_rows)
         out[out_row * out_stride + out_col] = arr[lx][ly];
 }
-
-} // extern "C"
