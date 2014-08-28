@@ -54,7 +54,7 @@ class BackgroundMedianFilterDevice(object):
         self.width = width
         self.wgs = wgs
         self.csplit = csplit
-        program = accel.build(command_queue.context, 'rfi/background_median_filter.cu',
+        program = accel.build(command_queue.context, 'rfi/background_median_filter.mako',
                 {'width': width, 'wgs': wgs})
         self.kernel = program.get_kernel('background_median_filter')
 
@@ -147,7 +147,7 @@ class ThresholdMADDevice(object):
         self.wgsx = wgsx
         self.wgsy = wgsy
         self.flag_value = flag_value
-        program = accel.build(command_queue.context, 'rfi/threshold_mad.cu',
+        program = accel.build(command_queue.context, 'rfi/threshold_mad.mako',
                 {'wgsx': wgsx, 'wgsy': wgsy, 'flag_value': flag_value})
         self.kernel = program.get_kernel('threshold_mad')
 
@@ -247,7 +247,7 @@ class ThresholdMADTDevice(object):
         self._vt = 16
         self._wgsx = 512
         self._vt = (max_channels + self._wgsx - 1) // self._wgsx
-        program = accel.build(command_queue.context, 'rfi/threshold_mad_t.cu',
+        program = accel.build(command_queue.context, 'rfi/threshold_mad_t.mako',
                 {'vt': self._vt, 'wgsx': self._wgsx, 'flag_value': flag_value})
         self.kernel = program.get_kernel('threshold_mad_t')
 

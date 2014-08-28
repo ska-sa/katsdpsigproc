@@ -248,7 +248,7 @@ class Transpose(object):
         self.command_queue = command_queue
         self.ctype = ctype
         self._block = 32
-        program = build(command_queue.context, "transpose.cu", {'block': self._block, 'ctype': ctype})
+        program = build(command_queue.context, "transpose.mako", {'block': self._block, 'ctype': ctype})
         self.kernel = program.get_kernel("transpose")
 
     def __call__(self, dest, src):

@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * Code shared (via mako inclusion) between threshold_mad.cu and threshold_mad_t.cu.
+ * Code shared (via mako inclusion) between threshold_mad.mako and threshold_mad_t.mako.
  */
 
 <%def name="median_non_zero(ranker_class)">

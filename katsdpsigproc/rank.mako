@@ -4,7 +4,7 @@
  * Routines for computing rank statistics.
  */
 
-<%namespace name="wg_reduce" file="wg_reduce.cu"/>
+<%namespace name="wg_reduce" file="wg_reduce.mako"/>
 
 /* Defines a class that computes ranks and other convenient statistics.
  * The caller must provide a @a foreach def that generates an iteration

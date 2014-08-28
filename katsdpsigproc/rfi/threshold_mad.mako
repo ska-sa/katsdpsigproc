@@ -20,8 +20,8 @@
  * themselves.
  */
 
-<%namespace name="rank" file="/rank.cu"/>
-<%namespace name="common" file="threshold_mad_common.cu"/>
+<%namespace name="rank" file="/rank.mako"/>
+<%namespace name="common" file="threshold_mad_common.mako"/>
 
 /**
  * Encapsulates a section of a strided (non-contiguous) 1D array.

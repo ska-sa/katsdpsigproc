@@ -19,9 +19,9 @@
 #define VT ${vt}
 #define WGSX ${wgsx}
 
-<%namespace name="wg_reduce" file="/wg_reduce.cu"/>
-<%namespace name="rank" file="/rank.cu"/>
-<%namespace name="common" file="threshold_mad_common.cu"/>
+<%namespace name="wg_reduce" file="/wg_reduce.mako"/>
+<%namespace name="rank" file="/rank.mako"/>
+<%namespace name="common" file="threshold_mad_common.mako"/>
 
 <%rank:ranker_serial class_name="ranker_abs_serial" type="float">
     <%def name="foreach(self)">
