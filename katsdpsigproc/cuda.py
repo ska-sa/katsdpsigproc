@@ -99,3 +99,7 @@ class CommandQueue(object):
             e = pycuda.driver.Event()
             e.record(self._pycuda_stream)
         return Event(e)
+
+    def finish(self):
+        with self.context:
+            self._pycuda_stream.synchronize()
