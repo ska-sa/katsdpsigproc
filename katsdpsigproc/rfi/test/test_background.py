@@ -23,12 +23,11 @@ class TestBackgroundMedianFilterHost(object):
         ref = np.array([[0.0, 0.25, -0.5, 0.25, -0.25, 0.25]]).T.astype(np.float32)
         np.testing.assert_equal(ref, out)
 
-def test_device_classes():
-    yield check_device_class, 'BackgroundMedianFilterDevice', 5, (128, 4)
-
 @device_test
-def check_device_class(cls_name, width, device_args=(), device_kw={}):
-    cls = getattr(device, cls_name)
+def test_BackgroundMedianFilterDevice():
+    check_device_class(device.BackgroundMedianFilterDevice, 5, (128, 4))
+
+def check_device_class(cls, width, device_args=(), device_kw={}):
     bg_host = cls.host_class(width)
     bg_device = device.BackgroundHostFromDevice(
             cls(test_command_queue, width, *device_args, **device_kw))

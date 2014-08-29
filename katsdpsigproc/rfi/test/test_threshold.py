@@ -17,8 +17,8 @@ def setup():
     _deviations = rs.standard_normal(shape).astype(np.float32)
     _deviations[_spikes] += 50.0
 
-def test_host_classes():
-    yield check_host_class, 'ThresholdMADHost', 11.0
+def test_ThresholdMADHost():
+    check_host_class('ThresholdMADHost', 11.0)
 
 def check_host_class(cls_name, n_sigma):
     cls = getattr(host, cls_name)
@@ -26,9 +26,11 @@ def check_host_class(cls_name, n_sigma):
     flags = threshold(_deviations)
     np.testing.assert_equal(flags.astype(np.bool_), _spikes)
 
-def test_device_classes():
-    yield check_device_class, 'ThresholdMADDevice', 11.0, (4, 3)
-    yield check_device_class, 'ThresholdMADTDevice', 11.0, (4096,)
+def test_ThresholdMADDevice():
+    check_device_class('ThresholdMADDevice', 11.0, (4, 3))
+
+def test_ThresholdMADTDevice():
+    check_device_class('ThresholdMADTDevice', 11.0, (512,))
 
 @device_test
 def check_device_class(cls_name, n_sigma, device_args=(), device_kw={}):
