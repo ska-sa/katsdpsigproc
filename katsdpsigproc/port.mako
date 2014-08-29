@@ -16,6 +16,7 @@
 
 #include <math.h>
 #include <float.h>
+#include <stdio.h>
 
 #define DEVICE_FN __device__
 #define KERNEL __global__
