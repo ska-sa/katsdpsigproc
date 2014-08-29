@@ -90,13 +90,13 @@ DEVICE_FN int ${class_name}_zeros(${class_name} *self)
     return ${class_name}_reduce_sum(c, self->tid, &self->scratch->sum);
 }
 
-DEVICE_FN int ${class_name}_rank(${class_name} *self, int value)
+DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
 {
     int r = ${serial_class}_rank(&self->serial, value);
     return ${class_name}_reduce_sum(r, self->tid, &self->scratch->sum);
 }
 
-DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, int limit)
+DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 {
     ${type} s = ${serial_class}_max_below(&self->serial, limit);
     return ${class_name}_reduce_max(s, self->tid, &self->scratch->max);
