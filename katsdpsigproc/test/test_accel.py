@@ -1,32 +1,26 @@
 import functools
+import sys
 import numpy as np
 from mako.template import Template
 from nose.tools import assert_equal
 from nose.plugins.skip import SkipTest
 try:
-    import pycuda.autoinit
-    have_cuda = True
+    from .. import accel
+    have_accel = True
 except ImportError:
-    have_cuda = False
-
-try:
+    have_accel = False
+if accel.have_cuda:
+    import pycuda
+if accel.have_opencl:
     import pyopencl
-    have_opencl = True
-except ImportError:
-    have_opencl = False
 
 test_context = None
 test_command_queue = None
-if have_cuda:
+if have_accel:
     from ..accel import Array, DeviceArray, LinenoLexer, Transpose
-    from .. import cuda
-    test_context = cuda.Context(pycuda.autoinit.context)
-    test_command_queue = cuda.CommandQueue(test_context, None)
-elif have_opencl:
-    from ..accel import Array, DeviceArray, LinenoLexer, Transpose
-    from .. import opencl
-    test_context = opencl.Context(pyopencl.create_some_context(False))
-    test_command_queue = opencl.CommandQueue(test_context)
+    test_context = accel.create_some_context(False)
+    test_command_queue = test_context.create_command_queue()
+    print >>sys.stderr, "Testing on", test_context.device_name()
 
 def device_test(test):
     """Decorator that causes a test to be skipped if a compute device is not available"""
@@ -100,8 +94,10 @@ class TestDeviceArray(object):
         self.array.set(test_command_queue, ary)
         # Read back results, check that it matches
         buf = np.zeros(self.padded_shape, dtype=np.int32)
-        if have_cuda and isinstance(test_context, cuda.Context):
-            pycuda.driver.memcpy_dtoh(buf, self.array.buffer.gpudata)
+        if hasattr(self.array.buffer, 'gpudata'):
+            # It's CUDA
+            with test_context:
+                pycuda.driver.memcpy_dtoh(buf, self.array.buffer.gpudata)
         else:
             pyopencl.enqueue_copy(
                     test_command_queue._pyopencl_command_queue,

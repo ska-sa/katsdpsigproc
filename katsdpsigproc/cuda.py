@@ -1,7 +1,6 @@
 import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
-from . import accel
 
 _nvcc_flags = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
@@ -20,6 +19,10 @@ class Context(object):
     def __init__(self, pycuda_context):
         self._pycuda_context = pycuda_context
 
+    def device_name(self):
+        with self:
+            return self._pycuda_context.get_device().name() + ' (CUDA)'
+
     def compile(self, source, extra_flags=None):
         with self:
             module = pycuda.compiler.SourceModule(source, options=_nvcc_flags + extra_flags)
@@ -28,6 +31,9 @@ class Context(object):
     def allocate(self, shape, dtype):
         with self:
             return pycuda.gpuarray.GPUArray(shape, dtype)
+
+    def create_command_queue(self):
+        return CommandQueue(self)
 
     def __enter__(self):
         self._pycuda_context.push()
@@ -40,21 +46,26 @@ class Context(object):
 class CommandQueue(object):
     def __init__(self, context, pycuda_stream=None):
         self.context = context
+        if pycuda_stream is None:
+            with context:
+                pycuda_stream = pycuda.driver.Stream()
         self._pycuda_stream = pycuda_stream
 
     def enqueue_read_buffer(self, buffer, data, blocking=True):
-        if blocking:
-            # TODO: PyCUDA doesn't take a stream argument here!
-            buffer.get(data)
-        else:
-            buffer.get_async(data, stream=self._pycuda_stream)
+        with self.context:
+            if blocking:
+                # TODO: PyCUDA doesn't take a stream argument here!
+                buffer.get(data)
+            else:
+                buffer.get_async(data, stream=self._pycuda_stream)
 
     def enqueue_write_buffer(self, buffer, data, blocking=True):
-        if blocking:
-            # TODO: PyCUDA doesn't take a stream argument here!
-            buffer.set(data)
-        else:
-            buffer.set_async(data, stream=self._pycuda_stream)
+        with self.context:
+            if blocking:
+                # TODO: PyCUDA doesn't take a stream argument here!
+                buffer.set(data)
+            else:
+                buffer.set_async(data, stream=self._pycuda_stream)
 
     def enqueue_kernel(self, kernel, args, global_size, local_size):
         assert len(global_size) == len(local_size)

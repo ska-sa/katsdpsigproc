@@ -1,6 +1,5 @@
 import pyopencl
 import pyopencl.array
-from . import accel
 
 class Program(object):
     def __init__(self, pyopencl_program):
@@ -17,6 +16,10 @@ class Context(object):
     def __init__(self, pyopencl_context):
         self._pyopencl_context = pyopencl_context
 
+    def device_name(self):
+        device = self._pyopencl_context.devices[0]
+        return '{0} ({1})'.format(device.name, device.platform.name)
+
     def compile(self, source, extra_flags=None):
         # source is passed through str because it might arrive as Unicode,
         # triggering a warning
@@ -26,6 +29,9 @@ class Context(object):
 
     def allocate(self, shape, dtype):
         return pyopencl.array.Array(self._pyopencl_context, shape, dtype)
+
+    def create_command_queue(self):
+        return CommandQueue(self)
 
 class CommandQueue(object):
     def __init__(self, context, pyopencl_command_queue=None):

@@ -8,6 +8,22 @@ import mako.lexer
 from mako.lookup import TemplateLookup
 import pkg_resources
 import re
+import os
+import logging
+
+try:
+    import pycuda.driver
+    from . import cuda
+    have_cuda = True
+except ImportError:
+    have_cuda = False
+
+try:
+    import pyopencl
+    from . import opencl
+    have_opencl = True
+except ImportError:
+    have_opencl = False
 
 class LinenoLexer(mako.lexer.Lexer):
     """A wrapper that inserts #line directives into the source code. It
@@ -68,6 +84,95 @@ def build(context, name, render_kws=None, extra_flags=None):
         extra_flags = []
     source = _lookup.get_template(name).render(**render_kws)
     return context.compile(source, extra_flags)
+
+def create_some_context(interactive=True):
+    """Create a single-device context, selecting a device automatically. This
+    is similar to `pyopencl.create_some_context`.
+
+    Parameters
+    ----------
+    interactive : boolean
+        If true, and `sys.stdin.isatty()` is true, and there are multiple choices,
+        it will prompt the user. Otherwise, it will choose the first available
+        device from this list that exists:
+        - The CUDA device specified by CUDA_DEVICE, if set
+        - The OpenCL device specified by PYCUDA_CTX, if set
+        - The first CUDA device
+        - The first OpenCL GPU
+        - The first OpenCL accelerator
+        - The first OpenCL device
+
+    Raises
+    ------
+    RuntimeError
+        If no device could be found or the user made an invalid selection
+
+    Notes
+    -----
+    Interactive selection is not implemented yet.
+    """
+
+    def key(device):
+        ans = 0
+        if isinstance(device, pycuda.driver.Device):
+            ans = 100
+            if device is cuda_choice:
+                ans += 1000
+        else:
+            device_type = device.type
+            if device_type == pyopencl.device_type.GPU:
+                ans = 50
+            elif device_type == pyopencl.device_type.ACCELERATOR:
+                ans = 40
+            else:
+                ans = 30
+            if device is opencl_choice:
+                ans += 1000
+        return ans
+
+    cuda_id = -1
+    cuda_choice = None
+    opencl_id = -1
+    opencl_choice = None
+    if 'CUDA_DEVICE' in os.environ:
+        try:
+            cuda_id = int(os.environ['CUDA_DEVICE'])
+        except ValueError:
+            pass
+    if 'PYOPENCL_CTX' in os.environ:
+        try:
+            opencl_id = int(os.environ['PYOPENCL_CTX'])
+        except ValueError:
+            pass
+
+    devices = []
+    if have_opencl:
+        for platform in pyopencl.get_platforms():
+            devices.extend(platform.get_devices())
+    # Note: this depends on OpenCL device being added before CUDA
+    if opencl_id >= 0 and opencl_id < len(devices):
+        opencl_choice = devices[opencl_id]
+    if have_cuda:
+        pycuda.driver.init()
+        num_cuda_devices = pycuda.driver.Device.count()
+        for i in range(num_cuda_devices):
+            devices.append(pycuda.driver.Device(i))
+            if i == cuda_id:
+                cuda_choice = devices[-1]
+    if not devices:
+        raise RuntimeError('No compute devices found')
+
+    devices.sort(key=key, reverse=True)
+    device = devices[0]
+    if isinstance(device, pycuda.driver.Device):
+        pycuda_context = device.make_context()
+        # PyCUDA makes the context current, but that causes a
+        # shutdown error
+        pycuda_context.pop()
+        return cuda.Context(pycuda_context)
+    else:
+        opencl_context = pyopencl.Context([device])
+        return opencl.Context(opencl_context)
 
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
