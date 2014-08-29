@@ -9,7 +9,7 @@ from mako.lookup import TemplateLookup
 import pkg_resources
 import re
 import os
-import logging
+import sys
 
 try:
     import pycuda.driver
@@ -96,7 +96,7 @@ def create_some_context(interactive=True):
         it will prompt the user. Otherwise, it will choose the first available
         device from this list that exists:
         - The CUDA device specified by CUDA_DEVICE, if set
-        - The OpenCL device specified by PYCUDA_CTX, if set
+        - The OpenCL device specified by PYOPENCL_CTX, if set
         - The first CUDA device
         - The first OpenCL GPU
         - The first OpenCL accelerator
@@ -106,10 +106,6 @@ def create_some_context(interactive=True):
     ------
     RuntimeError
         If no device could be found or the user made an invalid selection
-
-    Notes
-    -----
-    Interactive selection is not implemented yet.
     """
 
     def key(device):
@@ -162,8 +158,29 @@ def create_some_context(interactive=True):
     if not devices:
         raise RuntimeError('No compute devices found')
 
-    devices.sort(key=key, reverse=True)
-    device = devices[0]
+    if interactive and len(devices) > 1 and sys.stdin.isatty():
+        print "Select device:"
+        for i, device in enumerate(devices):
+            if isinstance(device, pycuda.driver.Device):
+                name = device.name()
+                platform_name = 'CUDA'
+            else:
+                name = device.name
+                platform_name = device.platform.name
+            print "    [{0}]: {1} ({2})".format(i, name, platform_name)
+        print
+        choice = raw_input('Enter selection: ')
+        try:
+            choice = int(choice)
+            if choice < 0:
+                raise IndexError   # Otherwise Python's negative indexing kicks in
+            device = devices[choice]
+        except (ValueError, IndexError):
+            raise RuntimeError('Invalid device number')
+    else:
+        devices.sort(key=key, reverse=True)
+        device = devices[0]
+
     if isinstance(device, pycuda.driver.Device):
         pycuda_context = device.make_context()
         # PyCUDA makes the context current, but that causes a
