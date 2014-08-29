@@ -15,6 +15,21 @@ class Kernel(object):
     def __init__(self, program, name):
         self._pycuda_kernel = program._pycuda_program.get_function(name)
 
+class Event(object):
+    def __init__(self, pycuda_event):
+        self._pycuda_event = pycuda_event
+
+    def wait(self):
+        self._pycuda_event.synchronize()
+
+    def time_since(self, prior_event):
+        prior_event.wait()
+        self.wait()
+        return 1e-3 * self._pycuda_event.time_since(prior_event._pycuda_event)
+
+    def time_till(self, next_event):
+        return next_event.time_since(self)
+
 class Context(object):
     def __init__(self, pycuda_context):
         self._pycuda_context = pycuda_context
@@ -78,3 +93,9 @@ class CommandQueue(object):
         with self.context:
             kernel._pycuda_kernel(*args, block=tuple(block), grid=tuple(grid),
                     stream=self._pycuda_stream)
+
+    def enqueue_marker(self):
+        with self.context:
+            e = pycuda.driver.Event()
+            e.record(self._pycuda_stream)
+        return Event(e)
