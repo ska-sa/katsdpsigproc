@@ -78,7 +78,7 @@ DEVICE_FN void ranker_abs_parallel_init(
     self->tid = tid;
 }
 
-<%common:median_non_zero ranker_class="ranker_abs_parallel"/>
+<%common:median_non_zero ranker_class="ranker_abs_parallel" uniform="${False}"/>
 
 KERNEL REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) void threshold_mad(
     const GLOBAL float * RESTRICT in, GLOBAL unsigned char * RESTRICT flags,
