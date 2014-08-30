@@ -46,16 +46,19 @@ DEVICE_FN void ranker_abs_serial_init(
     }
 }
 
-<%rank:ranker_parallel class_name="ranker_abs_parallel" serial_class="ranker_abs_serial" type="float" size="${wgsx}"/>
+<%rank:ranker_parallel class_name="ranker_abs_parallel" serial_class="ranker_abs_serial" type="float" size="${wgsx}">
+    <%def name="thread_id(self)">
+        get_local_id(0)
+    </%def>
+</%rank:ranker_parallel>
 
 DEVICE_FN void ranker_abs_parallel_init(
     ranker_abs_parallel *self,
     GLOBAL const float * RESTRICT data, int start, int step, int N,
-    LOCAL ranker_abs_parallel_scratch *scratch, int tid)
+    LOCAL ranker_abs_parallel_scratch *scratch)
 {
     ranker_abs_serial_init(&self->serial, data, start, step, N);
     self->scratch = scratch;
-    self->tid = tid;
 }
 
 <%common:median_non_zero ranker_class="ranker_abs_parallel" uniform="${True}"/>
@@ -70,7 +73,7 @@ KERNEL REQD_WORK_GROUP_SIZE(WGSX, 1, 1) void threshold_mad_t(
     ranker_abs_parallel ranker;
     ranker_abs_parallel_init(
         &ranker, in + bl * stride, get_local_id(0),
-        WGSX, channels, &scratch, get_local_id(0));
+        WGSX, channels, &scratch);
     float threshold = factor * median_non_zero(&ranker, channels);
     for (int i = get_local_id(0); i < channels; i += WGSX)
     {

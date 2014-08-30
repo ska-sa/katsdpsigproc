@@ -66,16 +66,17 @@ DEVICE_FN void ranker_abs_serial_init(ranker_abs_serial *self, const array_piece
 }
 
 <%rank:ranker_parallel class_name="ranker_abs_parallel" serial_class="ranker_abs_serial" type="float" size="${wgsy}">
+    <%def name="thread_id(self)">
+        get_local_id(1)
+    </%def>
 </%rank:ranker_parallel>
 DEVICE_FN void ranker_abs_parallel_init(
     ranker_abs_parallel *self,
     const array_piece *piece,
-    LOCAL ranker_abs_parallel_scratch *scratch,
-    int tid)
+    LOCAL ranker_abs_parallel_scratch *scratch)
 {
     ranker_abs_serial_init(&self->serial, piece);
     self->scratch = scratch;
-    self->tid = tid;
 }
 
 <%common:median_non_zero ranker_class="ranker_abs_parallel" uniform="${False}"/>
@@ -93,7 +94,7 @@ KERNEL REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) void threshold_mad(
     array_piece piece;
     array_piece_init(&piece, in + bl, start, end, stride);
     ranker_abs_parallel ranker;
-    ranker_abs_parallel_init(&ranker, &piece, scratch + get_local_id(0), get_local_id(1));
+    ranker_abs_parallel_init(&ranker, &piece, scratch + get_local_id(0));
     float threshold = factor * median_non_zero(&ranker, channels);
     for (int i = piece.start; i < piece.end; i++)
         flags[bl + i * stride] = (array_piece_get(&piece, i) > threshold) ? ${flag_value} : 0;

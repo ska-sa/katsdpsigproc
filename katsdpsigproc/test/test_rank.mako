@@ -18,7 +18,11 @@
     int N;
 </%rank:ranker_serial>
 
-<%rank:ranker_parallel class_name="ranker_parallel" serial_class="ranker_serial" type="int" size="${size}"/>
+<%rank:ranker_parallel class_name="ranker_parallel" serial_class="ranker_serial" type="int" size="${size}">
+    <%def name="thread_id(self)">
+        get_local_id(0)
+    </%def>
+</%rank:ranker_parallel>
 
 /**
  * Measure the rank of values 0 to @a M - 1 against a given array.
@@ -47,13 +51,12 @@ KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void test_rank_parallel(
 {
     LOCAL_DECL ranker_parallel_scratch scratch;
 
-    int id = get_local_id(0);
-    int start = id * N / ${size};
-    int end = (id + 1) * N / ${size};
+    int lid = get_local_id(0);
+    int start = lid * N / ${size};
+    int end = (lid + 1) * N / ${size};
     ranker_parallel ranker;
     ranker.serial.values = in + start;
     ranker.serial.N = end - start;
-    ranker.tid = id;
     ranker.scratch = &scratch;
     for (int i = 0; i < M; i++)
         out[i] = ranker_parallel_rank(&ranker, i);

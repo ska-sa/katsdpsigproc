@@ -59,7 +59,8 @@ DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
  * Provides the same interface as ranker_serial, but for
  * collective operation between @a size cooperating threads.
  * The caller must provide a constructor that initializes
- * @ref scratch and @ref tid.
+ * @ref scratch, and it must provide a def called @a thread_id
+ * that must range from 0 to @a size - 1.
  */
 ${wg_reduce.define_scratch('int', size, class_name + '_scratch_sum')}
 ${wg_reduce.define_scratch(type, size, class_name + '_scratch_max')}
@@ -78,8 +79,6 @@ typedef struct ${class_name}
     ${serial_class} serial;
     /// Shared memory scratch space for reducing counts
     LOCAL ${class_name}_scratch *scratch;
-    /// Thread ID (must range from 0 to @a size - 1)
-    int tid;
 
     ${caller.body()}
 } ${class_name};
@@ -87,18 +86,18 @@ typedef struct ${class_name}
 DEVICE_FN int ${class_name}_zeros(${class_name} *self)
 {
     int c = ${serial_class}_zeros(&self->serial);
-    return ${class_name}_reduce_sum(c, self->tid, &self->scratch->sum);
+    return ${class_name}_reduce_sum(c, (${caller.thread_id('self')}), &self->scratch->sum);
 }
 
 DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
 {
     int r = ${serial_class}_rank(&self->serial, value);
-    return ${class_name}_reduce_sum(r, self->tid, &self->scratch->sum);
+    return ${class_name}_reduce_sum(r, (${caller.thread_id('self')}), &self->scratch->sum);
 }
 
 DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 {
     ${type} s = ${serial_class}_max_below(&self->serial, limit);
-    return ${class_name}_reduce_max(s, self->tid, &self->scratch->max);
+    return ${class_name}_reduce_max(s, (${caller.thread_id('self')}), &self->scratch->max);
 }
 </%def>
