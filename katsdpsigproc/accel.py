@@ -87,20 +87,23 @@ def build(context, name, render_kws=None, extra_flags=None):
 
 def create_some_context(interactive=True):
     """Create a single-device context, selecting a device automatically. This
-    is similar to `pyopencl.create_some_context`.
+    is similar to `pyopencl.create_some_context`. A number of environment
+    variables can be set to limit the choice to a single device:
+
+     - KATSDPSIGPROC_DEVICE: device number from amongst all devices
+     - CUDA_DEVICE: CUDA device number (compatible with PyCUDA)
+     - PYOPENCL_CTX: OpenCL device number (compatible with PyOpenCL)
+
+    The first of these that is encountered takes effect. If it does not exist,
+    an exception is thrown.
 
     Parameters
     ----------
     interactive : boolean
         If true, and `sys.stdin.isatty()` is true, and there are multiple choices,
         it will prompt the user. Otherwise, it will choose the first available
-        device from this list that exists:
-        - The CUDA device specified by CUDA_DEVICE, if set
-        - The OpenCL device specified by PYOPENCL_CTX, if set
-        - The first CUDA device
-        - The first OpenCL GPU
-        - The first OpenCL accelerator
-        - The first OpenCL device
+        device, favouring CUDA over OpenCL, then GPU over accelerators over
+        other OpenCL devices.
 
     Raises
     ------
@@ -109,65 +112,59 @@ def create_some_context(interactive=True):
     """
 
     def key(device):
-        ans = 0
-        if have_cuda and isinstance(device, pycuda.driver.Device):
-            ans = 100
-            if device is cuda_choice:
-                ans += 1000
+        if device.is_cuda:
+            return 100
+        elif device.is_gpu:
+            return 50
+        elif device.is_accelerator:
+            return 40
         else:
-            device_type = device.type
-            if device_type == pyopencl.device_type.GPU:
-                ans = 50
-            elif device_type == pyopencl.device_type.ACCELERATOR:
-                ans = 40
-            else:
-                ans = 30
-            if device is opencl_choice:
-                ans += 1000
-        return ans
+            return 30
 
-    cuda_id = -1
-    cuda_choice = None
-    opencl_id = -1
-    opencl_choice = None
-    if 'CUDA_DEVICE' in os.environ:
-        try:
-            cuda_id = int(os.environ['CUDA_DEVICE'])
-        except ValueError:
-            pass
-    if 'PYOPENCL_CTX' in os.environ:
-        try:
-            opencl_id = int(os.environ['PYOPENCL_CTX'])
-        except ValueError:
-            pass
+    def parse_id(envar):
+        if envar in os.environ:
+            try:
+                num = int(os.environ[envar])
+                if num >= 0:
+                    return num
+            except ValueError:
+                pass
+        return None
 
-    devices = []
-    if have_opencl:
-        for platform in pyopencl.get_platforms():
-            devices.extend(platform.get_devices())
-    # Note: this depends on OpenCL device being added before CUDA
-    if opencl_id >= 0 and opencl_id < len(devices):
-        opencl_choice = devices[opencl_id]
+    cuda_id = None
+    opencl_id = None
+    device_id = None
+
+    device_id = parse_id('KATSDPSIGPROC_DEVICE')
+    if device_id is None:
+        cuda_id = parse_id('CUDA_DEVICE')
+        if cuda_id is None:
+            opencl_id = parse_id('PYOPENCL_CTX')
+
+    cuda_devices = []
+    opencl_devices = []
     if have_cuda:
         pycuda.driver.init()
-        num_cuda_devices = pycuda.driver.Device.count()
-        for i in range(num_cuda_devices):
-            devices.append(pycuda.driver.Device(i))
-            if i == cuda_id:
-                cuda_choice = devices[-1]
+        cuda_devices = cuda.Device.get_devices()
+    if have_opencl:
+        opencl_devices = opencl.Device.get_devices()
+
+    if cuda_id is not None:
+        devices = [cuda_devices[cuda_id]]
+    elif opencl_id is not None:
+        devices = [opencl_devices[opencl_id]]
+    else:
+        devices = cuda_devices + opencl_devices
+        if device_id is not None:
+            devices = [devices[device_id]]
+
     if not devices:
         raise RuntimeError('No compute devices found')
 
     if interactive and len(devices) > 1 and sys.stdin.isatty():
         print "Select device:"
         for i, device in enumerate(devices):
-            if have_cuda and isinstance(device, pycuda.driver.Device):
-                name = device.name()
-                platform_name = 'CUDA'
-            else:
-                name = device.name
-                platform_name = device.platform.name
-            print "    [{0}]: {1} ({2})".format(i, name, platform_name)
+            print "    [{0}]: {1} ({2})".format(i, device.name, device.platform_name)
         print
         choice = raw_input('Enter selection: ')
         try:
@@ -181,15 +178,7 @@ def create_some_context(interactive=True):
         devices.sort(key=key, reverse=True)
         device = devices[0]
 
-    if have_cuda and isinstance(device, pycuda.driver.Device):
-        pycuda_context = device.make_context()
-        # PyCUDA makes the context current, but that causes a
-        # shutdown error
-        pycuda_context.pop()
-        return cuda.Context(pycuda_context)
-    else:
-        opencl_context = pyopencl.Context([device])
-        return opencl.Context(opencl_context)
+    return device.make_context()
 
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a

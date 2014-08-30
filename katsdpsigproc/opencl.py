@@ -27,13 +27,52 @@ class Event(object):
     def time_till(self, next_event):
         return next_event.time_since(self)
 
+class Device(object):
+    def __init__(self, pyopencl_device):
+        self._pyopencl_device = pyopencl_device
+
+    def make_context(self):
+        return Context(pyopencl.Context([self._pyopencl_device]))
+
+    @property
+    def name(self):
+        return self._pyopencl_device.name
+
+    @property
+    def platform_name(self):
+        return self._pyopencl_device.platform.name
+
+    @property
+    def is_cuda(self):
+        return False
+
+    @property
+    def is_gpu(self):
+        return self._pyopencl_device.type & pyopencl.device_type.GPU
+
+    @property
+    def is_accelerator(self):
+        return self._pyopencl_device.type & pyopencl.device_type.ACCELERATOR
+
+    @property
+    def is_cpu(self):
+        return self._pyopencl_device.type & pyopencl.device_type.CPU
+
+    @classmethod
+    def get_devices(cls):
+        ans = []
+        for platform in pyopencl.get_platforms():
+            for device in platform.get_devices():
+                ans.append(Device(device))
+        return ans
+
 class Context(object):
     def __init__(self, pyopencl_context):
         self._pyopencl_context = pyopencl_context
 
-    def device_name(self):
-        device = self._pyopencl_context.devices[0]
-        return '{0} ({1})'.format(device.name, device.platform.name)
+    @property
+    def device(self):
+        return Device(self._pyopencl_context.devices[0])
 
     def compile(self, source, extra_flags=None):
         # source is passed through str because it might arrive as Unicode,

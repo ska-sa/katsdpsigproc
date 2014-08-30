@@ -20,7 +20,8 @@ if have_accel:
     from ..accel import Array, DeviceArray, LinenoLexer, Transpose
     test_context = accel.create_some_context(False)
     test_command_queue = test_context.create_command_queue()
-    print >>sys.stderr, "Testing on", test_context.device_name()
+    print >>sys.stderr, "Testing on {0} ({1})".format(
+            test_context.device.name, test_context.device.platform_name)
 
 def device_test(test):
     """Decorator that causes a test to be skipped if a compute device is not available"""

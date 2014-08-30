@@ -30,13 +30,53 @@ class Event(object):
     def time_till(self, next_event):
         return next_event.time_since(self)
 
+class Device(object):
+    def __init__(self, pycuda_device):
+        self._pycuda_device = pycuda_device
+
+    def make_context(self):
+        pycuda_context = self._pycuda_device.make_context()
+        # The above also makes the context current, which we do not
+        # want (it leads to errors on termination).
+        pycuda_context.pop()
+        return Context(pycuda_context)
+
+    @property
+    def name(self):
+        return self._pycuda_device.name()
+
+    @property
+    def platform_name(self):
+        return 'CUDA'
+
+    @property
+    def is_cuda(self):
+        return True
+
+    @property
+    def is_gpu(self):
+        return True
+
+    @property
+    def is_accelerator(self):
+        return False
+
+    @property
+    def is_cpu(self):
+        return False
+
+    @classmethod
+    def get_devices(cls):
+        num_devices = pycuda.driver.Device.count()
+        return [Device(pycuda.driver.Device(i)) for i in range(num_devices)]
+
 class Context(object):
     def __init__(self, pycuda_context):
         self._pycuda_context = pycuda_context
 
-    def device_name(self):
-        with self:
-            return self._pycuda_context.get_device().name() + ' (CUDA)'
+    @property
+    def device(self):
+        return Device(self._pycuda_context.get_device())
 
     def compile(self, source, extra_flags=None):
         with self:
