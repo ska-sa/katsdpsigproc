@@ -75,7 +75,7 @@ def main():
         try:
             context = accel.create_some_context(True)
         except RuntimeError:
-            print >>sys.stderr, "CUDA is not available. Executing on the CPU."
+            print >>sys.stderr, "No devices available. Executing on the CPU."
 
     if context is None:
         background = katsdpsigproc.rfi.host.BackgroundMedianFilterHost(args.width)
@@ -114,7 +114,7 @@ def main():
         try:
             device_time = end_event.time_since(start_event) * 1000.0
         except:
-            # AMD driver doesn't seem to support profiling on marker events
+            # AMD CPU device doesn't seem to support profiling on marker events
             device_time = 'unknown'
         print "Device time (ms):", device_time
 

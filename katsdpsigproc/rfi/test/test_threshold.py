@@ -4,8 +4,7 @@ import numpy as np
 from .. import host
 from nose.tools import assert_equal
 from ...test.test_accel import device_test, test_command_queue
-if test_command_queue:
-    from .. import device
+from .. import device
 
 def setup():
     global _deviations, _spikes

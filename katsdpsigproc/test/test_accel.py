@@ -4,11 +4,8 @@ import numpy as np
 from mako.template import Template
 from nose.tools import assert_equal
 from nose.plugins.skip import SkipTest
-try:
-    from .. import accel
-    have_accel = True
-except ImportError:
-    have_accel = False
+from .. import accel
+from ..accel import Array, DeviceArray, LinenoLexer, Transpose
 if accel.have_cuda:
     import pycuda
 if accel.have_opencl:
@@ -16,12 +13,13 @@ if accel.have_opencl:
 
 test_context = None
 test_command_queue = None
-if have_accel:
-    from ..accel import Array, DeviceArray, LinenoLexer, Transpose
+try:
     test_context = accel.create_some_context(False)
     test_command_queue = test_context.create_command_queue()
     print >>sys.stderr, "Testing on {0} ({1})".format(
             test_context.device.name, test_context.device.platform_name)
+except RuntimeError:
+    pass  # No devices available
 
 def device_test(test):
     """Decorator that causes a test to be skipped if a compute device is not available"""
@@ -35,20 +33,17 @@ def device_test(test):
 device_test.__test__ = False
 
 class TestLinenoLexer(object):
-    @device_test
     def test_escape_filename(self):
         assert_equal(
                 r'"abc\"def\\ghi"',
                 LinenoLexer._escape_filename(r'abc"def\ghi'))
 
-    @device_test
     def test_render(self):
         source = "line 1\nline 2\nline 3"
         out = Template(source, lexer_cls=LinenoLexer).render()
         assert_equal("#line 1 \nline 1\n#line 2 \nline 2\n#line 3 \nline 3\n", out)
 
 class TestArray(object):
-    @device_test
     def setup(self):
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
@@ -59,7 +54,6 @@ class TestArray(object):
         self.view = np.zeros(self.padded_shape)[2:4, 3:5].view(Array)
         self.sliced = self.constructed[2:4, 3:5]
 
-    @device_test
     def test_safe(self):
         assert Array.safe(self.constructed)
         assert not Array.safe(self.view)

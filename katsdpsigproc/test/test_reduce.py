@@ -3,8 +3,7 @@
 import numpy as np
 from .test_accel import device_test, test_context, test_command_queue
 from nose.tools import assert_equal
-if test_context:
-    from ..accel import DeviceArray, build
+from ..accel import DeviceArray, build
 
 @device_test
 def setup():
