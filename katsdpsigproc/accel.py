@@ -369,7 +369,7 @@ class Transpose(object):
         """
         self.command_queue = command_queue
         self.ctype = ctype
-        self._block = 32
+        self._block = 16   # TODO: tune based on hardware
         program = build(command_queue.context, "transpose.mako", {'block': self._block, 'ctype': ctype})
         self.kernel = program.get_kernel("transpose")
 
