@@ -110,7 +110,7 @@ def create_some_context(interactive=True):
 
     def key(device):
         ans = 0
-        if isinstance(device, pycuda.driver.Device):
+        if have_cuda and isinstance(device, pycuda.driver.Device):
             ans = 100
             if device is cuda_choice:
                 ans += 1000
@@ -161,7 +161,7 @@ def create_some_context(interactive=True):
     if interactive and len(devices) > 1 and sys.stdin.isatty():
         print "Select device:"
         for i, device in enumerate(devices):
-            if isinstance(device, pycuda.driver.Device):
+            if have_cuda and isinstance(device, pycuda.driver.Device):
                 name = device.name()
                 platform_name = 'CUDA'
             else:
@@ -181,7 +181,7 @@ def create_some_context(interactive=True):
         devices.sort(key=key, reverse=True)
         device = devices[0]
 
-    if isinstance(device, pycuda.driver.Device):
+    if have_cuda and isinstance(device, pycuda.driver.Device):
         pycuda_context = device.make_context()
         # PyCUDA makes the context current, but that causes a
         # shutdown error
