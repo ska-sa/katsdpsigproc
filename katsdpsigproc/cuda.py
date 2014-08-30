@@ -1,3 +1,9 @@
+"""Abstraction layer over PyCUDA to present an interface that is common
+between CUDA and OpenCL. For documentation on these classes, refer to
+the documentation for :mod:`katsdpsigproc.opencl`, which presents the same
+interfaces.
+"""
+
 import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
