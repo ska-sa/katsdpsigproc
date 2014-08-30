@@ -7,14 +7,15 @@ setup(
     description = "Karoo Array Telescope accelerated signal processing tools",
     author_email = "spt@ska.ac.za",
     packages = find_packages(),
-    package_data = {'': ['*.cu']},
+    package_data = {'': ['*.mako']},
     scripts = ["scripts/rfiflagtest.py"],
     url = "http://ska.ac.za",
     install_requires = [
-        "numpy", "scipy"
+        "numpy", "scipy", "mako"
     ],
     extras_require = {
-        "CUDA": ["mako", "pycuda"]
+        "CUDA": ["pycuda"],
+        "OpenCL": ["pyopencl"]
     },
     zip_safe = False
 )
