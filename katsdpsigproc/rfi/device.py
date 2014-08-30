@@ -202,6 +202,14 @@ class ThresholdMADTDevice(object):
     order, which allows an entire baseline to be efficiently loaded into
     registers.
 
+    .. note:: There is a tradeoff in selecting the workgroup size: a large
+        value gives more parallelism and reduces the register pressure, but
+        increases the overhead of reduction operations.
+
+    .. note:: This class may fail for very large numbers of channels (10k can
+        definitely be supported), in which case :class:`ThresholdMADDevice` may be
+        used.
+
     Attributes
     ----------
     factor : float
@@ -212,15 +220,6 @@ class ThresholdMADTDevice(object):
         Number of elements handled by each thread
     _wgsx : int
         Number of work-items per baseline
-
-    Notes
-    -----
-    There is a tradeoff in selecting the workgroup size: a large value gives
-    more parallelism and reduces the register pressure, but increases the
-    overhead of reduction operations.
-
-    This class may fail for very large numbers of channels (10k can
-    definitely be supported), in which case ThresholdMADDevice may be used.
     """
     host_class = host.ThresholdMADHost
     transposed = True
@@ -311,12 +310,10 @@ class FlaggerDevice(object):
     def __call__(self, vis, flags):
         """Perform the flagging.
 
-        Note
-        ----
-        Temporary intermediate data is stored in the class and used
-        asynchronously by the device. This means that for concurrent
-        flagging of multiple visibility sets, one must use multiple
-        instances of this class.
+        .. note:: Temporary intermediate data is stored in the class and used
+            asynchronously by the device. This means that for concurrent
+            flagging of multiple visibility sets, one must use multiple
+            instances of this class.
 
         Parameters
         ----------

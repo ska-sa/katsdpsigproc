@@ -24,7 +24,7 @@ class Program(object):
 
 class Kernel(object):
     """Abstraction of a kernel object. The object can be enqueued using
-    :method:`CommandQueue.enqueue_kernel`.
+    :meth:`CommandQueue.enqueue_kernel`.
 
     The recommended way to create this object is via
     :meth:`Program.get_kernel`.
@@ -213,6 +213,9 @@ class CommandQueue(object):
     def enqueue_kernel(self, kernel, args, global_size, local_size):
         """Enqueue a kernel to the command queue.
 
+        .. warning:: It is not thread-safe to call this function in two threads
+            on the same kernel at the same time.
+
         Parameters
         ----------
         kernel : :class:`Kernel`
@@ -226,11 +229,6 @@ class CommandQueue(object):
         local_size : tuple
             Number of work-items in each local dimension. Must divide
             exactly into `global_size`.
-
-        Warning
-        -------
-        It is not thread-safe to call this function in two threads on the same
-        kernel at the same time.
         """
 
         # PyOpenCL doesn't allow Array objects to be passed through
