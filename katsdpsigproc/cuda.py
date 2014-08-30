@@ -76,7 +76,8 @@ class Context(object):
 
     @property
     def device(self):
-        return Device(self._pycuda_context.get_device())
+        with self:
+            return Device(pycuda.driver.Context.get_device())
 
     def compile(self, source, extra_flags=None):
         with self:
