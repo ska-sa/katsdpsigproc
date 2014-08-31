@@ -111,6 +111,8 @@ class Context(object):
     """Abstraction of an OpenCL context"""
     def __init__(self, pyopencl_context):
         self._pyopencl_context = pyopencl_context
+        device = pyopencl_context.devices[0]
+        self._internal_queue = pyopencl.CommandQueue(pyopencl_context, device)
 
     @property
     def device(self):
@@ -135,7 +137,7 @@ class Context(object):
         return Program(program)
 
     def allocate(self, shape, dtype):
-        """Create a typed buffer
+        """Create a typed buffer on the device.
 
         Parameters
         ----------
@@ -145,6 +147,29 @@ class Context(object):
             Type for the data
         """
         return pyopencl.array.Array(self._pyopencl_context, shape, dtype)
+
+    def allocate_pinned(self, shape, dtype):
+        """Create a buffer in host memory that can be efficiently copied
+        to and from the device.
+
+        Parameters
+        ----------
+        shape : tuple
+            Shape for the array
+        dtype : numpy dtype
+            Type for the data
+        """
+        bytes = reduce(lambda x, y: x * y, shape) * dtype.itemsize
+        buf = pyopencl.Buffer(
+                self._pyopencl_context, 
+                pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
+                bytes)
+        (ary, event) = pyopencl.enqueue_map_buffer(
+                self._internal_queue,
+                buf,
+                pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
+                0, shape, dtype)
+        return ary
 
     def create_command_queue(self):
         """Create a new command queue associated with this context"""

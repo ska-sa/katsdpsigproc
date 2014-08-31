@@ -94,6 +94,10 @@ class Context(object):
         with self:
             return pycuda.gpuarray.GPUArray(shape, dtype)
 
+    def allocate_pinned(self, shape, dtype):
+        with self:
+            return pycuda.driver.pagelocked_empty(shape, dtype)
+
     def create_command_queue(self):
         return CommandQueue(self)
 

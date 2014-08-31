@@ -195,24 +195,28 @@ class Array(np.ndarray):
 
     See the numpy documentation on subclassing for an explanation of
     why it is written the way it is.
-    """
-    def __new__(cls, shape, dtype, padded_shape=None):
-        """Constructor.
 
-        Parameters
-        ----------
-        shape : tuple
-            Shape for the usable data
-        dtype : numpy dtype
-            Data type
-        padded_shape : tuple or `None`
-            Shape for memory allocation (defaults to `shape`)
-        """
+    Parameters
+    ----------
+    shape : tuple
+        Shape for the array
+    dtype : numpy dtype
+        Data type for the array
+    padded_shape : tuple, optional
+        Total size of memory allocation (defaults to `shape`)
+    context : :class:`cuda.Context` or :class:`opencl.Context`, optional
+        If specified, the memory will be allocated in a way that allows
+        efficient copies to and from this context.
+    """
+    def __new__(cls, shape, dtype, padded_shape=None, context=None):
         if padded_shape is None:
             padded_shape = shape
         assert len(padded_shape) == len(shape)
         assert np.all(np.greater_equal(padded_shape, shape))
-        owner = np.empty(padded_shape, dtype).view(Array)
+        if context is not None:
+            owner = context.allocate_pinned(padded_shape, dtype).view(Array)
+        else:
+            owner = np.empty(padded_shape, dtype).view(Array)
         index = tuple([slice(0, x) for x in shape])
         obj = owner[index]
         obj._accel_safe = True
@@ -304,7 +308,7 @@ class DeviceArray(object):
 
     def empty_like(self):
         """Return an array-like object that can be efficiently copied."""
-        return Array(self.shape, self.dtype, self.padded_shape)
+        return Array(self.shape, self.dtype, self.padded_shape, context=self.context)
 
     def asarray_like(self, ary):
         """Return an array with the same content as `ary`, but the same memory
