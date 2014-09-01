@@ -1,10 +1,8 @@
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
-from ...test.test_accel import cuda_test, have_cuda
-if have_cuda:
-    import pycuda.autoinit
-    from .. import device
+from ...test.test_accel import device_test, test_command_queue
+from .. import device
 
 def setup():
     global _vis, _vis_big
@@ -24,15 +22,14 @@ class TestBackgroundMedianFilterHost(object):
         ref = np.array([[0.0, 0.25, -0.5, 0.25, -0.25, 0.25]]).T.astype(np.float32)
         np.testing.assert_equal(ref, out)
 
-def test_device_classes():
-    yield check_device_class, 'BackgroundMedianFilterDevice', 5, (128, 4)
+@device_test
+def test_BackgroundMedianFilterDevice():
+    check_device_class(device.BackgroundMedianFilterDevice, 5, (128, 4))
 
-@cuda_test
-def check_device_class(cls_name, width, device_args=(), device_kw={}):
-    cls = getattr(device, cls_name)
+def check_device_class(cls, width, device_args=(), device_kw={}):
     bg_host = cls.host_class(width)
     bg_device = device.BackgroundHostFromDevice(
-            cls(pycuda.autoinit.context, width, *device_args, **device_kw))
+            cls(test_command_queue, width, *device_args, **device_kw))
     out_host = bg_host(_vis_big)
     out_device = bg_device(_vis_big)
     # Uses an abs tolerance because backgrounding subtracts nearby values

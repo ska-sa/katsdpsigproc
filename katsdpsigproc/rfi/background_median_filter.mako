@@ -16,14 +16,14 @@
  * median filter.
  */
 
-#include <math.h>
+<%include file="/port.mako"/>
 
 #define WIDTH ${width}
 
 /// Complex absolute value
-__device__ static float absc(float2 v)
+DEVICE_FN float absc(float2 v)
 {
-    return hypotf(v.x, v.y);
+    return hypot(v.x, v.y);
 }
 
 /**
@@ -31,9 +31,8 @@ __device__ static float absc(float2 v)
  * @ref slide, and the median of the last @a WIDTH elements is retrieved
  * by calling @ref get.
  */
-class MedianFilter
+typedef struct median_filter
 {
-private:
     /**
      * History of samples. @a samples[0] is the oldest.
      */
@@ -44,63 +43,52 @@ private:
      * oldest sample is considered smaller.
      */
     int rank[WIDTH];
+} median_filter;
 
-public:
-    /**
-     * Initialise the filter using zero-valued samples.
-     */
-    __device__ MedianFilter();
-
-    /// Return the median of the current samples
-    __device__ float get() const;
-
-    /// Return the middle of the current samples
-    __device__ float center() const;
-
-    /// Add a new sample, dropping the oldest
-    __device__ void slide(float new_sample);
-};
-
-__device__ MedianFilter::MedianFilter()
+/**
+ * Initialise the filter using zero-valued samples.
+ */
+DEVICE_FN void median_filter_init(median_filter *self)
 {
     for (int i = 0; i < WIDTH; i++)
     {
-        samples[i] = 0;
-        rank[i] = i;
+        self->samples[i] = 0;
+        self->rank[i] = i;
     }
 }
 
-__device__ float MedianFilter::get() const
+/// Return the median of the current samples
+DEVICE_FN float median_filter_get(const median_filter *self)
 {
     const int H = WIDTH / 2;
     float result = 0.0f;
     for (int j = 0; j < WIDTH; j++)
     {
-        result = (rank[j] == H) ? samples[j] : result;
+        result = (self->rank[j] == H) ? self->samples[j] : result;
     }
     return result;
 }
 
-__device__ float MedianFilter::center() const
+DEVICE_FN float median_filter_center(const median_filter *self)
 {
-    return samples[WIDTH / 2];
+    return self->samples[WIDTH / 2];
 }
 
-__device__ void MedianFilter::slide(float new_sample)
+DEVICE_FN void median_filter_slide(median_filter *self, float new_sample)
 {
-    float old_sample = samples[0];
+    float old_sample = self->samples[0];
     int new_rank = WIDTH - 1;
 #pragma unroll
     for (int j = 0; j < WIDTH - 1; j++)
     {
-        samples[j] = samples[j + 1];
-        int cmp = (new_sample < samples[j]);
+        self->samples[j] = self->samples[j + 1];
+        int cmp = (new_sample < self->samples[j]);
         // TODO: only need to compare new_sample and samples[j] once
-        rank[j] = rank[j + 1] + cmp - (old_sample <= samples[j]);
+        self->rank[j] = self->rank[j + 1] + cmp - (old_sample <= self->samples[j]);
         new_rank -= cmp;
     }
-    samples[WIDTH - 1] = new_sample;
-    rank[WIDTH - 1] = new_rank;
+    self->samples[WIDTH - 1] = new_sample;
+    self->rank[WIDTH - 1] = new_rank;
 }
 
 /**
@@ -108,35 +96,33 @@ __device__ void MedianFilter::slide(float new_sample)
  * values to produce is [@a first, @a last), out of a total array of
  * size @a N.
  */
-__device__ static void medfilt_serial_sliding(
-    const float2 * __restrict in, float * __restrict out,
+DEVICE_FN static void medfilt_serial_sliding(
+    const GLOBAL float2 * RESTRICT in, GLOBAL float * __restrict out,
     int first, int last, int N, int stride)
 {
     const int H = WIDTH / 2;
-    MedianFilter filter;
+    median_filter filter;
+    median_filter_init(&filter);
 
     // Load the initial window, substituting zeros beyond the ends.
     // These is no need for this on the leading edge, because the
     // constructor initialises with zero samples.
     for (int i = max(0, first - H); i < min(first + H, N); i++)
-        filter.slide(absc(in[i * stride]));
+        median_filter_slide(&filter, absc(in[i * stride]));
     for (int i = N; i < first + H; i++)
-        filter.slide(0.0f);
+        median_filter_slide(&filter, 0.0f);
 
     for (int i = first; i < min(last, N - H); i++)
     {
-        filter.slide(absc(in[(i + H) * stride]));
-        out[i * stride] = filter.center() - filter.get();
+        median_filter_slide(&filter, absc(in[(i + H) * stride]));
+        out[i * stride] = median_filter_center(&filter) - median_filter_get(&filter);
     }
     for (int i = max(first, N - H); i < last; i++)
     {
-        filter.slide(0.0f);
-        out[i * stride] = filter.center() - filter.get();
+        median_filter_slide(&filter, 0.0f);
+        out[i * stride] = median_filter_center(&filter) - median_filter_get(&filter);
     }
 }
-
-extern "C"
-{
 
 /**
  * Apply median filter to each baseline. The input data are stored
@@ -145,15 +131,13 @@ extern "C"
  * input must be suitably padded (in the baseline access) for the number
  * of threads.
  */
-__global__ void __launch_bounds__(${wgs}) background_median_filter(
-    const float2 * __restrict in, float * __restrict out,
+KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
+    const GLOBAL float2 * RESTRICT in, GLOBAL float * RESTRICT out,
     int channels, int stride, int VT)
 {
-    int bl = blockDim.x * blockIdx.x + threadIdx.x;
-    int sub = blockDim.y * blockIdx.y + threadIdx.y;
+    int bl = get_global_id(0);
+    int sub = get_global_id(1);
     int start_channel = sub * VT;
     int end_channel = min(start_channel + VT, channels);
     medfilt_serial_sliding(in + bl, out + bl, start_channel, end_channel, channels, stride);
 }
-
-} // extern C

@@ -4,18 +4,12 @@
 
 import numpy as np
 import katsdpsigproc.rfi.host
+import katsdpsigproc.rfi.device
+import katsdpsigproc.accel as accel
+from katsdpsigproc.accel import DeviceArray
 import argparse
 import time
 import sys
-try:
-    import pycuda.driver as cuda
-    import pycuda.autoinit
-    have_cuda = True
-except ImportError:
-    have_cuda = False
-if have_cuda:
-    from katsdpsigproc.accel import DeviceArray
-    import katsdpsigproc.rfi.device
 
 def generate_data(channels, baselines):
     real = np.random.randn(channels, baselines)
@@ -31,7 +25,7 @@ def main():
     parser.add_argument('--antennas', '-a', type=int, default=7)
     parser.add_argument('--channels', '-c', type=int, default=1024)
     parser.add_argument('--baselines', '-b', type=int, help='(overrides --antennas)')
-    parser.add_argument('--preset', '-p', choices=('small', 'medium', 'big'), help='(overrides other options)')
+    parser.add_argument('--preset', '-p', choices=('small', 'medium', 'big', 'kat7'), help='(overrides other options)')
     parser.add_argument('--file', type=str, help='specify a real data file (.npy)')
 
     parser.add_argument_group('Parameters')
@@ -58,6 +52,9 @@ def main():
             elif args.preset == 'medium':
                 args.antennas = 15
                 args.channels = max(2 * args.width, 128)
+            elif args.preset == 'kat7':
+                args.antennas = 7
+                args.channels = 8192
             elif args.preset == 'big':
                 args.antennas = 64
                 args.channels = 10000
@@ -65,7 +62,7 @@ def main():
                 raise argparse.ArgumentError('Unexpected value for preset')
         if args.baselines is None:
             # Note: * 2 not / 2 because there are 4 polarisations
-            args.baselines = args.antennas * (args.antennas + 1) * 2
+            args.baselines = args.antennas * (2 * args.antennas + 1)
         data = generate_data(args.channels, args.baselines)
 
     if args.width % 2 != 1:
@@ -73,10 +70,14 @@ def main():
     if data.shape[0] <= args.width:
         raise argparse.ArgumentError('Channels cannot be less than the filter width')
 
-    if not have_cuda and not args.host:
-        print >>sys.stderr, "CUDA is not available. Executing on the CPU."
-        args.host = True
-    if args.host:
+    context = None
+    if not args.host:
+        try:
+            context = accel.create_some_context(True)
+        except RuntimeError:
+            print >>sys.stderr, "No devices available. Executing on the CPU."
+
+    if context is None:
         background = katsdpsigproc.rfi.host.BackgroundMedianFilterHost(args.width)
         threshold = katsdpsigproc.rfi.host.ThresholdMADHost(args.sigmas)
         flagger = katsdpsigproc.rfi.host.FlaggerHost(background, threshold)
@@ -85,29 +86,37 @@ def main():
         end = time.time()
         print "CPU time (ms):", (end - start) * 1000.0
     else:
-        ctx = pycuda.autoinit.context
+        command_queue = context.create_command_queue()
         background = katsdpsigproc.rfi.device.BackgroundMedianFilterDevice(
-                ctx, args.width, args.bg_wgs, args.bg_csplit)
+                command_queue, args.width, args.bg_wgs, args.bg_csplit)
         threshold = katsdpsigproc.rfi.device.ThresholdMADTDevice(
-                ctx, args.sigmas, 10240)
+                command_queue, args.sigmas, 10240)
         flagger = katsdpsigproc.rfi.device.FlaggerDevice(background, threshold)
 
         padded_shape = flagger.min_padded_shape(data.shape)
-        data_device = DeviceArray(ctx, data.shape, data.dtype, padded_shape)
-        flags_device = DeviceArray(ctx, data.shape, np.uint8, padded_shape)
-        start_event = cuda.Event()
-        end_event = cuda.Event()
+        data_device = DeviceArray(context, data.shape, data.dtype, padded_shape)
+        flags_device = DeviceArray(context, data.shape, np.uint8, padded_shape)
 
-        data_device.set(data)
+        data_device.set(command_queue, data)
         # Run once for warmup (allocates memory)
         flagger(data_device, flags_device)
         # Run again, timing it
-        start_event.record()
+        command_queue.finish()
+
+        start_time = time.time()
+        start_event = command_queue.enqueue_marker()
         flagger(data_device, flags_device)
-        end_event.record()
-        end_event.synchronize()
-        print "GPU time (ms):", end_event.time_since(start_event)
-        flags = flags_device.get()
+        end_event = command_queue.enqueue_marker()
+        command_queue.finish()
+        end_time = time.time()
+        flags = flags_device.get(command_queue)
+        print "Host time (ms):  ", (end_time - start_time) * 1000.0
+        try:
+            device_time = end_event.time_since(start_event) * 1000.0
+        except:
+            # AMD CPU device doesn't seem to support profiling on marker events
+            device_time = 'unknown'
+        print "Device time (ms):", device_time
 
     print flags
 
