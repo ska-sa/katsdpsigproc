@@ -30,26 +30,24 @@ class BackgroundHostFromDevice(object):
 class BackgroundMedianFilterDevice(object):
     """Device algorithm that applies a median filter to each baseline
     (in amplitude). It is the same algorithm as
-    :class:`BackgroundMedianFilterHost`, but may give slightly different
+    :class:`host.BackgroundMedianFilterHost`, but may give slightly different
     results due to rounding errors when computing complex magnitude.
+
+    Parameters
+    ----------
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command-queue in which work will be enqueued
+    width : int
+        The kernel width (must be odd)
+    wgs : int
+        Number of baselines per workgroup
+    csplit : int
+        Approximate number of workitems cooperating on each channel
     """
 
     host_class = host.BackgroundMedianFilterHost
 
     def __init__(self, command_queue, width, wgs=128, csplit=8):
-        """Constructor.
-
-        Parameters
-        ----------
-        context : pycuda.driver.Context
-            CUDA context
-        width : int
-            The kernel width (must be odd)
-        wgs : int
-            Number of baselines per workgroup
-        csplit : int
-            Approximate number of thread cooperating on each channel
-        """
         self.command_queue = command_queue
         self.width = width
         self.wgs = wgs
@@ -122,26 +120,22 @@ class ThresholdMADDevice(object):
     floating-point accuracy.
 
     See :class:`ThresholdMADTDevice` for a more efficient implementation.
+
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command-queue in which work will be enqueued
+    n_sigma : float
+        Number of (estimated) standard deviations for the threshold
+    wgsx : int
+        Number of baselines per workgroup
+    wgsy : int
+        Number of channels per workgroup
+    flag_value : int
+        Number stored in returned value to indicate RFI
     """
     host_class = host.ThresholdMADHost
     transposed = False
 
     def __init__(self, command_queue, n_sigma, wgsx=32, wgsy=8, flag_value=1):
-        """Constructor.
-
-        Parameters
-        ----------
-        context : pycuda.driver.Context
-            CUDA context
-        n_sigma : float
-            Number of (estimated) standard deviations for the threshold
-        wgsx : int
-            Number of baselines per workgroup
-        wgsy : int
-            Number of channels per workgroup
-        flag_value : int
-            Number stored in returned value to indicate RFI
-        """
         self.command_queue = command_queue
         self.factor = 1.4826 * n_sigma
         self.wgsx = wgsx
@@ -158,12 +152,14 @@ class ThresholdMADDevice(object):
         return (channels, padded_baselines)
 
     def _blocks(self, deviations):
+        """Number of baseline-axis workgroups"""
         baselines = deviations.shape[1]
         blocks = (baselines + self.wgsx - 1) // self.wgsx
         assert blocks * self.wgsx <= deviations.padded_shape[1]
         return blocks
 
     def _vt(self, deviations):
+        """Number of channels processed by each thread"""
         channels = deviations.shape[0]
         vt = (channels + self.wgsy - 1) // self.wgsy
         return vt
@@ -178,7 +174,7 @@ class ThresholdMADDevice(object):
             then baseline. It must have a padded size at least that
             given by :meth:`min_padded_shape`.
         flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
-            Output flags
+            Output flags, with the same shape and padding as `deviations`
         """
         assert deviations.shape == flags.shape
         assert deviations.padded_shape == flags.padded_shape
@@ -210,6 +206,18 @@ class ThresholdMADTDevice(object):
         definitely be supported), in which case :class:`ThresholdMADDevice` may be
         used.
 
+    Parameters
+    ----------
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command-queue in which work will be enqueued
+    n_sigma : float
+        Number of (estimated) standard deviations for the threshold
+    max_channels : int
+        Maximum number of channels. Choosing too large a value will
+        reduce performance.
+    flag_value : int
+        Number stored in returned value to indicate RFI
+
     Attributes
     ----------
     factor : float
@@ -225,20 +233,6 @@ class ThresholdMADTDevice(object):
     transposed = True
 
     def __init__(self, command_queue, n_sigma, max_channels, flag_value=1):
-        """Constructor.
-
-        Parameters
-        ----------
-        context : pycuda.driver.Context
-            CUDA context
-        n_sigma : float
-            Number of (estimated) standard deviations for the threshold
-        max_channels : int
-            Maximum number of channels. Choosing too large a value will
-            reduce performance.
-        flag_value : int
-            Number stored in returned value to indicate RFI
-        """
         self.command_queue = command_queue
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
@@ -265,7 +259,7 @@ class ThresholdMADTDevice(object):
             then channel. It must have a padded size at least that
             given by :meth:`min_padded_shape`.
         flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
-            Output flags
+            Output flags, with the same shape and padding as `deviations`
         """
         assert deviations.shape == flags.shape
         assert deviations.padded_shape == flags.padded_shape
@@ -283,7 +277,35 @@ class ThresholdMADTDevice(object):
 
 class FlaggerDevice(object):
     """Combine device backgrounder and thresholder implementations to
-    create a flagger.
+    create a flagger. The thresholder may take transposed input, in which
+    case this object will manage temporary buffers and the transposition
+    automatically.
+
+    Intermediate buffers are allocated when first required or when the
+    sizes of inputs change. Thus, the first call may be slower than subsequent
+    calls. It is also a good idea to make subsequent calls with the same size
+    input data. For example, if using two subarrays (of different sizes), it
+    will be more efficient to use a separate flagger object for each rather
+    than multiplexing them through one flagger.
+
+    Attributes
+    ----------
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command-queue in which work will be enqueued
+    background
+        Backgrounder object
+    threshold
+        Thresholder object
+    _deviations : :class`:katsdpsigproc.accel.DeviceArray`, float32
+        Deviations of the amplitude from the background
+    _deviations_t : :class`:katsdpsigproc.accel.DeviceArray`, float32
+        Transposed deviations
+    _flags_t : :class`:katsdpsigproc.accel.DeviceArray`, uint8
+        Transposed flags
+    _transpose_deviations : :class:`katsdpsigproc.accel.Transpose`
+        Kernel for transposing deviations
+    _transpose_flags : :class:`katsdpsigproc.accel.Transpose`
+        Kernel for transposing flags
     """
     def __init__(self, background, threshold):
         self.background = background
@@ -310,18 +332,13 @@ class FlaggerDevice(object):
     def __call__(self, vis, flags):
         """Perform the flagging.
 
-        .. note:: Temporary intermediate data is stored in the class and used
-            asynchronously by the device. This means that for concurrent
-            flagging of multiple visibility sets, one must use multiple
-            instances of this class.
-
         Parameters
         ----------
-        vis : :class:`katsdpsigproc.accel.DeviceArray`
-            The input visibilities as a 2D array of complex64, indexed
+        vis : :class:`katsdpsigproc.accel.DeviceArray`, complex64
+            The input visibilities as a 2D array, indexed
             by channel and baseline, and with padded size given by
             :meth:`min_padded_shape`.
-        flags : :class:katsdpsigproc.accel.DeviceArray`
+        flags : :class:katsdpsigproc.accel.DeviceArray`, uint8
             The output flags, with the same shape and padding as `vis`.
         """
         assert vis.shape == flags.shape
@@ -329,6 +346,7 @@ class FlaggerDevice(object):
         assert np.all(np.greater_equal(
                 self.min_padded_shape(vis.shape), vis.padded_shape))
 
+        # Allocate or reallocate internal buffers if necessary
         if (self._deviations is None or
                 self._deviations.shape != vis.shape or
                 self._deviations.padded_shape != vis.padded_shape):
