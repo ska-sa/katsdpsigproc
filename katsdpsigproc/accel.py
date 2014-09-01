@@ -113,10 +113,10 @@ def create_some_context(interactive=True):
     Parameters
     ----------
     interactive : boolean
-        If true, and `sys.stdin.isatty()` is true, and there are multiple choices,
-        it will prompt the user. Otherwise, it will choose the first available
-        device, favouring CUDA over OpenCL, then GPU over accelerators over
-        other OpenCL devices.
+        If true, and `sys.stdin.isatty()` is true, and there are multiple
+        choices, it will prompt the user. Otherwise, it will choose the first
+        available device, favouring CUDA over OpenCL, then GPU over
+        accelerators over other OpenCL devices.
 
     Raises
     ------
@@ -350,13 +350,15 @@ class DeviceArray(object):
     def set_async(self, command_queue, ary):
         """Asynchronous copy from `ary` to self"""
         ary = self.asarray_like(ary)
-        command_queue.enqueue_write_buffer(self.buffer, self._contiguous(ary), blocking=False)
+        command_queue.enqueue_write_buffer(
+                self.buffer, self._contiguous(ary), blocking=False)
 
     def get_async(self, command_queue, ary=None):
         """Asynchronous copy from self to `ary` (see `get`)."""
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
-        command_queue.enqueue_read_buffer(self.buffer, self._contiguous(ary), blocking=False)
+        command_queue.enqueue_read_buffer(
+                self.buffer, self._contiguous(ary), blocking=False)
         return ary
 
 class Transpose(object):

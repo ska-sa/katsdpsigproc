@@ -51,7 +51,8 @@ class Event(object):
         """
         prior_event.wait()
         self.wait()
-        return 1e-9 * (self._pyopencl_event.profile.start - prior_event._pyopencl_event.profile.end)
+        return 1e-9 * (self._pyopencl_event.profile.start -
+                       prior_event._pyopencl_event.profile.end)
 
     def time_till(self, next_event):
         """Return the time in seconds from this event to `next_event`. See
@@ -90,7 +91,8 @@ class Device(object):
 
     @property
     def is_accelerator(self):
-        """Whether device is an accelerator (as defined by OpenCL device types)"""
+        """Whether device is an accelerator (as defined by OpenCL device
+        types)"""
         return self._pyopencl_device.type & pyopencl.device_type.ACCELERATOR
 
     @property
@@ -161,7 +163,7 @@ class Context(object):
         """
         bytes = reduce(lambda x, y: x * y, shape) * dtype.itemsize
         buf = pyopencl.Buffer(
-                self._pyopencl_context, 
+                self._pyopencl_context,
                 pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
                 bytes)
         (ary, event) = pyopencl.enqueue_map_buffer(
@@ -213,8 +215,8 @@ class CommandQueue(object):
 
     def enqueue_write_buffer(self, buffer, data, blocking=True):
         """Copy data from the host to the device. Only whole-buffer copies are
-        supported, and the shape and type must match. In general, one should use
-        the convenience functions in :class:`accel.DeviceArray`.
+        supported, and the shape and type must match. In general, one should
+        use the convenience functions in :class:`accel.DeviceArray`.
 
         Parameters
         ----------

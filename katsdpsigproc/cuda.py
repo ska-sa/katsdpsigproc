@@ -8,7 +8,7 @@ import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
 
-_nvcc_flags = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
+NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
 class Program(object):
     def __init__(self, pycuda_module):
@@ -87,7 +87,8 @@ class Context(object):
 
     def compile(self, source, extra_flags=None):
         with self:
-            module = pycuda.compiler.SourceModule(source, options=_nvcc_flags + extra_flags)
+            module = pycuda.compiler.SourceModule(source,
+                    options=NVCC_FLAGS + extra_flags)
             return Program(module)
 
     def allocate(self, shape, dtype):
@@ -147,9 +148,9 @@ class CommandQueue(object):
 
     def enqueue_marker(self):
         with self.context:
-            e = pycuda.driver.Event()
-            e.record(self._pycuda_stream)
-        return Event(e)
+            event = pycuda.driver.Event()
+            event.record(self._pycuda_stream)
+        return Event(event)
 
     def finish(self):
         with self.context:
