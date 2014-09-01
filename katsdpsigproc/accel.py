@@ -1,6 +1,17 @@
-"""Utilities for interfacing with accelerator hardware. Currently only CUDA
-is supported, but it is intended to later support OpenCL too. It currently
-only supports a single CUDA context/device.
+"""Utilities for interfacing with accelerator hardware. Both OpenCL and CUDA
+are supported, as well as multiple devices.
+
+The modules :mod:`cuda` and :mod:`opencl` provide the abstraction layer,
+but most code will not import these directly (and it might not be possible
+to import them). Instead, use :func:`create_some_context` to set up a context
+on whatever device is available.
+
+Attributes
+----------
+have_cuda : boolean
+    True if PyCUDA could be imported (does not guarantee any CUDA devices)
+have_opencl : boolean
+    True if PyOpenCL could be imported (does not guarantee any OpenCL devices)
 """
 
 import numpy as np
@@ -66,16 +77,18 @@ def build(context, name, render_kws=None, extra_flags=None):
 
     Parameters
     ----------
+    context : :class:`cuda.Context` or `opencl.Context`
+        Context for which to compile the code
     name : str
         Source file name, relative to the katsdpsigproc module
-    render_kws : dict (optional)
-        Context arguments to pass to mako
-    extra_flags : list (optional)
+    render_kws : dict, optional
+        Keyword arguments to pass to mako
+    extra_flags : list, optional
         Flags to pass to the compiler
 
     Returns
     -------
-    `pycuda.compiler.SourceModule`
+    :class:`cuda.Program` or :class:`opencl.Program`
         Compiled module
     """
     if render_kws is None:
@@ -183,14 +196,14 @@ def create_some_context(interactive=True):
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
     :class:`DeviceArray`. It uses C ordering and allows padding, which
-    is always in units of the dtype. It is allocated from page-locked
-    CUDA memory.
+    is always in units of the dtype. It optionally uses pinned memory
+    to allow fast transfer to and from device memory.
 
     Because of limitations in numpy and PyCUDA (which do not support
     non-contiguous memory very well), it works by taking a slice from
     the origin of contiguous storage, and using that contiguous storage
     in host-device copies. While one can create views, those views
-    cannot be used in these copied because there is no way to know
+    cannot be used in fast copies because there is no way to know
     whether the view is anchored at the origin.
 
     See the numpy documentation on subclassing for an explanation of
@@ -224,7 +237,7 @@ class Array(np.ndarray):
 
     @classmethod
     def safe(cls, obj):
-        """Determines whether self can be copied to/from the GPU
+        """Determines whether self can be copied to/from a device
         directly.
         """
         try:
@@ -243,29 +256,27 @@ class Array(np.ndarray):
 
 class DeviceArray(object):
     """A light-weight array-like wrapper around a device buffer, that
-    handles padding better than `pycuda.gpuarray.GPUArray` (which
+    handles padding better than PyCUDA (which
     has very poor support).
 
     It only supports C-order arrays where the inner-most dimension is
     contiguous. Transfers are designed to use an :class:`Array` of the
     same shape and padding, but fall back to using a copy when
     necessary.
+
+    Parameters
+    ----------
+    context : :class:`cuda.Context` or :class:`opencl.Context`
+        Context in which to allocate the memory
+    shape : tuple
+        Shape for the usable data
+    dtype : numpy dtype
+        Data type
+    padded_shape : tuple, optional
+        Shape for memory allocation (defaults to `shape`)
     """
 
     def __init__(self, context, shape, dtype, padded_shape=None):
-        """Constructor.
-
-        Parameters
-        ----------
-        context : `pycuda.driver.Context`
-            CUDA context in which to allocate the memory
-        shape : tuple
-            Shape for the usable data
-        dtype : numpy dtype
-            Data type
-        padded_shape : tuple or `None`
-            Shape for memory allocation (defaults to `shape`)
-        """
         if padded_shape is None:
             padded_shape = shape
         assert len(shape) == len(padded_shape)
@@ -299,7 +310,7 @@ class DeviceArray(object):
     @classmethod
     def _contiguous(cls, ary):
         """Returns a contiguous view of a copyable array, for passing to
-        PyCUDA functions (which require a contiguous view).
+        PyCUDA or PyOpenCL functions (which require a contiguous view).
         """
         if ary.base is None:
             return ary
@@ -349,17 +360,16 @@ class DeviceArray(object):
         return ary
 
 class Transpose(object):
-    """Kernel for transposing a 2D array of data"""
-    def __init__(self, command_queue, ctype):
-        """Constructor.
+    """Kernel for transposing a 2D array of data
 
-        Parameters
-        ----------
-        context : `pycuda.driver.Context`
-            Context used for the kernel
-        ctype : str
-            Type (in C/CUDA, not numpy) of data elements
-        """
+    Parameters
+    ----------
+    command_queue : :class:`cuda.CommandQueue` or :class:`opencl.CommandQueue`
+        Command queue in which work will be enqueued
+    ctype : str
+        Type (in C/CUDA, not numpy) of data elements
+    """
+    def __init__(self, command_queue, ctype):
         self.command_queue = command_queue
         self.ctype = ctype
         self._block = 16   # TODO: tune based on hardware
