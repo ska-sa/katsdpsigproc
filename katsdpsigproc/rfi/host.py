@@ -6,15 +6,13 @@ import scipy.signal as signal
 class BackgroundMedianFilterHost(object):
     """Host backgrounder that applies a median filter to each baseline
     (by amplitude).
+
+    Parameters
+    ----------
+    width : int
+        The kernel width (must be odd)
     """
     def __init__(self, width):
-        """Constructor.
-
-        Parameters
-        ----------
-        width : int
-            The kernel width (must be odd)
-        """
         self.width = width
 
     def __call__(self, vis):
@@ -22,17 +20,16 @@ class BackgroundMedianFilterHost(object):
         return amp - signal.medfilt2d(amp, [self.width, 1])
 
 class ThresholdMADHost(object):
-    """Thresholding on median of absolute deviations."""
-    def __init__(self, n_sigma, flag_value=1):
-        """Constructor.
+    """Thresholding on median of absolute deviations.
 
-        Parameters
-        ----------
-        n_sigma : float
-            Number of (estimated) standard deviations for the threshold
-        flag_value : int
-            Number stored in returned value to indicate RFI
-        """
+    Parameters
+    ----------
+    n_sigma : float
+        Number of (estimated) standard deviations for the threshold
+    flag_value : int
+        Number stored in returned value to indicate RFI
+    """
+    def __init__(self, n_sigma, flag_value=1):
         self.factor = 1.4826 * n_sigma
         self.flag_value = flag_value
 
@@ -86,7 +83,7 @@ class FlaggerHost(object):
 
         Returns
         -------
-        numpy.ndarray
+        :class:`numpy.ndarray`
             Flags of the same shape as `vis`
         """
 
