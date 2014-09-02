@@ -4,7 +4,7 @@
  * Code shared (via mako inclusion) between threshold_mad.mako and threshold_mad_t.mako.
  */
 
-<%def name="median_non_zero(ranker_class, uniform)">
+<%def name="median_non_zero(ranker_class, uniform, prefix='')">
 /**
  * Return the value which has rank @a rank within the given ranker. The
  * ranker must operate on positive 32-bit floats.
@@ -15,7 +15,7 @@
  * If @a uniform (template parameter is true), then the entire workgroup must
  * be operating on the same set of data and the same parameters.
  */
-DEVICE_FN float find_rank(${ranker_class} *ranker, int rank, bool halfway)
+DEVICE_FN float ${prefix}find_rank(${ranker_class} *ranker, int rank, bool halfway)
 {
     int cur = 0;
     for (int i = 30; i >= 0; i--)
@@ -55,10 +55,10 @@ DEVICE_FN float find_rank(${ranker_class} *ranker, int rank, bool halfway)
  * undefined if N is zero or all values are zero. The ranker must operate
  * on positive 32-bit floats.
  */
-DEVICE_FN float median_non_zero(${ranker_class} *ranker, int N)
+DEVICE_FN float ${prefix}median_non_zero(${ranker_class} *ranker, int N)
 {
     int zeros = ${ranker_class}_zeros(ranker);
     int rank2 = N + zeros;
-    return find_rank(ranker, rank2 / 2, !(rank2 & 1));
+    return ${prefix}find_rank(ranker, rank2 / 2, !(rank2 & 1));
 }
 </%def>
