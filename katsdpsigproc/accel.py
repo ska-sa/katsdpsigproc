@@ -233,6 +233,7 @@ class Array(np.ndarray):
         index = tuple([slice(0, x) for x in shape])
         obj = owner[index]
         obj._accel_safe = True
+        obj.padded_shape = padded_shape
         return obj
 
     @classmethod
