@@ -26,7 +26,7 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
     BARRIER();
 <% N = (N + 1) // 2 %>
 % endwhile
-    int result = scratch->data[0];
+    ${type} result = scratch->data[0];
     // This barrier is needed because the scratch might get reused immediately
     BARRIER();
     return result;
