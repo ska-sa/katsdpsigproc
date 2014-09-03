@@ -1,5 +1,8 @@
 ## Macros that abstract the differences between OpenCL and CUDA.
 
+#ifndef PORT_MAKO
+#define PORT_MAKO
+
 #ifdef __OPENCL_VERSION__
 
 #define DEVICE_FN
@@ -58,4 +61,5 @@ __device__ static inline int as_int(float x)
     return __float_as_int(x);
 }
 
-#endif
+#endif /* CUDA */
+#endif /* PORT_MAKO */
