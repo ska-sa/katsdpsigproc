@@ -21,7 +21,6 @@
 
 <%namespace name="wg_reduce" file="/wg_reduce.mako"/>
 <%namespace name="rank" file="/rank.mako"/>
-<%namespace name="common" file="threshold_mad_common.mako"/>
 
 <%rank:ranker_serial class_name="ranker_abs_serial" type="float">
     <%def name="foreach(self)">
@@ -61,11 +60,12 @@ DEVICE_FN void ranker_abs_parallel_init(
     self->scratch = scratch;
 }
 
-<%common:median_non_zero ranker_class="ranker_abs_parallel" uniform="${True}"/>
+<%rank:median_non_zero_float ranker_class="ranker_abs_parallel" uniform="${True}"/>
 
-KERNEL REQD_WORK_GROUP_SIZE(WGSX, 1, 1) void threshold_mad_t(
-    GLOBAL const float * RESTRICT in, GLOBAL unsigned char * RESTRICT flags,
-    int channels, int stride, float factor)
+KERNEL REQD_WORK_GROUP_SIZE(WGSX, 1, 1) void madnz_t(
+    GLOBAL const float * RESTRICT in,
+    GLOBAL float * RESTRICT noise,
+    int channels, int stride)
 {
     LOCAL_DECL ranker_abs_parallel_scratch scratch;
 
@@ -74,10 +74,7 @@ KERNEL REQD_WORK_GROUP_SIZE(WGSX, 1, 1) void threshold_mad_t(
     ranker_abs_parallel_init(
         &ranker, in + bl * stride, get_local_id(0),
         WGSX, channels, &scratch);
-    float threshold = factor * median_non_zero(&ranker, channels);
-    for (int i = get_local_id(0); i < channels; i += WGSX)
-    {
-        int addr = bl * stride + i;
-        flags[addr] = (in[addr] > threshold) ? ${flag_value} : 0;
-    }
+    float s = 1.4826 * median_non_zero_float(&ranker, channels);
+    if (get_local_id(0) == 0)
+        noise[bl] = s;
 }

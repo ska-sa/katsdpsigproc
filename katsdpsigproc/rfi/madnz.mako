@@ -22,7 +22,6 @@
 
 <%include file="/port.mako"/>
 <%namespace name="rank" file="/rank.mako"/>
-<%namespace name="common" file="threshold_mad_common.mako"/>
 
 /**
  * Encapsulates a section of a strided (non-contiguous) 1D array.
@@ -79,11 +78,12 @@ DEVICE_FN void ranker_abs_parallel_init(
     self->scratch = scratch;
 }
 
-<%common:median_non_zero ranker_class="ranker_abs_parallel" uniform="${False}"/>
+<%rank:median_non_zero_float ranker_class="ranker_abs_parallel" uniform="${False}"/>
 
-KERNEL REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) void threshold_mad(
-    const GLOBAL float * RESTRICT in, GLOBAL unsigned char * RESTRICT flags,
-    int channels, int stride, float factor,
+KERNEL REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) void madnz(
+    const GLOBAL float * RESTRICT in,
+    GLOBAL float * RESTRICT noise,
+    int channels, int stride,
     int VT)
 {
     LOCAL_DECL ranker_abs_parallel_scratch scratch[${wgsx}];
@@ -95,7 +95,7 @@ KERNEL REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) void threshold_mad(
     array_piece_init(&piece, in + bl, start, end, stride);
     ranker_abs_parallel ranker;
     ranker_abs_parallel_init(&ranker, &piece, scratch + get_local_id(0));
-    float threshold = factor * median_non_zero(&ranker, channels);
-    for (int i = piece.start; i < piece.end; i++)
-        flags[bl + i * stride] = (array_piece_get(&piece, i) > threshold) ? ${flag_value} : 0;
+    float s = 1.4826 * median_non_zero_float(&ranker, channels);
+    if (start == 0)
+        noise[bl] = s;
 }

@@ -36,6 +36,14 @@ try:
 except ImportError:
     have_opencl = False
 
+def divup(x, y):
+    """Divide x by y and round the result upwards"""
+    return (x + y - 1) // y
+
+def roundup(x, y):
+    """Rounds x up to the next multiple of y"""
+    return divup(x, y) * y
+
 class LinenoLexer(mako.lexer.Lexer):
     """A wrapper that inserts #line directives into the source code. It
     is used by passing `lexer_cls` to the mako template constructor.
@@ -396,8 +404,8 @@ class Transpose(object):
         assert src.shape[0] == dest.shape[1]
         assert src.shape[1] == dest.shape[0]
         # Round up to number of blocks in each dimension
-        in_row_blocks = (src.shape[0] + self._block - 1) // self._block
-        in_col_blocks = (src.shape[1] + self._block - 1) // self._block
+        in_row_blocks = divup(src.shape[0], self._block)
+        in_col_blocks = divup(src.shape[1], self._block)
         self.command_queue.enqueue_kernel(
                 self.kernel,
                 [

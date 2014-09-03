@@ -20,33 +20,11 @@ class BackgroundMedianFilterHost(object):
         amp = np.abs(vis)
         return amp - signal.medfilt2d(amp, [self.width, 1])
 
-def median_abs(deviations):
-    """Find the median of absolute deviations (amongst the non-zero
-    elements, for each baseline).
-    """
-    baselines = deviations.shape[1]
-    out = np.empty(baselines)
-    for i in range(baselines):
-        abs_dev = np.abs(deviations[:, i])
-        out[i] = np.median(abs_dev[abs_dev > 0])
-    return out
-
-class ThresholdMADHost(object):
-    """Thresholding on median of absolute deviations.
-
-    Parameters
-    ----------
-    n_sigma : float
-        Number of (estimated) standard deviations for the threshold
-    flag_value : int
-        Number stored in returned value to indicate RFI
-    """
-    def __init__(self, n_sigma, flag_value=1):
-        self.factor = 1.4826 * n_sigma
-        self.flag_value = flag_value
+class NoiseEstMADHost(object):
+    """Estimate noise using the median of non-zero absolute deviations."""
 
     def __call__(self, deviations):
-        """Apply the thresholding
+        """Compute the estimated standard deviation of noise per baseline.
 
         Parameters
         ----------
@@ -57,10 +35,46 @@ class ThresholdMADHost(object):
         Returns
         -------
         array-like
+            1D array of `np.float32`, containing the noise estimate for each channel
+        """
+        baselines = deviations.shape[1]
+        out = np.empty(baselines)
+        for i in range(baselines):
+            abs_dev = np.abs(deviations[:, i])
+            out[i] = np.median(abs_dev[abs_dev > 0])
+        return out * 1.4826
+
+class ThresholdSimpleHost(object):
+    """Threshold each element independently.
+
+    Parameters
+    ----------
+    n_sigma : float
+        Number of (estimated) standard deviations for the threshold
+    flag_value : int
+        Number stored in returned value to indicate RFI
+    """
+    def __init__(self, n_sigma, flag_value=1):
+        self.n_sigma = n_sigma
+        self.flag_value = flag_value
+
+    def __call__(self, deviations, noise):
+        """Apply the thresholding
+
+        Parameters
+        ----------
+        deviations : array-like, real
+            Deviations from the background amplitude, indexed by channel
+            then baseline.
+        noise : array-like, real
+            Per-baseline estimate of the standard deviation for noise
+
+        Returns
+        -------
+        array-like
             Array of `np.uint8`, containing the flag value or 0
         """
-        medians = median_abs(deviations)
-        flags = (deviations > self.factor * medians).astype(np.uint8)
+        flags = (deviations > self.n_sigma * noise).astype(np.uint8)
         return flags * self.flag_value
 
 class ThresholdSumHost(object):
@@ -83,7 +97,7 @@ class ThresholdSumHost(object):
     """
 
     def __init__(self, n_sigma, n_windows=4, threshold_falloff=1.2, flag_value=1):
-        self.factor = 1.4826 * n_sigma
+        self.n_sigma = n_sigma
         self.windows = [2 ** i for i in range(n_windows)]
         self.threshold_scales = [1.0 / (1.5 ** i) for i in range(n_windows)]
         self.flag_value = flag_value
@@ -118,7 +132,7 @@ class ThresholdSumHost(object):
             flags |= np.convolve(sum_flags, weight)
         return flags
 
-    def __call__(self, deviations):
+    def __call__(self, deviations, noise):
         """Apply the thresholding
 
         Parameters
@@ -126,6 +140,8 @@ class ThresholdSumHost(object):
         deviations : array-like, real
             Deviations from the background amplitude, indexed by channel
             then baseline.
+        noise : array-like, real
+            Per-baseline estimate of the standard deviation for noise
 
         Returns
         -------
@@ -134,9 +150,8 @@ class ThresholdSumHost(object):
         """
         flags = np.empty_like(deviations, dtype=np.uint8)
         baselines = deviations.shape[1]
-        medians = median_abs(deviations)
         for i in range(baselines):
-            bl_flags = self.apply_baseline(deviations[:, i], self.factor * medians[i])
+            bl_flags = self.apply_baseline(deviations[:, i], self.n_sigma * noise[i])
             flags[:, i] = bl_flags * np.uint8(self.flag_value)
         return flags
 
@@ -145,8 +160,9 @@ class FlaggerHost(object):
     to make a flagger.
     """
 
-    def __init__(self, background, threshold):
+    def __init__(self, background, noise_est, threshold):
         self.background = background
+        self.noise_est = noise_est
         self.threshold = threshold
 
     def __call__(self, vis):
@@ -165,5 +181,6 @@ class FlaggerHost(object):
         """
 
         deviations = self.background(vis)
-        flags = self.threshold(deviations)
+        noise = self.noise_est(deviations)
+        flags = self.threshold(deviations, noise)
         return flags
