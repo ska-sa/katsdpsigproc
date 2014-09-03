@@ -20,6 +20,9 @@ def setup():
 def test_ThresholdMADHost():
     check_host_class('ThresholdMADHost', 11.0)
 
+def test_ThresholdSumHost():
+    check_host_class('ThresholdSumHost', 11.0)
+
 def check_host_class(cls_name, n_sigma):
     cls = getattr(host, cls_name)
     threshold = cls(n_sigma)
