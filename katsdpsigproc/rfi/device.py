@@ -426,7 +426,7 @@ class ThresholdSumDevice(object):
     def __init__(self, command_queue, n_sigma, n_windows=4, threshold_falloff=1.2,
             wgsx=256, vt=4, flag_value=1):
         edge_size = 2 ** n_windows - n_windows - 1
-        self.chunk = wgsx - 2 * edge_size
+        self.chunk = wgsx * vt - 2 * edge_size
         assert self.chunk > 0
         self.command_queue = command_queue
         self.n_windows = n_windows
