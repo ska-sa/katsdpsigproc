@@ -12,7 +12,7 @@ KERNEL REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) void threshold_simple(
     GLOBAL const float * RESTRICT deviations,
     GLOBAL const float * RESTRICT noise,
     GLOBAL unsigned char * RESTRICT flags,
-    unsigned int stride,
+    int stride,
     float n_sigma)
 {
     int bl = get_global_id(0);

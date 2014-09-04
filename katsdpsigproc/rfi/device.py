@@ -1,3 +1,4 @@
+# coding: utf-8
 """RFI flagging algorithms that run on an accelerator (currently only
 CUDA).
 
@@ -389,6 +390,84 @@ class ThresholdSimpleDevice(object):
                 ],
                 global_size=tuple(reversed(self.min_padded_shape(deviations.shape))),
                 local_size=(self.wgsx, self.wgsy))
+
+class ThresholdSumDevice(object):
+    """A device version of :class:`katsdpsigproc.rfi.host.ThresholdSumHost.
+    It uses transposed data. Performance will be best with a large work
+    group size, because of the stencil-like nature of the computation.
+
+    Parameters
+    ----------
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command-queue in which work will be enqueued
+    n_sigma : float
+        Number of (estimated) standard deviations for the threshold
+    n_windows : int
+        Number of window sizes to use
+    threshold_falloff : float
+        Controls rate at which thresholds decrease (ρ in Offringa 2010)
+    wgsx : int
+        Number of work items to use per work group
+    flag_value : int
+        Number stored in returned value to indicate RFI
+    """
+    host_class = host.ThresholdSumHost
+    transposed = True
+
+    def min_padded_shape(self, shape):
+        """Minimum padded size for inputs and outputs"""
+        return (accel.roundup(shape[0], self.wgsy), shape[1])
+
+    def min_padded_noise_shape(self, baselines):
+        return (accel.roundup(baselines, self.wgsy),)
+
+    def __init__(self, command_queue, n_sigma, n_windows=4, threshold_falloff=1.2,
+            wgsx=256, flag_value=1):
+        edge_size = 2 ** n_windows - n_windows - 1
+        self.chunk = wgsx - 2 * edge_size
+        assert self.chunk > 0
+        self.command_queue = command_queue
+        self.n_windows = n_windows
+        self.n_sigma = [np.float32(n_sigma * pow(threshold_falloff, -i)) for i in range(n_windows)]
+        self.wgsx = wgsx
+        self.wgsy = 1
+        self.flag_value = flag_value
+        program = accel.build(command_queue.context, 'rfi/threshold_sum.mako',
+                {'wgsx': self.wgsx,
+                 'wgsy': self.wgsy,
+                 'windows' : self.n_windows,
+                 'flag_value': self.flag_value})
+        self.kernel = program.get_kernel('threshold_sum')
+
+    def __call__(self, deviations, noise, flags):
+        """Apply the thresholding
+
+        Parameters
+        ----------
+        deviations : :class:`katsdpsigproc.accel.DeviceArray`, float32
+            Deviations from the background amplitude. It must have a padded
+            size at least that given by :meth:`min_padded_shape`.
+        noise : :class:`katsdpsigproc.accel.DeviceArray`, float32
+            Noise estimates, with the same shape as the baseline axis of
+            `deviations`, and padded shape of at least
+            :meth:`min_padded_noise_shape`
+        flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
+            Output flags, with the same shape and padding as `deviations`
+        """
+        assert deviations.shape == flags.shape
+        assert deviations.padded_shape == flags.padded_shape
+        (baselines, channels) = deviations.shape
+        assert noise.shape[0] == baselines
+        assert noise.padded_shape[0] >= self.min_padded_noise_shape(baselines)[0]
+
+        blocks = accel.divup(channels, self.chunk)
+        args = [deviations.buffer, noise.buffer, flags.buffer,
+                np.int32(channels), np.int32(deviations.padded_shape[1])]
+        args.extend(self.n_sigma)
+        self.command_queue.enqueue_kernel(
+                self.kernel, args,
+                global_size = (blocks * self.wgsx, baselines),
+                local_size = (self.wgsx, 1))
 
 class FlaggerDevice(object):
     """Combine device backgrounder and thresholder implementations to

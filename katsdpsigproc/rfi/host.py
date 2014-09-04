@@ -99,7 +99,7 @@ class ThresholdSumHost(object):
     def __init__(self, n_sigma, n_windows=4, threshold_falloff=1.2, flag_value=1):
         self.n_sigma = n_sigma
         self.windows = [2 ** i for i in range(n_windows)]
-        self.threshold_scales = [1.0 / (1.5 ** i) for i in range(n_windows)]
+        self.threshold_scales = [pow(threshold_falloff, -i) for i in range(n_windows)]
         self.flag_value = flag_value
 
     def apply_baseline(self, deviations, threshold1):
@@ -119,7 +119,7 @@ class ThresholdSumHost(object):
         deviations = deviations.copy()
         flags = np.zeros_like(deviations, dtype=np.bool)
         for window, scale in zip(self.windows, self.threshold_scales):
-            threshold = threshold1 * scale
+            threshold = np.float32(threshold1 * scale)
             # Force already identified outliers to the threshold
             deviations[flags] = threshold
             # Compute sums

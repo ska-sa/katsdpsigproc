@@ -37,6 +37,10 @@ def test_ThresholdSimpleDevice():
 def test_ThresholdSimpleDevice_transposed():
     check_device_class(device.ThresholdSimpleDevice, 11.0, True, 4, 3)
 
+@device_test
+def test_ThresholdSumDevice():
+    check_device_class(device.ThresholdSumDevice, 11.0, wgsx=64)
+
 def check_device_class(cls, n_sigma, *device_args, **device_kw):
     th_host = cls.host_class(n_sigma)
     th_device = device.ThresholdHostFromDevice(
@@ -44,4 +48,5 @@ def check_device_class(cls, n_sigma, *device_args, **device_kw):
     noise = np.linspace(0.0, 50.0, _deviations.shape[1]).astype(np.float32)
     flags_host = th_host(_deviations, noise)
     flags_device = th_device(_deviations, noise)
+    print np.transpose(np.nonzero(flags_host != flags_device))
     np.testing.assert_equal(flags_host, flags_device)
