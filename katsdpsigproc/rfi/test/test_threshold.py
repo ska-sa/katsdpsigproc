@@ -39,7 +39,7 @@ def test_ThresholdSimpleDevice_transposed():
 
 @device_test
 def test_ThresholdSumDevice():
-    check_device_class(device.ThresholdSumDevice, 11.0, wgsx=64)
+    check_device_class(device.ThresholdSumDevice, 11.0, wgs=64)
 
 def check_device_class(cls, n_sigma, *device_args, **device_kw):
     th_host = cls.host_class(n_sigma)

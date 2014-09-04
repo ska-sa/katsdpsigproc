@@ -406,7 +406,7 @@ class ThresholdSumDevice(object):
         Number of window sizes to use
     threshold_falloff : float
         Controls rate at which thresholds decrease (ρ in Offringa 2010)
-    wgsx : int
+    wgs : int
         Number of work items to use per work group
     vt : int
         Number of elements to process in each work item
@@ -418,26 +418,24 @@ class ThresholdSumDevice(object):
 
     def min_padded_shape(self, shape):
         """Minimum padded size for inputs and outputs"""
-        return (accel.roundup(shape[0], self.wgsy), shape[1])
+        return shape
 
     def min_padded_noise_shape(self, baselines):
-        return (accel.roundup(baselines, self.wgsy),)
+        return (baselines,)
 
     def __init__(self, command_queue, n_sigma, n_windows=4, threshold_falloff=1.2,
-            wgsx=256, vt=4, flag_value=1):
+            wgs=256, vt=4, flag_value=1):
         edge_size = 2 ** n_windows - n_windows - 1
-        self.chunk = wgsx * vt - 2 * edge_size
+        self.chunk = wgs * vt - 2 * edge_size
         assert self.chunk > 0
         self.command_queue = command_queue
         self.n_windows = n_windows
         self.n_sigma = [np.float32(n_sigma * pow(threshold_falloff, -i)) for i in range(n_windows)]
-        self.wgsx = wgsx
-        self.wgsy = 1
+        self.wgs = wgs
         self.vt = vt
         self.flag_value = flag_value
         program = accel.build(command_queue.context, 'rfi/threshold_sum.mako',
-                {'wgsx': self.wgsx,
-                 'wgsy': self.wgsy,
+                {'wgs': self.wgs,
                  'vt': self.vt,
                  'windows' : self.n_windows,
                  'flag_value': self.flag_value})
@@ -470,8 +468,8 @@ class ThresholdSumDevice(object):
         args.extend(self.n_sigma)
         self.command_queue.enqueue_kernel(
                 self.kernel, args,
-                global_size = (blocks * self.wgsx, baselines),
-                local_size = (self.wgsx, 1))
+                global_size = (blocks * self.wgs, baselines),
+                local_size = (self.wgs, 1))
 
 class FlaggerDevice(object):
     """Combine device backgrounder and thresholder implementations to
