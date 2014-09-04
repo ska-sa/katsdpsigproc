@@ -408,6 +408,8 @@ class ThresholdSumDevice(object):
         Controls rate at which thresholds decrease (ρ in Offringa 2010)
     wgsx : int
         Number of work items to use per work group
+    vt : int
+        Number of elements to process in each work item
     flag_value : int
         Number stored in returned value to indicate RFI
     """
@@ -422,7 +424,7 @@ class ThresholdSumDevice(object):
         return (accel.roundup(baselines, self.wgsy),)
 
     def __init__(self, command_queue, n_sigma, n_windows=4, threshold_falloff=1.2,
-            wgsx=256, flag_value=1):
+            wgsx=256, vt=4, flag_value=1):
         edge_size = 2 ** n_windows - n_windows - 1
         self.chunk = wgsx - 2 * edge_size
         assert self.chunk > 0
@@ -431,10 +433,12 @@ class ThresholdSumDevice(object):
         self.n_sigma = [np.float32(n_sigma * pow(threshold_falloff, -i)) for i in range(n_windows)]
         self.wgsx = wgsx
         self.wgsy = 1
+        self.vt = vt
         self.flag_value = flag_value
         program = accel.build(command_queue.context, 'rfi/threshold_sum.mako',
                 {'wgsx': self.wgsx,
                  'wgsy': self.wgsy,
+                 'vt': self.vt,
                  'windows' : self.n_windows,
                  'flag_value': self.flag_value})
         self.kernel = program.get_kernel('threshold_sum')
