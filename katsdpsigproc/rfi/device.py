@@ -518,9 +518,9 @@ class FlaggerDevice(object):
         self._deviations_t = None
         self._flags_t = None
         if noise_est.transposed or threshold.transposed:
-            self._transpose_deviations = Transpose(self.command_queue, 'float')
+            self._transpose_deviations = Transpose(self.command_queue, np.float32, 'float')
         if threshold.transposed:
-            self._transpose_flags = Transpose(self.command_queue, 'unsigned char')
+            self._transpose_flags = Transpose(self.command_queue, np.uint8, 'unsigned char')
 
     def _min_padded_shape_t(self, shape_t):
         padded_shape = (0, 0)

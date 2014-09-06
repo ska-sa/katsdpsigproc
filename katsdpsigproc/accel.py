@@ -21,6 +21,7 @@ import pkg_resources
 import re
 import os
 import sys
+import itertools
 
 try:
     import pycuda.driver
@@ -201,6 +202,42 @@ def create_some_context(interactive=True):
 
     return device.make_context()
 
+def generic_autotune(measure, *args):
+    """Run a number of tuning experiments and find the optimal combination
+    of parameters.
+
+    Each argument is a iterable. The `measure` function is passed each
+    element of the Cartesian product, and returns a score: lower is better.
+    If the function raises an exception, it is suppressed. Returns a
+    tuple with the best combination of values; or just the best value, if
+    only one argument is provided.
+
+    Raises
+    ------
+    Exception : if every combination throws an exception, the last exception
+        is re-raised.
+    ValueError : if the Cartesian product is empty
+    """
+    opts = itertools.product(*args)
+    best = None
+    best_score = None
+    last_exc = None
+    for i in opts:
+        try:
+            score = measure(*i)
+            if best_score is None or score < best_score:
+                best = i
+                best_score = score
+        except Exception as e:
+            last_exc = e
+    if best is None:
+        if last_exc is None:
+            last_exc = RuntimeError('No options to test')
+        raise last_exc
+    if len(args) == 1:
+        best = best[0]
+    return best
+
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
     :class:`DeviceArray`. It uses C ordering and allows padding, which
@@ -377,15 +414,38 @@ class Transpose(object):
     ----------
     command_queue : :class:`cuda.CommandQueue` or :class:`opencl.CommandQueue`
         Command queue in which work will be enqueued
+    dtype : numpy dtype
+        Type of data elements
     ctype : str
         Type (in C/CUDA, not numpy) of data elements
+    tune : dict, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+        - block: number of workitems per workgroup in each dimension
     """
-    def __init__(self, command_queue, ctype):
+    def __init__(self, command_queue, dtype, ctype, tune=None):
         self.command_queue = command_queue
         self.ctype = ctype
-        self._block = 16   # TODO: tune based on hardware
+        if tune is None:
+            tune = self.autotune(command_queue.context, dtype, ctype)
+        self._block = tune['block']
         program = build(command_queue.context, "transpose.mako", {'block': self._block, 'ctype': ctype})
         self.kernel = program.get_kernel("transpose")
+
+    @classmethod
+    def autotune(cls, context, dtype, ctype):
+        queue = context.create_tuning_command_queue()
+        in_data = DeviceArray(context, (2048, 2048), dtype=dtype)
+        out_data = DeviceArray(context, (2048, 2048), dtype=dtype)
+        def measure(block):
+            fn = cls(queue, dtype, ctype, {'block': block})
+            fn(out_data, in_data)  # Warmup
+            queue.start_tuning()
+            fn(out_data, in_data)
+            return queue.stop_tuning()
+
+        block = generic_autotune(measure, [1, 16, 32, 64])
+        return {'block': block}
 
     def __call__(self, dest, src):
         """Apply the transposition. The input and output must have

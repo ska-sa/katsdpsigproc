@@ -112,7 +112,7 @@ class TestTranspose(object):
 
     @device_test
     def setup(self):
-        self.transpose = Transpose(test_command_queue, 'float')
+        self.transpose = Transpose(test_command_queue, np.float32, 'float')
 
     @device_test
     def check_transpose(self, R, C):
