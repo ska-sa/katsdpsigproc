@@ -49,7 +49,7 @@ def _db_keys(fn, args, kwargs):
     named_args = dict(kwargs)
     for i in range(2, len(args)):
         named_args[argspec.args[i]] = args[i]
-    keys = {'arg_' + key: adapt_value(value) for (key, value) in named_args.iteritems()}
+    keys = dict([('arg_' + key, adapt_value(value)) for (key, value) in named_args.iteritems()])
 
     # Add information about the device
     device = args[1].device
@@ -156,7 +156,7 @@ def autotuner(fn, *args, **kwargs):
         if ans is None:
             # Nothing found in the database, so we need to tune now
             ans = fn(*args, **kwargs)
-            values = {'value_' + key: value for (key, value) in ans.iteritems()}
+            values = dict([('value_' + key, value) for (key, value) in ans.iteritems()])
             _save(conn, tablename, keys, values)
     finally:
         conn.close()
