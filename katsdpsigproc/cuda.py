@@ -56,6 +56,11 @@ class Device(object):
         return 'CUDA'
 
     @property
+    def driver_version(self):
+        return 'CUDA:{0[0]}{0[1]}{0[2]} Driver:{1}'.format(
+                pycuda.driver.get_version(), pycuda.driver.get_driver_version())
+
+    @property
     def is_cuda(self):
         return True
 

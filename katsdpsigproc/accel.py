@@ -21,7 +21,7 @@ import pkg_resources
 import re
 import os
 import sys
-import itertools
+from . import tune
 
 try:
     import pycuda.driver
@@ -201,42 +201,6 @@ def create_some_context(interactive=True):
         device = devices[0]
 
     return device.make_context()
-
-def generic_autotune(measure, *args):
-    """Run a number of tuning experiments and find the optimal combination
-    of parameters.
-
-    Each argument is a iterable. The `measure` function is passed each
-    element of the Cartesian product, and returns a score: lower is better.
-    If the function raises an exception, it is suppressed. Returns a
-    tuple with the best combination of values; or just the best value, if
-    only one argument is provided.
-
-    Raises
-    ------
-    Exception : if every combination throws an exception, the last exception
-        is re-raised.
-    ValueError : if the Cartesian product is empty
-    """
-    opts = itertools.product(*args)
-    best = None
-    best_score = None
-    last_exc = None
-    for i in opts:
-        try:
-            score = measure(*i)
-            if best_score is None or score < best_score:
-                best = i
-                best_score = score
-        except Exception as e:
-            last_exc = e
-    if best is None:
-        if last_exc is None:
-            last_exc = RuntimeError('No options to test')
-        raise last_exc
-    if len(args) == 1:
-        best = best[0]
-    return best
 
 class Array(np.ndarray):
     """A restricted array class that can be used to initialise a
@@ -433,6 +397,7 @@ class Transpose(object):
         self.kernel = program.get_kernel("transpose")
 
     @classmethod
+    @tune.autotuner
     def autotune(cls, context, dtype, ctype):
         queue = context.create_tuning_command_queue()
         in_data = DeviceArray(context, (2048, 2048), dtype=dtype)
@@ -444,7 +409,7 @@ class Transpose(object):
             fn(out_data, in_data)
             return queue.stop_tuning()
 
-        block = generic_autotune(measure, [1, 16, 32, 64])
+        block = tune.autotune(measure, [1, 16, 32, 64])
         return {'block': block}
 
     def __call__(self, dest, src):

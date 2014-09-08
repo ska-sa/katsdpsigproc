@@ -10,6 +10,7 @@ kernel at the appropriate point.
 """
 
 from .. import accel
+from .. import tune
 from ..accel import DeviceArray, LinenoLexer, Transpose
 import numpy as np
 from . import host
@@ -247,6 +248,7 @@ class NoiseEstMADTDevice(object):
         self.kernel = program.get_kernel('madnz_t')
 
     @classmethod
+    @tune.autotuner
     def autotune(cls, context, max_channels):
         queue = context.create_tuning_command_queue()
         baselines = 128
@@ -261,7 +263,7 @@ class NoiseEstMADTDevice(object):
             queue.start_tuning()
             fn(deviations, noise)
             return queue.stop_tuning()
-        wgsx = accel.generic_autotune(measure, [1, 32, 64, 128, 256, 512, 1024])
+        wgsx = tune.autotune(measure, [1, 32, 64, 128, 256, 512, 1024])
         return {'wgsx': wgsx}
 
     @classmethod

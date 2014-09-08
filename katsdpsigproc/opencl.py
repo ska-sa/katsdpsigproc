@@ -80,6 +80,11 @@ class Device(object):
         return self._pyopencl_device.platform.name
 
     @property
+    def driver_version(self):
+        """Return human-readable name for the driver version"""
+        return self._pyopencl_device.driver_version
+
+    @property
     def is_cuda(self):
         """Whether the device is a CUDA device"""
         return False

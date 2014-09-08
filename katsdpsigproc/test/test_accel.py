@@ -1,6 +1,6 @@
-import functools
 import sys
 import numpy as np
+from decorator import decorator
 from mako.template import Template
 from nose.tools import assert_equal
 from nose.plugins.skip import SkipTest
@@ -21,13 +21,12 @@ try:
 except RuntimeError:
     pass  # No devices available
 
-def device_test(test):
+@decorator
+def device_test(test, *args, **kw):
     """Decorator that causes a test to be skipped if a compute device is not available"""
-    def wrapper(*args, **kw):
-        if not test_context:
-            raise SkipTest('CUDA/OpenCL not found')
-        return test(*args, **kw)
-    return functools.update_wrapper(wrapper, test)
+    if not test_context:
+        raise SkipTest('CUDA/OpenCL not found')
+    return test(*args, **kw)
 
 # Prevent nose from treating it as a test
 device_test.__test__ = False
