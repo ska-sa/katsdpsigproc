@@ -87,7 +87,7 @@ def main():
         end = time.time()
         print "CPU time (ms):", (end - start) * 1000.0
     else:
-        command_queue = context.create_command_queue()
+        command_queue = context.create_command_queue(profile=True)
         background = katsdpsigproc.rfi.device.BackgroundMedianFilterDevice(
                 command_queue, args.width, args.bg_wgs, args.bg_csplit)
         noise_est = katsdpsigproc.rfi.device.NoiseEstMADTDevice(
