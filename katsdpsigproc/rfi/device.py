@@ -218,6 +218,10 @@ class NoiseEstMADTDevice(object):
     max_channels : int
         Maximum number of channels. Choosing too large a value will
         reduce performance.
+    tune : dict, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+        - wgsx: number of work-items per baseline
 
     Attributes
     ----------
@@ -231,23 +235,45 @@ class NoiseEstMADTDevice(object):
     host_class = host.NoiseEstMADHost
     transposed = True
 
-    def __init__(self, command_queue, max_channels):
+    def __init__(self, command_queue, max_channels, tune=None):
         self.command_queue = command_queue
         self.max_channels = max_channels
-        self._wgsx = 256   # TODO: tune based on hardware
+        if tune is None:
+            tune = self.autotune(command_queue.context, max_channels)
+        self._wgsx = tune['wgsx']
         self._vt = accel.divup(max_channels, self._wgsx)
         program = accel.build(command_queue.context, 'rfi/madnz_t.mako',
                 {'vt': self._vt, 'wgsx': self._wgsx})
         self.kernel = program.get_kernel('madnz_t')
 
-    def min_padded_shape(self, shape):
+    @classmethod
+    def autotune(cls, context, max_channels):
+        queue = context.create_tuning_command_queue()
+        baselines = 128
+        shape = (baselines, max_channels)
+        shape = cls.min_padded_shape(shape)
+        deviations = DeviceArray(context, shape, dtype=np.float32)
+        deviations.set(queue, np.random.uniform(size=deviations.shape).astype(np.float32))
+        noise = DeviceArray(context, (baselines,), dtype=np.float32)
+        def measure(wgsx):
+            fn = cls(queue, max_channels, {'wgsx': wgsx})
+            fn(deviations, noise) # Warmup
+            queue.start_tuning()
+            fn(deviations, noise)
+            return queue.stop_tuning()
+        wgsx = accel.generic_autotune(measure, [1, 32, 64, 128, 256, 512, 1024])
+        return {'wgsx': wgsx}
+
+    @classmethod
+    def min_padded_shape(cls, shape):
         """Minimum padded size for inputs and outputs"""
         (baselines, channels) = shape
         # TODO: this is just for alignment, and should move to accel.py
         padded_channels = accel.roundup(channels, 32)
         return (baselines, padded_channels)
 
-    def min_padded_noise_shape(self, baselines):
+    @classmethod
+    def min_padded_noise_shape(cls, baselines):
         """Minimum padded shape for noise"""
         return (baselines,)
 

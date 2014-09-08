@@ -48,5 +48,4 @@ def check_device_class(cls, n_sigma, *device_args, **device_kw):
     noise = np.linspace(0.0, 50.0, _deviations.shape[1]).astype(np.float32)
     flags_host = th_host(_deviations, noise)
     flags_device = th_device(_deviations, noise)
-    print np.transpose(np.nonzero(flags_host != flags_device))
     np.testing.assert_equal(flags_host, flags_device)

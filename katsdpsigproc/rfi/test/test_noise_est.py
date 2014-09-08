@@ -37,7 +37,7 @@ def test_NoiseEstMADDevice():
 
 @device_test
 def test_NoiseEstMADTDevice():
-    check_device_class(device.NoiseEstMADTDevice, 512)
+    check_device_class(device.NoiseEstMADTDevice, 10240)
 
 def check_device_class(cls, *device_args, **device_kw):
     ne_host = cls.host_class()
