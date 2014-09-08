@@ -409,7 +409,7 @@ class Transpose(object):
             fn(out_data, in_data)
             return queue.stop_tuning()
 
-        block = tune.autotune(measure, [1, 16, 32, 64])
+        block = tune.autotune(measure, [4, 8, 16, 32])
         return {'block': block}
 
     def __call__(self, dest, src):

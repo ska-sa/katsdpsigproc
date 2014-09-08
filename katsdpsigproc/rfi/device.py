@@ -258,12 +258,15 @@ class NoiseEstMADTDevice(object):
         deviations.set(queue, np.random.uniform(size=deviations.shape).astype(np.float32))
         noise = DeviceArray(context, (baselines,), dtype=np.float32)
         def measure(wgsx):
+            # Very large values of VT cause the AMD compiler to choke and segfault
+            if max_channels > 256 * wgsx:
+                return 1e9
             fn = cls(queue, max_channels, {'wgsx': wgsx})
             fn(deviations, noise) # Warmup
             queue.start_tuning()
             fn(deviations, noise)
             return queue.stop_tuning()
-        wgsx = tune.autotune(measure, [1, 32, 64, 128, 256, 512, 1024])
+        wgsx = tune.autotune(measure, [32, 64, 128, 256, 512, 1024])
         return {'wgsx': wgsx}
 
     @classmethod
