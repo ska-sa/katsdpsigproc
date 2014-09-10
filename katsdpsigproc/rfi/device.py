@@ -447,15 +447,21 @@ class ThresholdSumDevice(object):
     host_class = host.ThresholdSumHost
     transposed = True
 
-    def min_padded_shape(self, shape):
+    @classmethod
+    def min_padded_shape(cls, shape):
         """Minimum padded size for inputs and outputs"""
         return shape
 
-    def min_padded_noise_shape(self, baselines):
+    @classmethod
+    def min_padded_noise_shape(cls, baselines):
         return (baselines,)
 
     def __init__(self, command_queue, n_sigma, n_windows=4, threshold_falloff=1.2,
-            wgs=256, vt=4, flag_value=1):
+            flag_value=1, tune=None):
+        if tune is None:
+            tune = self.autotune(command_queue.context, n_windows)
+        wgs = tune['wgs']
+        vt = tune['vt']
         edge_size = 2 ** n_windows - n_windows - 1
         self.chunk = wgs * vt - 2 * edge_size
         assert self.chunk > 0
@@ -471,6 +477,31 @@ class ThresholdSumDevice(object):
                  'windows' : self.n_windows,
                  'flag_value': self.flag_value})
         self.kernel = program.get_kernel('threshold_sum')
+
+    @classmethod
+    @tune.autotuner
+    def autotune(cls, context, n_windows):
+        queue = context.create_tuning_command_queue()
+        channels = 4096
+        baselines = 128
+        shape = (baselines, channels)
+        shape = cls.min_padded_shape(shape)
+        deviations = DeviceArray(context, shape, dtype=np.float32)
+        deviations.set(queue, np.random.uniform(size=deviations.shape).astype(np.float32))
+        noise_shape = cls.min_padded_noise_shape(baselines)
+        noise = DeviceArray(context, noise_shape, dtype=np.float32)
+        noise.set(queue, np.random.uniform(high=0.1, size=noise.shape).astype(np.float32))
+        flags = DeviceArray(context, shape, dtype=np.uint8)
+        def measure(wgs, vt):
+            fn = cls(queue, 11.0, n_windows=n_windows, tune={'wgs': wgs, 'vt': vt})
+            fn(deviations, noise, flags) # Warmup
+            queue.start_tuning()
+            fn(deviations, noise, flags)
+            return queue.stop_tuning()
+        (wgs, vt) = tune.autotune(measure,
+                [32, 64, 128, 256, 512],
+                [1, 2, 3, 4, 8, 16])
+        return {'wgs': wgs, 'vt': vt}
 
     def __call__(self, deviations, noise, flags):
         """Apply the thresholding

@@ -80,7 +80,7 @@ def main():
     if context is None:
         background = katsdpsigproc.rfi.host.BackgroundMedianFilterHost(args.width)
         noise_est = katsdpsigproc.rfi.host.NoiseEstMADHost()
-        threshold = katsdpsigproc.rfi.host.ThresholdSimpleHost(args.sigmas)
+        threshold = katsdpsigproc.rfi.host.ThresholdSumHost(args.sigmas)
         flagger = katsdpsigproc.rfi.host.FlaggerHost(background, noise_est, threshold)
         start = time.time()
         flags = flagger(data)
@@ -92,8 +92,8 @@ def main():
                 command_queue, args.width, args.bg_wgs, args.bg_csplit)
         noise_est = katsdpsigproc.rfi.device.NoiseEstMADTDevice(
                 command_queue, 10240)
-        threshold = katsdpsigproc.rfi.device.ThresholdSimpleDevice(
-                command_queue, args.sigmas, transposed=True)
+        threshold = katsdpsigproc.rfi.device.ThresholdSumDevice(
+                command_queue, args.sigmas)
         flagger = katsdpsigproc.rfi.device.FlaggerDevice(background, noise_est, threshold)
 
         padded_shape = flagger.min_padded_shape(data.shape)
