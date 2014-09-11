@@ -57,7 +57,7 @@ def main():
                 args.channels = 8192
             elif args.preset == 'big':
                 args.antennas = 64
-                args.channels = 10000
+                args.channels = 10240
             else:
                 raise argparse.ArgumentError('Unexpected value for preset')
         if args.baselines is None:
