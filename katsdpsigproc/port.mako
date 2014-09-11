@@ -51,6 +51,11 @@ __device__ static inline unsigned int get_global_id(int dim)
     return get_group_id(dim) * get_local_size(dim) + get_local_id(dim);
 }
 
+__device__ static inline unsigned int get_num_groups(int dim)
+{
+    return dim == 0 ? gridDim.x : dim == 1 ? gridDim.y : gridDim.z;
+}
+
 __device__ static inline float as_float(unsigned int x)
 {
     return __int_as_float(x);
