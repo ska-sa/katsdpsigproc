@@ -386,14 +386,24 @@ class Transpose(object):
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
         - block: number of workitems per workgroup in each dimension
+        - vtx, vty: elements per workitem in each dimension
     """
+    
+    autotune_version = 1
+
     def __init__(self, command_queue, dtype, ctype, tune=None):
         self.command_queue = command_queue
         self.ctype = ctype
         if tune is None:
             tune = self.autotune(command_queue.context, dtype, ctype)
         self._block = tune['block']
-        program = build(command_queue.context, "transpose.mako", {'block': self._block, 'ctype': ctype})
+        self._tilex = tune['block'] * tune['vtx']
+        self._tiley = tune['block'] * tune['vty']
+        program = build(command_queue.context, "transpose.mako", {
+                'block': tune['block'],
+                'vtx': tune['vtx'],
+                'vty': tune['vty'],
+                'ctype': ctype})
         self.kernel = program.get_kernel("transpose")
 
     @classmethod
@@ -402,15 +412,24 @@ class Transpose(object):
         queue = context.create_tuning_command_queue()
         in_data = DeviceArray(context, (2048, 2048), dtype=dtype)
         out_data = DeviceArray(context, (2048, 2048), dtype=dtype)
-        def measure(block):
-            fn = cls(queue, dtype, ctype, {'block': block})
+        def measure(block, vtx, vty):
+            local_mem = (block * vtx + 1) * (block * vty) * np.dtype(dtype).itemsize
+            if local_mem > 32768:
+                return 1e9 # Skip configurations using lots of lmem
+            fn = cls(queue, dtype, ctype, {
+                'block': block,
+                'vtx': vtx,
+                'vty': vty})
             fn(out_data, in_data)  # Warmup
             queue.start_tuning()
             fn(out_data, in_data)
             return queue.stop_tuning()
 
-        block = tune.autotune(measure, [4, 8, 16, 32])
-        return {'block': block}
+        block, vtx, vty = tune.autotune(measure,
+                [4, 8, 16, 32],
+                [1, 2, 3, 4],
+                [1, 2, 3, 4])
+        return {'block': block, 'vtx': vtx, 'vty': vty}
 
     def __call__(self, dest, src):
         """Apply the transposition. The input and output must have
@@ -429,8 +448,8 @@ class Transpose(object):
         assert src.shape[0] == dest.shape[1]
         assert src.shape[1] == dest.shape[0]
         # Round up to number of blocks in each dimension
-        in_row_blocks = divup(src.shape[0], self._block)
-        in_col_blocks = divup(src.shape[1], self._block)
+        in_row_tiles = divup(src.shape[0], self._tiley)
+        in_col_tiles = divup(src.shape[1], self._tilex)
         self.command_queue.enqueue_kernel(
                 self.kernel,
                 [
@@ -439,5 +458,5 @@ class Transpose(object):
                     np.int32(dest.padded_shape[1]),
                     np.int32(src.padded_shape[1])
                 ],
-                global_size=(in_col_blocks * self._block, in_row_blocks * self._block),
+                global_size=(in_col_tiles * self._block, in_row_tiles * self._block),
                 local_size=(self._block, self._block))
