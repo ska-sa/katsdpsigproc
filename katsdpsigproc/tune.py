@@ -29,6 +29,7 @@ import sqlite3
 import os
 import os.path
 import numpy as np
+import time
 
 def adapt_value(value):
     """Converts `value` to a type that can be used in sqlite3. This is
@@ -162,14 +163,26 @@ def autotuner(fn, *args, **kwargs):
         conn.close()
     return ans
 
-def autotune(measure, **kwargs):
+def autotune(generate, time_limit = 0.1, **kwargs):
     """Run a number of tuning experiments and find the optimal combination
     of parameters.
 
-    Each argument is a iterable. The `measure` function is passed each
-    element of the Cartesian product (by keyword), and returns a score: lower
-    is better. If the function raises an exception, it is suppressed. Returns a
-    dictionary with the best combination of values.
+    Each argument is a iterable. The `generated` function is passed each
+    element of the Cartesian product (by keyword), and returns a callable.
+    This callable is passed an iteration count, and returns a score: lower is
+    better. If either `generate` or the function it returns raises an
+    exception, it is suppressed. Returns a dictionary with the best combination
+    of values.
+
+    The scoring function should not do a warmup pass nor perform multiple
+    iterations: that is handled by this function.
+
+    Parameters
+    ----------
+    generate : callable
+        function that creates a scoring function
+    time_limit : float
+        amount of time to spend testing each configuration (excluding setup time)
 
     Raises
     ------
@@ -184,7 +197,17 @@ def autotune(measure, **kwargs):
     for i in opts:
         try:
             kw = dict(zip(kwargs.keys(), i))
-            score = measure(**kw)
+            measure = generate(**kw)
+            # Do a warmup pass
+            measure(1)
+            # Do an initial timing pass
+            start = time.time()
+            measure(1)
+            # Take a max to prevent divide-by-zero in very fast cases
+            elapsed = max(time.time() - start, 1e-4)
+            # Guess how many iterations we can do in the allotted time
+            iters = max(3, int(time_limit / elapsed))
+            score = measure(iters)
             if best_score is None or score < best_score:
                 best = kw
                 best_score = score

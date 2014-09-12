@@ -9,6 +9,7 @@ order). In the former case, the `transposed` member is `False`, otherwise it is
 kernel at the appropriate point.
 """
 
+from __future__ import division
 from .. import accel
 from .. import tune
 from ..accel import DeviceArray, LinenoLexer, Transpose
@@ -82,14 +83,16 @@ class BackgroundMedianFilterDevice(object):
         rs = np.random.RandomState(seed=1)
         vis_host = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(np.complex64)
         vis.set(queue, vis_host)
-        def measure(**tune):
+        def generate(**tune):
             # Very large values of VT cause the AMD compiler to choke and segfault
             fn = cls(queue, width, tune)
-            fn(vis, deviations) # Warmup
-            queue.start_tuning()
-            fn(vis, deviations)
-            return queue.stop_tuning()
-        return tune.autotune(measure, wgs=[32, 64, 128, 256, 512], csplit=[1, 2, 4, 8, 16])
+            def measure(iters):
+                queue.start_tuning()
+                for i in range(iters):
+                    fn(vis, deviations)
+                return queue.stop_tuning() / iters
+            return measure
+        return tune.autotune(generate, wgs=[32, 64, 128, 256, 512], csplit=[1, 2, 4, 8, 16])
 
     def __call__(self, vis, deviations):
         """Perform the backgrounding.
@@ -284,16 +287,18 @@ class NoiseEstMADTDevice(object):
         rs = np.random.RandomState(seed=1)
         deviations.set(queue, rs.uniform(size=deviations.shape).astype(np.float32))
         noise = DeviceArray(context, (baselines,), dtype=np.float32)
-        def measure(**tune):
+        def generate(**tune):
             # Very large values of VT cause the AMD compiler to choke and segfault
             if max_channels > 256 * tune['wgsx']:
-                return 1e9
+                raise ValueError('wgsx is too small')
             fn = cls(queue, max_channels, tune)
-            fn(deviations, noise) # Warmup
-            queue.start_tuning()
-            fn(deviations, noise)
-            return queue.stop_tuning()
-        return tune.autotune(measure, wgsx=[32, 64, 128, 256, 512, 1024])
+            def measure(iters):
+                queue.start_tuning()
+                for i in range(iters):
+                    fn(deviations, noise)
+                return queue.stop_tuning() / iters
+            return measure
+        return tune.autotune(generate, wgsx=[32, 64, 128, 256, 512, 1024])
 
     @classmethod
     def min_padded_shape(cls, shape):
@@ -519,13 +524,15 @@ class ThresholdSumDevice(object):
         noise = DeviceArray(context, noise_shape, dtype=np.float32)
         noise.set(queue, rs.uniform(high=0.1, size=noise.shape).astype(np.float32))
         flags = DeviceArray(context, shape, dtype=np.uint8)
-        def measure(**tune):
+        def generate(**tune):
             fn = cls(queue, 11.0, n_windows=n_windows, tune=tune)
-            fn(deviations, noise, flags) # Warmup
-            queue.start_tuning()
-            fn(deviations, noise, flags)
-            return queue.stop_tuning()
-        return tune.autotune(measure,
+            def measure(iters):
+                queue.start_tuning()
+                for i in range(iters):
+                    fn(deviations, noise, flags)
+                return queue.stop_tuning() / iters
+            return measure
+        return tune.autotune(generate,
                 wgs=[32, 64, 128, 256, 512],
                 vt=[1, 2, 3, 4, 8, 16])
 

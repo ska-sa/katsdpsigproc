@@ -14,6 +14,7 @@ have_opencl : boolean
     True if PyOpenCL could be imported (does not guarantee any OpenCL devices)
 """
 
+from __future__ import division
 import numpy as np
 import mako.lexer
 from mako.lookup import TemplateLookup
@@ -412,7 +413,7 @@ class Transpose(object):
         queue = context.create_tuning_command_queue()
         in_data = DeviceArray(context, (2048, 2048), dtype=dtype)
         out_data = DeviceArray(context, (2048, 2048), dtype=dtype)
-        def measure(block, vtx, vty):
+        def generate(block, vtx, vty):
             local_mem = (block * vtx + 1) * (block * vty) * np.dtype(dtype).itemsize
             if local_mem > 32768:
                 return 1e9 # Skip configurations using lots of lmem
@@ -420,12 +421,14 @@ class Transpose(object):
                 'block': block,
                 'vtx': vtx,
                 'vty': vty})
-            fn(out_data, in_data)  # Warmup
-            queue.start_tuning()
-            fn(out_data, in_data)
-            return queue.stop_tuning()
+            def measure(iters):
+                queue.start_tuning()
+                for i in range(iters):
+                    fn(out_data, in_data)
+                return queue.stop_tuning() / iters
+            return measure
 
-        return tune.autotune(measure,
+        return tune.autotune(generate,
                 block=[4, 8, 16, 32],
                 vtx=[1, 2, 3, 4],
                 vty=[1, 2, 3, 4])
