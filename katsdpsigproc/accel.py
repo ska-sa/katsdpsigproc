@@ -388,7 +388,7 @@ class Transpose(object):
         - block: number of workitems per workgroup in each dimension
         - vtx, vty: elements per workitem in each dimension
     """
-    
+
     autotune_version = 1
 
     def __init__(self, command_queue, dtype, ctype, tune=None):
@@ -425,11 +425,10 @@ class Transpose(object):
             fn(out_data, in_data)
             return queue.stop_tuning()
 
-        block, vtx, vty = tune.autotune(measure,
-                [4, 8, 16, 32],
-                [1, 2, 3, 4],
-                [1, 2, 3, 4])
-        return {'block': block, 'vtx': vtx, 'vty': vty}
+        return tune.autotune(measure,
+                block=[4, 8, 16, 32],
+                vtx=[1, 2, 3, 4],
+                vty=[1, 2, 3, 4])
 
     def __call__(self, dest, src):
         """Apply the transposition. The input and output must have

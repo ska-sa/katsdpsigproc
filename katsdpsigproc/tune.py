@@ -28,6 +28,7 @@ import appdirs
 import sqlite3
 import os
 import os.path
+import sys
 import numpy as np
 
 def adapt_value(value):
@@ -162,15 +163,14 @@ def autotuner(fn, *args, **kwargs):
         conn.close()
     return ans
 
-def autotune(measure, *args):
+def autotune(measure, **kwargs):
     """Run a number of tuning experiments and find the optimal combination
     of parameters.
 
     Each argument is a iterable. The `measure` function is passed each
-    element of the Cartesian product, and returns a score: lower is better.
-    If the function raises an exception, it is suppressed. Returns a
-    tuple with the best combination of values; or just the best value, if
-    only one argument is provided.
+    element of the Cartesian product (by keyword), and returns a score: lower
+    is better. If the function raises an exception, it is suppressed. Returns a
+    dictionary with the best combination of values.
 
     Raises
     ------
@@ -178,22 +178,22 @@ def autotune(measure, *args):
         is re-raised.
     ValueError : if the Cartesian product is empty
     """
-    opts = itertools.product(*args)
+    opts = itertools.product(*kwargs.values())
     best = None
     best_score = None
-    last_exc = None
+    last_exc_info = None
     for i in opts:
         try:
-            score = measure(*i)
+            kw = dict(zip(kwargs.keys(), i))
+            score = measure(**kw)
             if best_score is None or score < best_score:
-                best = i
+                best = kw
                 best_score = score
-        except Exception as e:
-            last_exc = e
+        except Exception:
+            last_exc_info = sys.exc_info()
     if best is None:
-        if last_exc is None:
-            last_exc = RuntimeError('No options to test')
-        raise last_exc
-    if len(args) == 1:
-        best = best[0]
+        if last_exc_info is None:
+            raise RuntimeError('No options to test')
+        else:
+            raise last_exc_info[1], None, last_exc_info[2]
     return best

@@ -219,7 +219,7 @@ class NoiseEstMADTDevice(object):
     max_channels : int
         Maximum number of channels. Choosing too large a value will
         reduce performance.
-    tune : dict, optional
+    tune : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
         - wgsx: number of work-items per baseline
@@ -258,17 +258,16 @@ class NoiseEstMADTDevice(object):
         rs = np.random.RandomState(seed=1)
         deviations.set(queue, rs.uniform(size=deviations.shape).astype(np.float32))
         noise = DeviceArray(context, (baselines,), dtype=np.float32)
-        def measure(wgsx):
+        def measure(**tune):
             # Very large values of VT cause the AMD compiler to choke and segfault
-            if max_channels > 256 * wgsx:
+            if max_channels > 256 * tune['wgsx']:
                 return 1e9
-            fn = cls(queue, max_channels, {'wgsx': wgsx})
+            fn = cls(queue, max_channels, tune)
             fn(deviations, noise) # Warmup
             queue.start_tuning()
             fn(deviations, noise)
             return queue.stop_tuning()
-        wgsx = tune.autotune(measure, [32, 64, 128, 256, 512, 1024])
-        return {'wgsx': wgsx}
+        return tune.autotune(measure, wgsx=[32, 64, 128, 256, 512, 1024])
 
     @classmethod
     def min_padded_shape(cls, shape):
@@ -494,16 +493,15 @@ class ThresholdSumDevice(object):
         noise = DeviceArray(context, noise_shape, dtype=np.float32)
         noise.set(queue, rs.uniform(high=0.1, size=noise.shape).astype(np.float32))
         flags = DeviceArray(context, shape, dtype=np.uint8)
-        def measure(wgs, vt):
-            fn = cls(queue, 11.0, n_windows=n_windows, tune={'wgs': wgs, 'vt': vt})
+        def measure(**tune):
+            fn = cls(queue, 11.0, n_windows=n_windows, tune=tune)
             fn(deviations, noise, flags) # Warmup
             queue.start_tuning()
             fn(deviations, noise, flags)
             return queue.stop_tuning()
-        (wgs, vt) = tune.autotune(measure,
-                [32, 64, 128, 256, 512],
-                [1, 2, 3, 4, 8, 16])
-        return {'wgs': wgs, 'vt': vt}
+        return tune.autotune(measure,
+                wgs=[32, 64, 128, 256, 512],
+                vt=[1, 2, 3, 4, 8, 16])
 
     def __call__(self, deviations, noise, flags):
         """Apply the thresholding
