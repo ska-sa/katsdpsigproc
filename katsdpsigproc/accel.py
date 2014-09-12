@@ -193,7 +193,7 @@ def create_some_context(interactive=True):
 
     return device.make_context()
 
-class Array(np.ndarray):
+class HostArray(np.ndarray):
     """A restricted array class that can be used to initialise a
     :class:`DeviceArray`. It uses C ordering and allows padding, which
     is always in units of the dtype. It optionally uses pinned memory
@@ -227,9 +227,9 @@ class Array(np.ndarray):
         assert len(padded_shape) == len(shape)
         assert np.all(np.greater_equal(padded_shape, shape))
         if context is not None:
-            owner = context.allocate_pinned(padded_shape, dtype).view(Array)
+            owner = context.allocate_pinned(padded_shape, dtype).view(HostArray)
         else:
-            owner = np.empty(padded_shape, dtype).view(Array)
+            owner = np.empty(padded_shape, dtype).view(HostArray)
         index = tuple([slice(0, x) for x in shape])
         obj = owner[index]
         obj._accel_safe = True
@@ -252,7 +252,7 @@ class Array(np.ndarray):
         # View casting or created from a template: we cannot vouch for it.
         # We can't unconditionally set the attribute, because the base class
         # doesn't allow new attributes.
-        if isinstance(self, Array):
+        if isinstance(self, HostArray):
             self._accel_safe = False
 
 class DeviceArray(object):
@@ -261,7 +261,7 @@ class DeviceArray(object):
     has very poor support).
 
     It only supports C-order arrays where the inner-most dimension is
-    contiguous. Transfers are designed to use an :class:`Array` of the
+    contiguous. Transfers are designed to use an :class:`HostArray` of the
     same shape and padding, but fall back to using a copy when
     necessary.
 
@@ -303,7 +303,7 @@ class DeviceArray(object):
 
     def _copyable(self, ary):
         """Whether `ary` can be copied to/from this array directly"""
-        return (Array.safe(ary) and
+        return (HostArray.safe(ary) and
                 ary.dtype == self.dtype and
                 ary.shape == self.shape and
                 ary.padded_shape == self.padded_shape)
@@ -320,7 +320,7 @@ class DeviceArray(object):
 
     def empty_like(self):
         """Return an array-like object that can be efficiently copied."""
-        return Array(self.shape, self.dtype, self.padded_shape, context=self.context)
+        return HostArray(self.shape, self.dtype, self.padded_shape, context=self.context)
 
     def asarray_like(self, ary):
         """Return an array with the same content as `ary`, but the same memory
@@ -341,7 +341,7 @@ class DeviceArray(object):
     def get(self, command_queue, ary=None):
         """Synchronous copy from self to `ary`. If `ary` is None,
         or if it is not suitable as a target, the copy is to a newly
-        allocated :class:`Array`. The actual target is returned.
+        allocated :class:`HostArray`. The actual target is returned.
         """
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()

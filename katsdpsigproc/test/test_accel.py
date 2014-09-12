@@ -5,7 +5,7 @@ from mako.template import Template
 from nose.tools import assert_equal
 from nose.plugins.skip import SkipTest
 from .. import accel
-from ..accel import Array, DeviceArray, LinenoLexer, Transpose
+from ..accel import HostArray, DeviceArray, LinenoLexer, Transpose
 if accel.have_cuda:
     import pycuda
 if accel.have_opencl:
@@ -47,18 +47,18 @@ class TestArray(object):
     def setup(self):
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
-        self.constructed = Array(
+        self.constructed = HostArray(
                 shape=self.shape,
                 dtype=np.int32,
                 padded_shape=self.padded_shape)
-        self.view = np.zeros(self.padded_shape)[2:4, 3:5].view(Array)
+        self.view = np.zeros(self.padded_shape)[2:4, 3:5].view(HostArray)
         self.sliced = self.constructed[2:4, 3:5]
 
     def test_safe(self):
-        assert Array.safe(self.constructed)
-        assert not Array.safe(self.view)
-        assert not Array.safe(self.sliced)
-        assert not Array.safe(np.zeros(self.shape))
+        assert HostArray.safe(self.constructed)
+        assert not HostArray.safe(self.view)
+        assert not HostArray.safe(self.sliced)
+        assert not HostArray.safe(np.zeros(self.shape))
 
 class TestDeviceArray(object):
     @device_test
@@ -81,7 +81,7 @@ class TestDeviceArray(object):
         ary = self.array.empty_like()
         assert_equal(self.shape, ary.shape)
         assert_equal(self.strides, ary.strides)
-        assert Array.safe(ary)
+        assert HostArray.safe(ary)
 
     @device_test
     def test_set_get(self):
