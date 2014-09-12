@@ -1,1 +1,1 @@
-Assorting radio astronomy signal processing routines, with hardware acceleration.
+Assorted radio astronomy signal processing routines, with hardware acceleration.
