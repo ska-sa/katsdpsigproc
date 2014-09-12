@@ -28,7 +28,6 @@ import appdirs
 import sqlite3
 import os
 import os.path
-import sys
 import numpy as np
 
 def adapt_value(value):
@@ -181,7 +180,7 @@ def autotune(measure, **kwargs):
     opts = itertools.product(*kwargs.values())
     best = None
     best_score = None
-    last_exc_info = None
+    had_exception = False
     for i in opts:
         try:
             kw = dict(zip(kwargs.keys(), i))
@@ -190,10 +189,10 @@ def autotune(measure, **kwargs):
                 best = kw
                 best_score = score
         except Exception:
-            last_exc_info = sys.exc_info()
+            had_exception = True
     if best is None:
-        if last_exc_info is None:
-            raise RuntimeError('No options to test')
+        if had_exception:
+            raise
         else:
-            raise last_exc_info[1], None, last_exc_info[2]
+            raise ValueError('No options to test')
     return best
