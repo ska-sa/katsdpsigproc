@@ -42,21 +42,24 @@ class BackgroundMedianFilterDevice(object):
         Command-queue in which work will be enqueued
     width : int
         The kernel width (must be odd)
-    wgs : int
-        Number of baselines per workgroup
-    csplit : int
-        Approximate number of workitems cooperating on each channel
+    tune : mapping, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+        - wgs: number of work-items per baseline
+        - csplit: approximate number of workitems for each channel
     """
 
     host_class = host.BackgroundMedianFilterHost
 
-    def __init__(self, command_queue, width, wgs=128, csplit=8):
+    def __init__(self, command_queue, width, tune=None):
+        if tune is None:
+            tune = self.autotune(command_queue.context, width)
         self.command_queue = command_queue
         self.width = width
-        self.wgs = wgs
-        self.csplit = csplit
+        self.wgs = tune['wgs']
+        self.csplit = tune['csplit']
         program = accel.build(command_queue.context, 'rfi/background_median_filter.mako',
-                {'width': width, 'wgs': wgs})
+                {'width': width, 'wgs': self.wgs})
         self.kernel = program.get_kernel('background_median_filter')
 
     def min_padded_shape(self, shape):
@@ -64,6 +67,29 @@ class BackgroundMedianFilterDevice(object):
         (channels, baselines) = shape
         padded_baselines = accel.roundup(baselines, self.wgs)
         return (channels, padded_baselines)
+
+    @classmethod
+    @tune.autotuner
+    def autotune(cls, context, width):
+        queue = context.create_tuning_command_queue()
+        # Note: baselines must be a multiple of any tested workgroup size
+        channels = 4096
+        baselines = 8192
+        shape = (channels, baselines)
+        vis = DeviceArray(context, shape, np.complex64)
+        deviations = DeviceArray(context, shape, np.float32)
+        # Initialize with Gaussian random values
+        rs = np.random.RandomState(seed=1)
+        vis_host = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(np.complex64)
+        vis.set(queue, vis_host)
+        def measure(**tune):
+            # Very large values of VT cause the AMD compiler to choke and segfault
+            fn = cls(queue, width, tune)
+            fn(vis, deviations) # Warmup
+            queue.start_tuning()
+            fn(vis, deviations)
+            return queue.stop_tuning()
+        return tune.autotune(measure, wgs=[32, 64, 128, 256, 512], csplit=[1, 2, 4, 8, 16])
 
     def __call__(self, vis, deviations):
         """Perform the backgrounding.
@@ -80,7 +106,7 @@ class BackgroundMedianFilterDevice(object):
         assert vis.shape == deviations.shape
         assert vis.padded_shape == deviations.padded_shape
         (channels, baselines) = vis.shape
-        VT = max(channels // self.csplit, 1)
+        VT = accel.divup(channels, self.csplit)
         xblocks = accel.divup(baselines, self.wgs)
         yblocks = accel.divup(channels, VT)
         assert xblocks * self.wgs <= vis.padded_shape[1]

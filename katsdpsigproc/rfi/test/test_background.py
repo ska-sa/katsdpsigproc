@@ -24,7 +24,7 @@ class TestBackgroundMedianFilterHost(object):
 
 @device_test
 def test_BackgroundMedianFilterDevice():
-    check_device_class(device.BackgroundMedianFilterDevice, 5, 128, 4)
+    check_device_class(device.BackgroundMedianFilterDevice, 5, {'wgs': 128, 'csplit': 4})
 
 def check_device_class(cls, width, *device_args, **device_kw):
     bg_host = cls.host_class(width)

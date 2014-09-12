@@ -32,10 +32,6 @@ def main():
     parser.add_argument('--width', '-w', type=int, help='median filter kernel size (must be odd)', default=13)
     parser.add_argument('--sigmas', type=float, help='Threshold for detecting RFI', default=11.0)
 
-    parser.add_argument_group('Backgrounder tuning')
-    parser.add_argument('--bg-wgs', type=int, default=128, help='work group size')
-    parser.add_argument('--bg-csplit', type=int, default=4, help='work items per channel')
-
     args = parser.parse_args()
 
     if args.file is not None:
@@ -89,7 +85,7 @@ def main():
     else:
         command_queue = context.create_command_queue(profile=True)
         background = katsdpsigproc.rfi.device.BackgroundMedianFilterDevice(
-                command_queue, args.width, args.bg_wgs, args.bg_csplit)
+                command_queue, args.width)
         noise_est = katsdpsigproc.rfi.device.NoiseEstMADTDevice(
                 command_queue, 10240)
         threshold = katsdpsigproc.rfi.device.ThresholdSumDevice(
