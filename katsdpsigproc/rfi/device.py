@@ -255,7 +255,8 @@ class NoiseEstMADTDevice(object):
         shape = (baselines, max_channels)
         shape = cls.min_padded_shape(shape)
         deviations = DeviceArray(context, shape, dtype=np.float32)
-        deviations.set(queue, np.random.uniform(size=deviations.shape).astype(np.float32))
+        rs = np.random.RandomState(seed=1)
+        deviations.set(queue, rs.uniform(size=deviations.shape).astype(np.float32))
         noise = DeviceArray(context, (baselines,), dtype=np.float32)
         def measure(wgsx):
             # Very large values of VT cause the AMD compiler to choke and segfault
@@ -487,10 +488,11 @@ class ThresholdSumDevice(object):
         shape = (baselines, channels)
         shape = cls.min_padded_shape(shape)
         deviations = DeviceArray(context, shape, dtype=np.float32)
-        deviations.set(queue, np.random.uniform(size=deviations.shape).astype(np.float32))
+        rs = np.random.RandomState(seed=1)
+        deviations.set(queue, rs.uniform(size=deviations.shape).astype(np.float32))
         noise_shape = cls.min_padded_noise_shape(baselines)
         noise = DeviceArray(context, noise_shape, dtype=np.float32)
-        noise.set(queue, np.random.uniform(high=0.1, size=noise.shape).astype(np.float32))
+        noise.set(queue, rs.uniform(high=0.1, size=noise.shape).astype(np.float32))
         flags = DeviceArray(context, shape, dtype=np.uint8)
         def measure(wgs, vt):
             fn = cls(queue, 11.0, n_windows=n_windows, tune={'wgs': wgs, 'vt': vt})
