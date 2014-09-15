@@ -1,7 +1,19 @@
 import sys
 import traceback
-from nose.tools import assert_equal, assert_raises
+from nose.tools import assert_equal
+import unittest2 as unittest
 from .. import tune
+
+# nose.tools uses unittest rather than unittest2 for assertRaises, which
+# means that it doesn't get the context manager version on Python 2.6
+# (see https://github.com/nose-devs/nose/issues/25)
+# We import from unittest2 directly to fix this, using the same trick
+# as nose does.
+class Dummy(unittest.TestCase):
+    def nop():
+        pass
+_dummy = Dummy('nop')
+assert_raises = _dummy.assertRaises
 
 def test_autotune_basic():
     received = []

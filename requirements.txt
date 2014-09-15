@@ -3,3 +3,4 @@ scipy
 decorator
 mako
 appdirs
+unittest2
