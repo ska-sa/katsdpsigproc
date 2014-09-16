@@ -105,6 +105,14 @@ class Device(object):
         """Whether the device is a CPU"""
         return self._pyopencl_device.type & pyopencl.device_type.CPU
 
+    @property
+    def simd_group_size(self):
+        """The number of workitems that run in lock-step. This must only
+        be used to tune performance parameters; there are no guarantees about
+        memory coherency, forward progress etc.
+        """
+        return pyopencl.characterize.get_simd_group_size(self._pyopencl_device, 4)
+
     @classmethod
     def get_devices(cls):
         """Return a list of all devices on all platforms"""

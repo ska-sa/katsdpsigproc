@@ -105,7 +105,9 @@ def build(context, name, render_kws=None, extra_flags=None):
         render_kws = {}
     if extra_flags is None:
         extra_flags = []
-    source = _lookup.get_template(name).render(**render_kws)
+    source = _lookup.get_template(name).render(
+            simd_group_size=context.device.simd_group_size,
+            **render_kws)
     return context.compile(source, extra_flags)
 
 def create_some_context(interactive=True):

@@ -5,23 +5,29 @@ from .test_accel import device_test, test_context, test_command_queue
 from nose.tools import assert_equal
 from ..accel import DeviceArray, build
 
+class Fixture(object):
+    def __init__(self, rs, size):
+        self.data = rs.randint(0, 1000, size=size).astype(np.int32)
+        self.program = build(test_context, 'test/test_reduce.mako', {'size': size})
+
 @device_test
 def setup():
-    global _program, _data
+    global _fixtures
     rs = np.random.RandomState(seed=1)  # Fixed seed to make test repeatable
-    _data = rs.randint(0, 1000, size=97).astype(np.int32)
-    _program = build(test_context, 'test/test_reduce.mako', {'size': _data.shape[0]})
+    _fixtures = [Fixture(rs, size) for size in (12, 97, 256)]
 
 def check_reduce(kernel_name, op):
-    kernel = _program.get_kernel(kernel_name)
-    data_d = DeviceArray(context=test_context, shape=_data.shape, dtype=_data.dtype)
-    data_d.set(test_command_queue, _data)
-    out_d = DeviceArray(context=test_context, shape=(1,), dtype=_data.dtype)
-    test_command_queue.enqueue_kernel(
-            kernel, [data_d.buffer, out_d.buffer], local_size=_data.shape, global_size=_data.shape)
-    out = out_d.get(test_command_queue)[0]
-    expected = reduce(op, _data)
-    assert_equal(expected, out)
+    for fixture in _fixtures:
+        data = fixture.data
+        kernel = fixture.program.get_kernel(kernel_name)
+        data_d = DeviceArray(context=test_context, shape=data.shape, dtype=data.dtype)
+        data_d.set(test_command_queue, data)
+        out_d = DeviceArray(context=test_context, shape=(1,), dtype=data.dtype)
+        test_command_queue.enqueue_kernel(
+                kernel, [data_d.buffer, out_d.buffer], local_size=data.shape, global_size=data.shape)
+        out = out_d.get(test_command_queue)[0]
+        expected = reduce(op, data)
+        assert_equal(expected, out)
 
 @device_test
 def test_reduce_add():

@@ -7,6 +7,7 @@ interfaces.
 import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
+import pycuda.characterize
 
 NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
@@ -75,6 +76,10 @@ class Device(object):
     @property
     def is_cpu(self):
         return False
+
+    @property
+    def simd_group_size(self):
+        return self._pycuda_device.warp_size
 
     @classmethod
     def get_devices(cls):
