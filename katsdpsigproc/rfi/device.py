@@ -1,5 +1,4 @@
-"""RFI flagging algorithms that run on an accelerator (currently only
-CUDA).
+"""RFI flagging algorithms that run on an accelerator, using OpenCL or CUDA.
 
 The thresholding functions may take data in either channel-major or
 baseline-major order (the flags are emitted in the same order). In the former

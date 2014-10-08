@@ -19,7 +19,7 @@ def generate_data(channels, baselines):
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--host', action='store_true', help='Compute on the host instead of with CUDA')
+    parser.add_argument('--host', action='store_true', help='Compute on the host instead of with CUDA/OpenCL')
 
     parser.add_argument_group('Data selection')
     parser.add_argument('--antennas', '-a', type=int, default=7)
