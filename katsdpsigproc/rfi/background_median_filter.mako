@@ -12,8 +12,8 @@
  * there is a balance between using more threads for greater parallelism
  * vs fewer threads for reduced overhead.
  *
- * Each thread processes a section of a channel using a sliding-window
- * median filter.
+ * Each thread processes a contiguous part of the band for a baseline, using
+ * a sliding-window median filter.
  */
 
 <%include file="/port.mako"/>
