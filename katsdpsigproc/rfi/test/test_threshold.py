@@ -31,20 +31,20 @@ def check_host_class(cls, n_sigma):
 
 @device_test
 def test_ThresholdSimpleDevice():
-    check_device_class(device.ThresholdSimpleDevice, 11.0, False, 4, 3)
+    check_device_class(device.ThresholdSimpleDeviceTemplate, 11.0, False, 4, 3)
 
 @device_test
 def test_ThresholdSimpleDevice_transposed():
-    check_device_class(device.ThresholdSimpleDevice, 11.0, True, 4, 3)
+    check_device_class(device.ThresholdSimpleDeviceTemplate, 11.0, True, 4, 3)
 
 @device_test
 def test_ThresholdSumDevice():
-    check_device_class(device.ThresholdSumDevice, 11.0)
+    check_device_class(device.ThresholdSumDeviceTemplate, 11.0)
 
 def check_device_class(cls, n_sigma, *device_args, **device_kw):
     th_host = cls.host_class(n_sigma)
-    th_device = device.ThresholdHostFromDevice(
-            cls(test_command_queue, n_sigma, *device_args, **device_kw))
+    template = cls(test_context, n_sigma, *device_args, **device_kw)
+    th_device = device.ThresholdHostFromDevice(template, test_command_queue)
     noise = np.linspace(0.0, 50.0, _deviations.shape[1]).astype(np.float32)
     flags_host = th_host(_deviations, noise)
     flags_device = th_device(_deviations, noise)

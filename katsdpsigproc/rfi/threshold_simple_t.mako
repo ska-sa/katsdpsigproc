@@ -13,7 +13,8 @@ KERNEL void REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) threshold_simple_t(
     GLOBAL const float * RESTRICT deviations,
     GLOBAL const float * RESTRICT noise,
     GLOBAL unsigned char * RESTRICT flags,
-    unsigned int stride,
+    unsigned int deviations_stride,
+    unsigned int flags_stride,
     float n_sigma)
 {
     int bl = get_global_id(1);
@@ -21,6 +22,7 @@ KERNEL void REQD_WORK_GROUP_SIZE(${wgsx}, ${wgsy}, 1) threshold_simple_t(
     // TODO: threshold could be loaded by one thread
     // and broadcast through local memory
     float threshold = n_sigma * noise[bl];
-    int addr = bl * stride + channel;
-    flags[addr] = (deviations[addr] > threshold) ? ${flag_value} : 0;
+    int deviations_addr = bl * deviations_stride + channel;
+    int flags_addr = bl * flags_stride + channel;
+    flags[flags_addr] = (deviations[deviations_addr] > threshold) ? ${flag_value} : 0;
 }

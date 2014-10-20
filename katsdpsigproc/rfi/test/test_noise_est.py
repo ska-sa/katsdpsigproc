@@ -33,16 +33,17 @@ def test_NoiseEstMADHost():
 
 @device_test
 def test_NoiseEstMADDevice():
-    check_device_class(device.NoiseEstMADDevice, 4, 3)
+    check_device_class(device.NoiseEstMADDeviceTemplate, 4, 3)
 
 @device_test
 def test_NoiseEstMADTDevice():
-    check_device_class(device.NoiseEstMADTDevice, 10240)
+    check_device_class(device.NoiseEstMADTDeviceTemplate, 10240)
 
 def check_device_class(cls, *device_args, **device_kw):
+    (channels, baselines) = _deviations_big.shape
+    template = cls(test_context, *device_args, **device_kw)
     ne_host = cls.host_class()
-    ne_device = device.NoiseEstHostFromDevice(
-            cls(test_command_queue, *device_args, **device_kw))
+    ne_device = device.NoiseEstHostFromDevice(template, test_command_queue)
     noise_host = ne_host(_deviations_big)
     noise_device = ne_device(_deviations_big)
     np.testing.assert_allclose(noise_host, noise_device)

@@ -1,7 +1,7 @@
 import numpy as np
 from .. import host
 from nose.tools import assert_equal
-from ...test.test_accel import device_test, test_command_queue
+from ...test.test_accel import device_test, test_context, test_command_queue
 from .. import device
 
 def setup():
@@ -24,12 +24,12 @@ class TestBackgroundMedianFilterHost(object):
 
 @device_test
 def test_BackgroundMedianFilterDevice():
-    check_device_class(device.BackgroundMedianFilterDevice, 5, {'wgs': 128, 'csplit': 4})
+    check_device_class(device.BackgroundMedianFilterDeviceTemplate, 5, {'wgs': 128, 'csplit': 4})
 
 def check_device_class(cls, width, *device_args, **device_kw):
     bg_host = cls.host_class(width)
     bg_device = device.BackgroundHostFromDevice(
-            cls(test_command_queue, width, *device_args, **device_kw))
+            cls(test_context, width, *device_args, **device_kw), test_command_queue)
     out_host = bg_host(_vis_big)
     out_device = bg_device(_vis_big)
     # Uses an abs tolerance because backgrounding subtracts nearby values

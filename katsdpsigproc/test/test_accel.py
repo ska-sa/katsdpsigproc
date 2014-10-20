@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import sys
 import numpy as np
 from decorator import decorator
@@ -5,7 +6,7 @@ from mako.template import Template
 from nose.tools import assert_equal
 from nose.plugins.skip import SkipTest
 from .. import accel
-from ..accel import HostArray, DeviceArray, LinenoLexer, Transpose
+from ..accel import HostArray, DeviceArray, LinenoLexer
 if accel.have_cuda:
     import pycuda
 if accel.have_opencl:
@@ -101,24 +102,3 @@ class TestDeviceArray(object):
         # Check that it matches get
         buf = self.array.get(test_command_queue)
         np.testing.assert_equal(ary, buf)
-
-class TestTranspose(object):
-    def test_transpose(self):
-        yield self.check_transpose, 4, 5
-        yield self.check_transpose, 53, 7
-        yield self.check_transpose, 53, 81
-        yield self.check_transpose, 32, 64
-
-    @device_test
-    def setup(self):
-        self.transpose = Transpose(test_command_queue, np.float32, 'float')
-
-    @device_test
-    def check_transpose(self, R, C):
-        ary = np.random.randn(R, C).astype(np.float32)
-        src = DeviceArray(test_context, (R, C), dtype=np.float32, padded_shape=(R + 1, C + 4))
-        dest = DeviceArray(test_context, (C, R), dtype=np.float32, padded_shape=(C + 2, R + 3))
-        src.set_async(test_command_queue, ary)
-        self.transpose(dest, src)
-        out = dest.get(test_command_queue)
-        np.testing.assert_equal(ary.T, out)

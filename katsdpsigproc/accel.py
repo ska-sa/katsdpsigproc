@@ -374,93 +374,167 @@ class DeviceArray(object):
                 self.buffer, self._contiguous(ary), blocking=False)
         return ary
 
-class Transpose(object):
-    """Kernel for transposing a 2D array of data
+class IOSlot(object):
+    """An input/output slot of an operation. It contains a reference to a
+    buffer (initially `None`) and the shape, type, padding and alignment
+    requirements for that buffer. It can allocate the buffer on request.
+
+    Note that `min_padded_round` and `alignment` provide similar but
+    different requirements. The former is used to determine a minimum amount
+    of padding, but any larger amount is acceptable, even if not a multiple of
+    `min_padded_round`. The latter is stricter, always requiring a multiple of
+    this value. The latter is not expected to be frequently used except when
+    type-punning.
 
     Parameters
     ----------
-    command_queue : :class:`cuda.CommandQueue` or :class:`opencl.CommandQueue`
-        Command queue in which work will be enqueued
+    shape : tuple of int
+        The exact size of the data itself
     dtype : numpy dtype
-        Type of data elements
-    ctype : str
-        Type (in C/CUDA, not numpy) of data elements
-    tune : dict, optional
-        Kernel tuning parameters; if omitted, will autotune. The possible
-        parameters are
-        - block: number of workitems per workgroup in each dimension
-        - vtx, vty: elements per workitem in each dimension
+        Type of the data elements
+    min_padded_round : tuple of int, optional
+        The `min_padded_shape` will be computed by rounding `shape` up to a
+        multiple of this.
+    min_padded_shape : tuple of int, optional
+        Minimum size of the padded allocation, overriding `min_padded_round`.
+    alignment : tuple of int, optional
+        Padded size is required to be a multiple of this in each dimension.
+        These values must be powers of 2.
     """
 
-    autotune_version = 1
+    def __init__(self, shape, dtype, min_padded_round=None, min_padded_shape=None, alignment=None):
+        self.shape = tuple(shape)
+        self.dtype = np.dtype(dtype)
+        if min_padded_shape is None:
+            if min_padded_round is None:
+                self.min_padded_shape = tuple(shape)
+            else:
+                assert len(min_padded_round) == len(shape)
+                self.min_padded_shape = tuple([roundup(x, y) for x, y in zip(shape, min_padded_round)])
+        else:
+            assert len(min_padded_shape) == len(shape)
+            assert np.all(np.greater_equal(min_padded_shape, shape))
+            self.min_padded_shape = tuple(min_padded_shape)
+        if alignment is None:
+            self.alignment = tuple(1 for x in shape)
+        else:
+            assert len(alignment) == len(shape)
+            self.alignment = tuple(alignment)
+        self.buffer = None
 
-    def __init__(self, command_queue, dtype, ctype, tune=None):
-        self.command_queue = command_queue
-        self.ctype = ctype
-        if tune is None:
-            tune = self.autotune(command_queue.context, dtype, ctype)
-        self._block = tune['block']
-        self._tilex = tune['block'] * tune['vtx']
-        self._tiley = tune['block'] * tune['vty']
-        program = build(command_queue.context, "transpose.mako", {
-                'block': tune['block'],
-                'vtx': tune['vtx'],
-                'vty': tune['vty'],
-                'ctype': ctype})
-        self.kernel = program.get_kernel("transpose")
+    def validate(self, buffer):
+        if buffer.dtype != self.dtype:
+            raise TypeError('dtype does not match')
+        if len(buffer.shape) != len(self.shape):
+            raise ValueError('number of dimensions does not match')
+        if buffer.shape != self.shape:
+            raise ValueError('shape does not match')
+        if np.any(np.less(buffer.padded_shape, self.min_padded_shape)):
+            raise ValueError('padded shape is too small')
+        for i in range(len(self.alignment)):
+            if buffer.padded_shape[i] % self.alignment[i] != 0:
+                raise ValueError('padded shape is not correctly aligned')
 
-    @classmethod
-    @tune.autotuner
-    def autotune(cls, context, dtype, ctype):
-        queue = context.create_tuning_command_queue()
-        in_data = DeviceArray(context, (2048, 2048), dtype=dtype)
-        out_data = DeviceArray(context, (2048, 2048), dtype=dtype)
-        def generate(block, vtx, vty):
-            local_mem = (block * vtx + 1) * (block * vty) * np.dtype(dtype).itemsize
-            if local_mem > 32768:
-                return 1e9 # Skip configurations using lots of lmem
-            fn = cls(queue, dtype, ctype, {
-                'block': block,
-                'vtx': vtx,
-                'vty': vty})
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn(out_data, in_data)
-                return queue.stop_tuning() / iters
-            return measure
-
-        return tune.autotune(generate,
-                block=[4, 8, 16, 32],
-                vtx=[1, 2, 3, 4],
-                vty=[1, 2, 3, 4])
-
-    def __call__(self, dest, src):
-        """Apply the transposition. The input and output must have
-        transposed shapes, but the padded shapes may be arbitrary.
+    def bind(self, buffer):
+        """Set the internal buffer reference. Always use this function rather
+        that writing it directly, because subclasses may overload this method.
 
         Parameters
         ----------
-        dest : :class:`DeviceArray`
-            Output array
-        src : :class:`DeviceArray`
-            Input array
+        buffer : :class:`DeviceArray` or `None`
+            Buffer to store
         """
-        assert src.ndim == 2
-        assert dest.ndim == 2
-        assert src.dtype == dest.dtype
-        assert src.shape[0] == dest.shape[1]
-        assert src.shape[1] == dest.shape[0]
-        # Round up to number of blocks in each dimension
-        in_row_tiles = divup(src.shape[0], self._tiley)
-        in_col_tiles = divup(src.shape[1], self._tilex)
-        self.command_queue.enqueue_kernel(
-                self.kernel,
-                [
-                    dest.buffer, src.buffer,
-                    np.int32(src.shape[0]), np.int32(src.shape[1]),
-                    np.int32(dest.padded_shape[1]),
-                    np.int32(src.padded_shape[1])
-                ],
-                global_size=(in_col_tiles * self._block, in_row_tiles * self._block),
-                local_size=(self._block, self._block))
+        if buffer is not None:
+            self.validate(buffer)
+        self.buffer = buffer
+
+    def allocate(self, context):
+        """Allocate and immediate bind a buffer satisfying the requirements.
+
+        Parameters
+        ----------
+        context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
+            Context in which to allocate the memory
+        """
+        padded_shape = list(self.min_padded_shape)
+        for i, a in enumerate(self.alignment):
+            padded_shape[i] = roundup(padded_shape[i], a)
+        buffer = DeviceArray(context, self.shape, self.dtype, padded_shape)
+        self.bind(buffer)
+        return buffer
+
+class CompoundIOSlot(IOSlot):
+    """IO slot that owns multiple child slots, and presents the combined
+    requirement. Setting the buffer (via :meth:`bind`) pushes to all the
+    children.
+
+    Parameters
+    ----------
+    children : sequence of :class:`IOSlot`
+        Child slots
+
+    Raises
+    ------
+    ValueError
+        If `children` is empty, or if elements have inconsistent shapes
+    TypeError
+        If `children` contains inconsistent data types
+    """
+
+    def __init__(self, children):
+        self.children = list(children)
+        if not len(self.children):
+            raise ValueError('empty child list')
+        shape = children[0].shape
+        dtype = children[0].dtype
+        min_padded_shape = children[0].min_padded_shape
+        alignment = children[0].alignment
+        # Validate consistency and compute combined requirements
+        for child in children:
+            if child.shape != shape:
+                raise ValueError('inconsistent shapes')
+            if child.dtype != dtype:
+                raise TypeError('inconsistent dtypes')
+            min_padded_shape = np.maximum(min_padded_shape, child.min_padded_shape)
+            alignment = np.maximum(alignment, child.alignment)
+        super(CompoundIOSlot, self).__init__(shape, dtype, None, min_padded_shape, alignment)
+
+    def bind(self, buffer):
+        super(CompoundIOSlot, self).bind(buffer)
+        for child in self.children:
+            child.bind(buffer)
+
+class Operation(object):
+    """An instance of a device operation. Typically one first creates a
+    template (which contains the program code, and is expensive to create) and
+    then instantiates it for use with specific buffers.
+
+    An instance of this class contains *slots*, which are named instances of
+    :class:`IOSlot`. The user binds specific buffers to these slots to specify
+    the memory used in the operation.
+
+    This class is only useful when subclassed. The subclass will populate
+    the slots. It also conventially provides a `__call__` method which takes
+    an arbitrary set of keyword arguments, which are passed to :meth:`bind`.
+
+    Parameters
+    ----------
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command queue for the operation
+    """
+    def __init__(self, command_queue):
+        self.slots = {}
+        self.command_queue = command_queue
+
+    def bind(self, **kwargs):
+        """Bind buffers to slots by keyword. Each keyword argument name
+        specifies a slot name.
+        """
+        for name, buffer in kwargs.items():
+            self.slots[name].bind(buffer)
+
+    def check_all_bound(self):
+        """Make sure that all slots have a buffer bound, allocating if necessary"""
+        for name, slot in self.slots.items():
+            if slot.buffer is None:
+                slot.allocate(self.command_queue.context)
