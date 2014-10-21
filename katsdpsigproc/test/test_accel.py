@@ -4,6 +4,7 @@ import numpy as np
 from decorator import decorator
 from mako.template import Template
 from nose.tools import assert_equal
+from .test_tune import assert_raises
 from nose.plugins.skip import SkipTest
 import mock
 from .. import accel
@@ -105,8 +106,10 @@ class TestDeviceArray(object):
         np.testing.assert_equal(ary, buf)
 
 class TestIOSlot(object):
+    """Tests for :class:`katsdpsigproc.accel.IOSlot`"""
     @mock.patch('katsdpsigproc.accel.DeviceArray', autospec=True)
     def test_allocate(self, DeviceArray):
+        """IOSlot.allocate must correctly apply alignment an allocate a buffer"""
         shape = (50, 30)
         min_padded_shape = (60, 50)
         alignment = (8, 4)
@@ -128,3 +131,149 @@ class TestIOSlot(object):
         assert_equal(ary, slot.buffer)
         DeviceArray.assert_called_once_with(
                 mock.sentinel.context, shape, dtype, padded_shape)
+
+    def test_validate_shape(self):
+        """IOSlot.validate must check that the shape matches"""
+        ary = mock.sentinel.ary
+        ary.dtype = np.float32
+        ary.shape = (5, 3)
+        ary.padded_shape = (10, 10)
+        slot = accel.IOSlot((5, 3), np.float32)
+        slot.bind(ary)  # Should pass
+
+        with assert_raises(ValueError):
+            # Wrong shape
+            ary.shape = (5, 4)
+            slot.bind(ary)
+        with assert_raises(ValueError):
+            # Wrong dimensions
+            ary.shape = (5,)
+            slot.bind(ary)
+
+    def test_validate_dtype(self):
+        """IOSlot.validate must check that the dtype matches"""
+        ary = mock.sentinel.ary
+        ary.dtype = np.float32
+        ary.shape = (5, 3)
+        ary.padded_shape = ary.shape
+        slot = accel.IOSlot((5, 3), np.float32)
+        slot.bind(ary)  # Should pass
+
+        ary.dtype = np.dtype(np.float32)  # Equivalent dtype
+        slot.bind(ary)  # Should pass
+
+        with assert_raises(TypeError):
+            ary.dtype = np.int32
+            slot.bind(ary)
+
+    def test_validate_padded_shape(self):
+        """IOSlot.validate must check that the padded shape is large enough"""
+        ary = mock.sentinel.ary
+        ary.dtype = np.float32
+        ary.shape = (5, 3)
+        ary.padded_shape = (8, 6)
+        slot = accel.IOSlot((5, 3), np.float32, min_padded_shape=(8, 6))
+        slot.bind(ary)  # Should pass
+
+        ary.padded_shape = (10, 11)
+        slot.bind(ary)  # Bigger than needed - should pass
+
+        with assert_raises(ValueError):
+            ary.padded_shape = (7, 7)
+            slot.bind(ary)
+
+    def test_validate_alignment(self):
+        """IOSlot.validate must check that the alignment is correct"""
+        ary = mock.sentinel.ary
+        ary.dtype = np.float32
+        ary.shape = (27, 33)
+        ary.padded_shape = (32, 40)
+        slot = accel.IOSlot((27, 33), np.float32, alignment=(4, 8))
+        slot.bind(ary)  # Should pass
+
+        with assert_raises(ValueError):
+            ary.padded_shape = (32, 44)
+            slot.bind(ary)
+
+    def test_bind_none(self):
+        """IOSlot.bind must accept `None`"""
+        ary = mock.sentinel.ary
+        ary.dtype = np.float32
+        ary.shape = (5, 3)
+        ary.padded_shape = ary.shape
+        slot = accel.IOSlot((5, 3), np.float32)
+        slot.bind(ary)
+        assert slot.buffer is ary
+        slot.bind(None)
+        assert slot.buffer is None
+
+    def test_min_padded_round(self):
+        """IOSlot constructor must compute min padded shape correctly"""
+        slot = accel.IOSlot((17, 23, 5), np.float32, (3, 5, 5))
+        assert_equal((18, 25, 5), slot.min_padded_shape)
+
+class TestCompoundIOSlot(object):
+    """Tests for :class:`katsdpsigproc.accel.CompoundIOSlot`"""
+
+    def setup(self):
+        self.slot1 = accel.IOSlot((13, 7, 22), np.float32, min_padded_shape=(17, 8, 25), alignment=(1, 8, 4))
+        self.slot2 = accel.IOSlot((13, 7, 22), np.float32, min_padded_shape=(14, 10, 22), alignment=(4, 4, 1))
+
+    def test_check_empty(self):
+        """CompoundIOSlot constructor must reject empty list"""
+        with assert_raises(ValueError):
+            accel.CompoundIOSlot([])
+
+    def test_validate_shape(self):
+        """CompoundIOSlot must check that children have consistent shapes"""
+        slot1 = accel.IOSlot((5, 3), np.float32)
+        slot2 = accel.IOSlot((5, 4), np.float32)
+        with assert_raises(ValueError):
+            accel.CompoundIOSlot([slot1, slot2])
+
+    def test_validate_dtype(self):
+        """CompoundIOSlot must check that children have consistent data types"""
+        slot1 = accel.IOSlot((5, 3), np.float32)
+        slot2 = accel.IOSlot((5, 3), np.int32)
+        with assert_raises(TypeError):
+            accel.CompoundIOSlot([slot1, slot2])
+
+    def test_attributes(self):
+        """CompoundIOSlot must correctly combine attributes"""
+        slot = accel.CompoundIOSlot([self.slot1, self.slot2])
+        assert_equal((13, 7, 22), slot.shape)
+        assert_equal(np.float32, slot.dtype)
+        assert_equal((17, 10, 25), slot.min_padded_shape)
+        assert_equal((4, 8, 4), slot.alignment)
+
+    def test_bind(self):
+        """CompoundIOSlot.bind must bind children"""
+        ary = mock.sentinel.ary
+        ary.shape = (13, 7, 22)
+        ary.dtype = np.float32
+        ary.padded_shape = (20, 16, 28)
+        slot = accel.CompoundIOSlot([self.slot1, self.slot2])
+        slot.bind(ary)
+        assert_equal(ary, slot.buffer)
+        assert_equal(ary, self.slot1.buffer)
+        assert_equal(ary, self.slot2.buffer)
+
+    def test_bind_fail(self):
+        """CompoundIOSlot.bind must not have side effects if the array is not
+        valid for all children.
+        """
+        ary = mock.sentinel.ary
+        ary.shape = (13, 7, 22)
+        ary.dtype = np.float32
+        ary.padded_shape = (17, 8, 28)
+        # Check that the array has the properties we want for the test
+        self.slot1.validate(ary)
+        with assert_raises(ValueError):
+            self.slot2.validate(ary)
+        # The actual test
+        slot = accel.CompoundIOSlot([self.slot1, self.slot2])
+        with assert_raises(ValueError):
+            slot.bind(ary)
+        assert slot.buffer is None
+        assert self.slot1.buffer is None
+        assert self.slot2.buffer is None

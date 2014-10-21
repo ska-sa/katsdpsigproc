@@ -423,6 +423,20 @@ class IOSlot(object):
         self.buffer = None
 
     def validate(self, buffer):
+        """Check that `buffer` is suitable for binding.
+
+        Parameters
+        ----------
+        buffer : :class:`DeviceArray`
+            Buffer to validate (must not be `None`)
+
+        Raises
+        ------
+        TypeError
+            If the data type does not match
+        ValueError
+            If the dimensions or shape do not match, or the padding or alignment are invalid
+        """
         if buffer.dtype != self.dtype:
             raise TypeError('dtype does not match')
         if len(buffer.shape) != len(self.shape):
@@ -439,6 +453,8 @@ class IOSlot(object):
         """Set the internal buffer reference. Always use this function rather
         that writing it directly, because subclasses may overload this method.
 
+        If the buffer is not `None`, it is validated (see :meth:`validate`).
+
         Parameters
         ----------
         buffer : :class:`DeviceArray` or `None`
@@ -449,7 +465,7 @@ class IOSlot(object):
         self.buffer = buffer
 
     def allocate(self, context):
-        """Allocate and immediate bind a buffer satisfying the requirements.
+        """Allocate and immediately bind a buffer satisfying the requirements.
 
         Parameters
         ----------
