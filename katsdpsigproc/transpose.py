@@ -28,7 +28,7 @@ class TransposeTemplate(object):
 
     def __init__(self, context, dtype, ctype, tune=None):
         self.context = context
-        self.dtype = dtype
+        self.dtype = np.dtype(dtype)
         self.ctype = ctype
         if tune is None:
             tune = self.autotune(context, dtype, ctype)
