@@ -6,6 +6,7 @@ functionality can be added, but should be kept in sync with
 
 import pyopencl
 import pyopencl.array
+import numpy as np
 
 class Program(object):
     """Abstraction of a program object"""
@@ -151,7 +152,11 @@ class Context(object):
         program.build(extra_flags)
         return Program(program)
 
-    def allocate(self, shape, dtype):
+    def allocate_raw(self, bytes):
+        """Create an untyped buffer on the device."""
+        return pyopencl.Buffer(self._pyopencl_context, pyopencl.mem_flags.READ_WRITE, bytes)
+
+    def allocate(self, shape, dtype, raw=None):
         """Create a typed buffer on the device.
 
         Parameters
@@ -160,8 +165,10 @@ class Context(object):
             Shape for the array
         dtype : numpy dtype
             Type for the data
+        raw : PyOpenCL buffer, optional
+            Memory backing the array (automatically allocated if `None`
         """
-        return pyopencl.array.Array(self._pyopencl_context, shape, dtype)
+        return pyopencl.array.Array(self._pyopencl_context, shape, dtype, data=raw)
 
     def allocate_pinned(self, shape, dtype):
         """Create a buffer in host memory that can be efficiently copied
@@ -174,7 +181,7 @@ class Context(object):
         dtype : numpy dtype
             Type for the data
         """
-        bytes = reduce(lambda x, y: x * y, shape) * dtype.itemsize
+        bytes = np.product(shape) * dtype.itemsize
         buf = pyopencl.Buffer(
                 self._pyopencl_context,
                 pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,

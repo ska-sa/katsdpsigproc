@@ -101,9 +101,13 @@ class Context(object):
                     options=NVCC_FLAGS + extra_flags)
             return Program(module)
 
-    def allocate(self, shape, dtype):
+    def allocate_raw(self, bytes):
         with self:
-            return pycuda.gpuarray.GPUArray(shape, dtype)
+            return pycuda.driver.mem_alloc(bytes)
+
+    def allocate(self, shape, dtype, raw=None):
+        with self:
+            return pycuda.gpuarray.GPUArray(shape, dtype, gpudata=raw)
 
     def allocate_pinned(self, shape, dtype):
         with self:

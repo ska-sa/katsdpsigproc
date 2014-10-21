@@ -78,11 +78,14 @@ class LinenoLexer(mako.lexer.Lexer):
             out.append(line + '\n')
         return ''.join(out)
 
-_lookup = TemplateLookup(
-        pkg_resources.resource_filename(__name__, ''), lexer_cls=LinenoLexer,
-        strict_undefined=True)
+def _make_lookup(extra_dirs):
+    dirs = extra_dirs + [pkg_resources.resource_filename(__name__, '')]
+    return TemplateLookup(dirs, lexer_cls=LinenoLexer, strict_undefined=True)
 
-def build(context, name, render_kws=None, extra_flags=None):
+# Cached for convenience
+_lookup = _make_lookup([])
+
+def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None):
     """Build a source module from a mako template.
 
     Parameters
@@ -93,6 +96,8 @@ def build(context, name, render_kws=None, extra_flags=None):
         Source file name, relative to the katsdpsigproc module
     render_kws : dict, optional
         Keyword arguments to pass to mako
+    extra_dirs : list of `str`, optional
+        Extra directories to search for source code
     extra_flags : list, optional
         Flags to pass to the compiler
 
@@ -105,7 +110,11 @@ def build(context, name, render_kws=None, extra_flags=None):
         render_kws = {}
     if extra_flags is None:
         extra_flags = []
-    source = _lookup.get_template(name).render(
+    if extra_dirs is None:
+        lookup = _lookup
+    else:
+        lookup = _make_lookup(extra_dirs)
+    source = lookup.get_template(name).render(
             simd_group_size=context.device.simd_group_size,
             **render_kws)
     return context.compile(source, extra_flags)
@@ -287,9 +296,11 @@ class DeviceArray(object):
         Data type
     padded_shape : tuple, optional
         Shape for memory allocation (defaults to `shape`)
+    raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
+        If specified, provides the backing memory
     """
 
-    def __init__(self, context, shape, dtype, padded_shape=None):
+    def __init__(self, context, shape, dtype, padded_shape=None, raw=None):
         if padded_shape is None:
             padded_shape = shape
         assert len(shape) == len(padded_shape)
@@ -298,7 +309,10 @@ class DeviceArray(object):
         self.dtype = np.dtype(dtype)
         self.padded_shape = padded_shape
         self.context = context
-        self.buffer = context.allocate(padded_shape, dtype)
+        if raw is None:
+            self.buffer = context.allocate(padded_shape, dtype, raw)
+        else:
+            self.buffer = raw
 
     @property
     def ndim(self):
@@ -464,18 +478,30 @@ class IOSlot(object):
             self.validate(buffer)
         self.buffer = buffer
 
-    def allocate(self, context):
+    def required_padded_shape(self):
+        """Padded shape required to satisfy only this slot"""
+        padded_shape = list(self.min_padded_shape)
+        for i, a in enumerate(self.alignment):
+            padded_shape[i] = roundup(padded_shape[i], a)
+        return tuple(padded_shape)
+
+    def required_bytes(self):
+        """Number of bytes of device storage required"""
+        return np.product(self.required_padded_shape()) * self.dtype.itemsize
+
+    def allocate(self, context, raw=None):
         """Allocate and immediately bind a buffer satisfying the requirements.
+
+        .. warning:: When `raw` is provided, there is no check that the storage is large enough
 
         Parameters
         ----------
         context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
             Context in which to allocate the memory
+        raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
+            Backing storage for the :class:`DeviceArray`
         """
-        padded_shape = list(self.min_padded_shape)
-        for i, a in enumerate(self.alignment):
-            padded_shape[i] = roundup(padded_shape[i], a)
-        buffer = DeviceArray(context, self.shape, self.dtype, tuple(padded_shape))
+        buffer = DeviceArray(context, self.shape, self.dtype, self.required_padded_shape(), raw=raw)
         self.bind(buffer)
         return buffer
 
@@ -519,6 +545,30 @@ class CompoundIOSlot(IOSlot):
         super(CompoundIOSlot, self).bind(buffer)
         for child in self.children:
             child.bind(buffer)
+
+class AliasIOSlot(object):
+    """Slot that aggregates multiple child slots (which need not have the same
+    type or shape), and allocates a single buffer to back all of them. The
+    children may be instances of either :class:`IOSlot` or :class:`AliasIOSlot`.
+
+    .. note:: This is not a subclass of :class:`IOSlot`, although it has some common members.
+    """
+    def __init__(self, children):
+        self.children = children
+        self.raw = None
+        if not len(self.children):
+            raise ValueError('empty child list')
+
+    def required_bytes(self):
+        return max([child.required_bytes() for child in self.children])
+
+    def allocate(self, context, raw=None):
+        if raw is None:
+            raw = context.allocate_raw(self.required_bytes())
+        for child in self.children:
+            child.allocate(context, raw)
+        self.raw = raw
+        return raw
 
 class Operation(object):
     """An instance of a device operation. Typically one first creates a

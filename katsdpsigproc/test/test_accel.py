@@ -105,9 +105,20 @@ class TestDeviceArray(object):
         buf = self.array.get(test_command_queue)
         np.testing.assert_equal(ary, buf)
 
+    @device_test
+    def test_raw(self):
+        raw = test_context.allocate_raw(2048)
+        ary = DeviceArray(
+                context=test_context,
+                shape=self.shape,
+                dtype=np.int32,
+                padded_shape=self.padded_shape,
+                raw=raw)
+        assert ary.buffer is raw
+
 class TestIOSlot(object):
     """Tests for :class:`katsdpsigproc.accel.IOSlot`"""
-    @mock.patch('katsdpsigproc.accel.DeviceArray', autospec=True)
+    @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
     def test_allocate(self, DeviceArray):
         """IOSlot.allocate must correctly apply alignment an allocate a buffer"""
         shape = (50, 30)
@@ -130,7 +141,33 @@ class TestIOSlot(object):
         assert_equal(ary, ret)
         assert_equal(ary, slot.buffer)
         DeviceArray.assert_called_once_with(
-                mock.sentinel.context, shape, dtype, padded_shape)
+                mock.sentinel.context, shape, dtype, padded_shape, raw=None)
+
+    @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
+    def test_allocate_raw(self, DeviceArray):
+        """Test IOSlot.allocate with a raw parameter"""
+        shape = (50, 30)
+        min_padded_shape = (60, 50)
+        alignment = (8, 4)
+        padded_shape = (64, 52)
+        dtype = np.dtype(np.float32)
+        raw = mock.sentinel.raw
+        # Create the device array that will be created. We need to populate it
+        # with some attributes to allow validation to pass
+        ary = mock.Mock()
+        ary.dtype = dtype
+        ary.shape = shape
+        ary.padded_shape = padded_shape
+        ary.raw = raw
+        # Set the mocked DeviceArray class to return this array
+        DeviceArray.return_value = ary
+        # Run the system under test
+        slot = accel.IOSlot(shape, dtype, min_padded_shape=min_padded_shape, alignment=alignment)
+        slot.allocate(mock.sentinel.context, raw)
+        # Validation
+        assert_equal(ary, slot.buffer)
+        DeviceArray.assert_called_once_with(
+                mock.sentinel.context, shape, dtype, padded_shape, raw=raw)
 
     def test_validate_shape(self):
         """IOSlot.validate must check that the shape matches"""
@@ -194,6 +231,10 @@ class TestIOSlot(object):
         with assert_raises(ValueError):
             ary.padded_shape = (32, 44)
             slot.bind(ary)
+
+    def test_required_bytes(self):
+        slot = accel.IOSlot((27, 33), np.float32, alignment=(4, 8))
+        assert_equal(4 * 28 * 40, slot.required_bytes())
 
     def test_bind_none(self):
         """IOSlot.bind must accept `None`"""
@@ -277,3 +318,29 @@ class TestCompoundIOSlot(object):
         assert slot.buffer is None
         assert self.slot1.buffer is None
         assert self.slot2.buffer is None
+
+class TestAliasIOSlot(object):
+    """Tests for :class:`katsdpsigproc.accel.AliasIOSlot`"""
+
+    def setup(self):
+        self.slot1 = accel.IOSlot((3, 7), np.float32)
+        self.slot2 = accel.IOSlot((5, 3), np.complex64)
+
+    def test_required_bytes(self):
+        slot = accel.AliasIOSlot([self.slot1, self.slot2])
+        assert_equal(120, slot.required_bytes())
+
+    def test_allocate(self):
+        # Set up mocks
+        raw = mock.sentinel.raw
+        context = mock.NonCallableMock()
+        context.allocate_raw = mock.Mock(return_value=raw)
+        # Run the test
+        slot = accel.AliasIOSlot([self.slot1, self.slot2])
+        ret = slot.allocate(context)
+        # Validation
+        context.allocate_raw.assert_called_once_with(120)
+        assert ret is raw
+        assert slot.raw is raw
+        assert self.slot1.buffer is not None
+        assert self.slot2.buffer is not None
