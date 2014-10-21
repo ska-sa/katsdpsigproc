@@ -12,6 +12,7 @@ The class may define an autotune_version class attribute to version the table.
 
 At present, caching is implemented in an sqlite3 database. There is a table
 corresponding to each autotuning method. The table has the following columns:
+
 - `device_name`: string, name for the compute device
 - `device_platform`: string, name for the compute device's platform
 - `device_version`: version string for the driver
@@ -142,7 +143,7 @@ def autotuner(fn, *args, **kwargs):
     properties of the device and the name of the function.
 
     Every argument to the function must have a name, which implies that the
-    *args construct may not be used.
+    \*args construct may not be used.
     """
     cls = args[0]
     classname = '{0}.{1}.{2}'.format(cls.__module__, cls.__name__, fn.__name__)

@@ -19,6 +19,7 @@ class TransposeTemplate(object):
     tune : dict, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
+
         - block: number of workitems per workgroup in each dimension
         - vtx, vty: elements per workitem in each dimension
     """
@@ -74,6 +75,16 @@ class TransposeTemplate(object):
         return Transpose(self, command_queue, shape)
 
 class Transpose(accel.Operation):
+    """Concrete instance of :class:`TransposeTemplate`.
+
+    .. rubric:: Slots
+
+    **src**
+        Input
+
+    **dest**
+        Output
+    """
     def __init__(self, template, command_queue, shape):
         super(Transpose, self).__init__(command_queue)
         self.template = template

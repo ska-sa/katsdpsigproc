@@ -47,6 +47,7 @@ class BackgroundMedianFilterDeviceTemplate(object):
     tune : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
+
         - wgs: number of work-items per baseline
         - csplit: approximate number of workitems for each channel
     """
@@ -96,6 +97,13 @@ class BackgroundMedianFilterDeviceTemplate(object):
 class BackgroundMedianFilterDevice(accel.Operation):
     """Concrete instance of :class:`BackgroundMedianFilterDeviceTemplate`.
 
+    .. rubric:: Slots
+
+    **vis** : channels × baselines, complex64
+        Input visibilities
+    **deviations** : channels × baselines, float32
+        Output deviations from the background
+
     Parameters
     ----------
     template : :class:`BackgroundMedianFilterDevice`
@@ -104,13 +112,6 @@ class BackgroundMedianFilterDevice(accel.Operation):
         Command queue for the operation
     channels, baselines : int
         Shape of the visibilities array
-
-    Slots
-    -----
-    vis : channels x baselines, complex64
-        Input visibilities
-    deviations : channels x baselines, float32
-        Output deviations from the background
     """
     def __init__(self, template, command_queue, channels, baselines):
         super(BackgroundMedianFilterDevice, self).__init__(command_queue)
@@ -207,6 +208,13 @@ class NoiseEstMADDeviceTemplate(object):
 class NoiseEstMADDevice(accel.Operation):
     """Concrete instantiation of :class:`NoiseEstMADDeviceTemplate`.
 
+    .. rubric:: Slots
+
+    **deviations** : channels × baselines, float32
+        Input deviations from the background, computed by a backgrounder
+    **noise** : baselines, float32
+        Output per-baseline noise estimate
+
     Parameters
     ----------
     template : :class:`NoiseEstMADDeviceTemplate`
@@ -215,13 +223,6 @@ class NoiseEstMADDevice(accel.Operation):
         Command-queue in which work will be enqueued
     channels, baselines : int
         Shape of the visibility array
-
-    Slots
-    -----
-    deviations : channels x baselines, float32
-        Input deviations from the background, computed by a backgrounder
-    noise : baselines, float32
-        Output per-baseline noise estimate
     """
 
     transposed = False
@@ -284,6 +285,7 @@ class NoiseEstMADTDeviceTemplate(object):
     tune : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
+
         - wgsx: number of work-items per baseline
     """
 
@@ -331,6 +333,13 @@ class NoiseEstMADTDeviceTemplate(object):
 class NoiseEstMADTDevice(accel.Operation):
     """Concrete instance of :class:`NoiseEstMADTDeviceTemplate`.
 
+    .. rubric:: Slots
+
+    **deviations** : baselines × channels, float32
+        Input deviations from the background, computed by a backgrounder
+    **noise** : baselines, float32
+        Output per-baseline noise estimate
+
     Parameters
     ----------
     template : :class:`NoiseEstMADTDeviceTemplate`
@@ -339,13 +348,6 @@ class NoiseEstMADTDevice(accel.Operation):
         Command-queue in which work will be enqueued
     channels, baselines : int
         Shape of the visibility array
-
-    Slots
-    ----------
-    deviations : baselines x channels, float32
-        Input deviations from the background, computed by a backgrounder
-    noise : baselines, float32
-        Output per-baseline noise estimate
     """
     transposed = True
 
@@ -455,6 +457,15 @@ class ThresholdSimpleDeviceTemplate(object):
 class ThresholdSimpleDevice(accel.Operation):
     """Concrete instance of :class:`ThresholdSimpleDeviceTemplate`.
 
+    .. rubric:: Slots
+
+    **deviations** : channels × baselines (or transposed), float32
+        Input deviations from the background
+    **noise** : baselines, float32
+        Noise estimates per baseline
+    **flags** : channels × baselines (or transposed), uint8
+        Output flags
+
     Parameters
     ----------
     template : :class:`ThresholdSimpleDeviceTemplate`
@@ -463,15 +474,6 @@ class ThresholdSimpleDevice(accel.Operation):
         Command-queue in which work will be enqueued
     channels, baselines : int
         Shape of the visibility array
-
-    Slots
-    -----
-    deviations : channels x baselines (or transposed), float32
-        Input deviations from the background
-    noise : baselines, float32
-        Noise estimates per baseline
-    flags : channels x baselines (or transposed), uint8
-        Output flags
     """
 
     def __init__(self, template, command_queue, channels, baselines):
@@ -517,7 +519,7 @@ class ThresholdSimpleDevice(accel.Operation):
                 local_size=(self.template.wgsx, self.template.wgsy))
 
 class ThresholdSumDeviceTemplate(object):
-    """A device version of :class:`katsdpsigproc.rfi.host.ThresholdSumHost.
+    """A device version of :class:`katsdpsigproc.rfi.host.ThresholdSumHost`.
     It uses transposed data. Performance will be best with a large work
     group size, because of the stencil-like nature of the computation.
 
@@ -597,6 +599,15 @@ class ThresholdSumDeviceTemplate(object):
 class ThresholdSumDevice(accel.Operation):
     """Concrete instance of :class:`ThresholdSumDeviceTemplate`.
 
+    .. rubric:: Slots
+
+    **deviations** : baselines × channels, float32
+        Input deviations from the background
+    **noise** : baselines, float32
+        Noise estimates per baseline
+    **flags** : baselines × channels, uint8
+        Output flags
+
     Parameters
     ----------
     template : :class:`ThresholSumDeviceTemplate`
@@ -605,15 +616,6 @@ class ThresholdSumDevice(accel.Operation):
         Command-queue in which work will be enqueued
     channels, baselines : int
         Shape of the visibility array
-
-    Slots
-    -----
-    deviations : baselines x channels, float32
-        Input deviations from the background
-    noise : baselines, float32
-        Noise estimates per baseline
-    flags : baselines x channels, uint8
-        Output flags
     """
     host_class = host.ThresholdSumHost
     transposed = True
@@ -690,6 +692,21 @@ class FlaggerDevice(accel.Operation):
     Temporary buffers are presented as slots, which allows them to either
     be set by the user or allocated automatically on first use.
 
+    .. rubric:: Slots
+
+    **vis** : channels × baselines, complex64
+        Input visibilities
+    **deviations** : channels × baselines, float32
+        Temporary, deviations from the background
+    **deviations_t** : baselines × channels, float32, optional
+        Transpose of `deviations`
+    **noise** : baselines, float32
+        Estimate of per-baseline noise
+    **flags_t** : baselines × channels, uint8, optional
+        Transpose of `flags`
+    **flags** : channels × baselines, uint8
+        Output flags
+
     Parameters
     ----------
     template : :class:`BackgroundMedianFilterDevice`
@@ -698,21 +715,6 @@ class FlaggerDevice(accel.Operation):
         Command queue for the operation
     channels, baselines : int
         Shape of the visibilities array
-
-    Slots
-    -----
-    vis : channels x baselines, complex64
-        Input visibilities
-    deviations : channels x baselines, float32
-        Temporary, deviations from the background
-    deviations_t : baselines x channels, float32, optional
-        Transpose of `deviations`
-    noise : baselines, float32
-        Estimate of per-baseline noise
-    flags_t : baselines x channels, uint8, optional
-        Transpose of `flags`
-    flags : channels x baselines, uint8
-        Output flags
     """
     def __init__(self, template, command_queue, channels, baselines):
         super(FlaggerDevice, self).__init__(command_queue)
