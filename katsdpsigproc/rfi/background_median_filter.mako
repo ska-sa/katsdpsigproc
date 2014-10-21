@@ -20,11 +20,24 @@
 
 #define WIDTH ${width}
 
-/// Complex absolute value
-DEVICE_FN float absc(float2 v)
+% if amplitudes:
+
+typedef float in_type;
+DEVICE_FN float amplitude(in_type v)
+{
+    return v;
+}
+
+% else:
+
+typedef float2 in_type;
+/// Amplitude of a visibility
+DEVICE_FN float amplitude(in_type v)
 {
     return hypot(v.x, v.y);
 }
+
+% endif
 
 /**
  * Serial sliding-window median filter. New elements are added using
@@ -97,7 +110,7 @@ DEVICE_FN void median_filter_slide(median_filter *self, float new_sample)
  * size @a N.
  */
 DEVICE_FN static void medfilt_serial_sliding(
-    const GLOBAL float2 * RESTRICT in, GLOBAL float * __restrict out,
+    const GLOBAL in_type * RESTRICT in, GLOBAL float * __restrict out,
     int first, int last, int N, int in_stride, int out_stride)
 {
     const int H = WIDTH / 2;
@@ -108,13 +121,13 @@ DEVICE_FN static void medfilt_serial_sliding(
     // These is no need for this on the leading edge, because the
     // constructor initialises with zero samples.
     for (int i = max(0, first - H); i < min(first + H, N); i++)
-        median_filter_slide(&filter, absc(in[i * in_stride]));
+        median_filter_slide(&filter, amplitude(in[i * in_stride]));
     for (int i = N; i < first + H; i++)
         median_filter_slide(&filter, 0.0f);
 
     for (int i = first; i < min(last, N - H); i++)
     {
-        median_filter_slide(&filter, absc(in[(i + H) * in_stride]));
+        median_filter_slide(&filter, amplitude(in[(i + H) * in_stride]));
         out[i * out_stride] = median_filter_center(&filter) - median_filter_get(&filter);
     }
     for (int i = max(first, N - H); i < last; i++)
@@ -132,7 +145,7 @@ DEVICE_FN static void medfilt_serial_sliding(
  * number of threads.
  */
 KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
-    const GLOBAL float2 * RESTRICT in, GLOBAL float * RESTRICT out,
+    const GLOBAL in_type * RESTRICT in, GLOBAL float * RESTRICT out,
     int channels, int in_stride, int out_stride, int VT)
 {
     int bl = get_global_id(0);

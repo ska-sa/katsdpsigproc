@@ -24,13 +24,18 @@ class TestBackgroundMedianFilterHost(object):
 
 @device_test
 def test_BackgroundMedianFilterDevice():
-    check_device_class(device.BackgroundMedianFilterDeviceTemplate, 5, {'wgs': 128, 'csplit': 4})
+    check_device_class(device.BackgroundMedianFilterDeviceTemplate, 5, False, {'wgs': 128, 'csplit': 4})
+    check_device_class(device.BackgroundMedianFilterDeviceTemplate, 5, True, {'wgs': 128, 'csplit': 4})
 
-def check_device_class(cls, width, *device_args, **device_kw):
-    bg_host = cls.host_class(width)
+def check_device_class(cls, width, amplitudes, *device_args, **device_kw):
+    bg_host = cls.host_class(width, amplitudes)
     bg_device = device.BackgroundHostFromDevice(
-            cls(test_context, width, *device_args, **device_kw), test_command_queue)
-    out_host = bg_host(_vis_big)
-    out_device = bg_device(_vis_big)
+            cls(test_context, width, amplitudes, *device_args, **device_kw), test_command_queue)
+    if amplitudes:
+        vis = np.abs(_vis_big)
+    else:
+        vis = _vis_big
+    out_host = bg_host(vis)
+    out_device = bg_device(vis)
     # Uses an abs tolerance because backgrounding subtracts nearby values
     np.testing.assert_allclose(out_host, out_device, atol=1e-6)
