@@ -5,6 +5,7 @@ from decorator import decorator
 from mako.template import Template
 from nose.tools import assert_equal
 from nose.plugins.skip import SkipTest
+import mock
 from .. import accel
 from ..accel import HostArray, DeviceArray, LinenoLexer
 if accel.have_cuda:
@@ -102,3 +103,28 @@ class TestDeviceArray(object):
         # Check that it matches get
         buf = self.array.get(test_command_queue)
         np.testing.assert_equal(ary, buf)
+
+class TestIOSlot(object):
+    @mock.patch('katsdpsigproc.accel.DeviceArray', autospec=True)
+    def test_allocate(self, DeviceArray):
+        shape = (50, 30)
+        min_padded_shape = (60, 50)
+        alignment = (8, 4)
+        padded_shape = (64, 52)
+        dtype = np.dtype(np.float32)
+        # Create the device array that will be created. We need to populate it
+        # with some attributes to allow validation to pass
+        ary = mock.Mock()
+        ary.dtype = dtype
+        ary.shape = shape
+        ary.padded_shape = padded_shape
+        # Set the mocked DeviceArray class to return this array
+        DeviceArray.return_value = ary
+        # Run the system under test
+        slot = accel.IOSlot(shape, dtype, min_padded_shape=min_padded_shape, alignment=alignment)
+        ret = slot.allocate(mock.sentinel.context)
+        # Validation
+        assert_equal(ary, ret)
+        assert_equal(ary, slot.buffer)
+        DeviceArray.assert_called_once_with(
+                mock.sentinel.context, shape, dtype, padded_shape)

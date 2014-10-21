@@ -459,7 +459,7 @@ class IOSlot(object):
         padded_shape = list(self.min_padded_shape)
         for i, a in enumerate(self.alignment):
             padded_shape[i] = roundup(padded_shape[i], a)
-        buffer = DeviceArray(context, self.shape, self.dtype, padded_shape)
+        buffer = DeviceArray(context, self.shape, self.dtype, tuple(padded_shape))
         self.bind(buffer)
         return buffer
 
