@@ -94,7 +94,7 @@ class Transpose(accel.Operation):
 
     def __call__(self, **kwargs):
         self.bind(**kwargs)
-        self.check_all_bound()
+        self.ensure_all_bound()
         src = self.slots['src'].buffer
         dest = self.slots['dest'].buffer
         # Round up to number of blocks in each dimension

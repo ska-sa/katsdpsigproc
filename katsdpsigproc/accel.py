@@ -599,7 +599,7 @@ class Operation(object):
         for name, buffer in kwargs.items():
             self.slots[name].bind(buffer)
 
-    def check_all_bound(self):
+    def ensure_all_bound(self):
         """Make sure that all slots have a buffer bound, allocating if necessary"""
         for name, slot in self.slots.items():
             if slot.buffer is None:

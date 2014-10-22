@@ -92,7 +92,7 @@ def main():
                 context, args.sigmas)
         template = katsdpsigproc.rfi.device.FlaggerDeviceTemplate(background, noise_est, threshold)
         flagger = template.instantiate(command_queue, args.channels, args.baselines)
-        flagger.check_all_bound()
+        flagger.ensure_all_bound()
 
         data_device = flagger.slots['vis'].buffer
         flags_device = flagger.slots['flags'].buffer

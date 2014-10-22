@@ -83,7 +83,7 @@ class Fill(accel.Operation):
 
     def __call__(self, value, **kwargs):
         self.bind(**kwargs)
-        self.check_all_bound()
+        self.ensure_all_bound()
         data = self.slots['data'].buffer
 
         elements = np.product(data.padded_shape)

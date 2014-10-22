@@ -26,7 +26,7 @@ class BackgroundHostFromDevice(object):
         (channels, baselines) = vis.shape
         fn = self.template.instantiate(self.command_queue, channels, baselines)
         # Trigger allocations
-        fn.check_all_bound()
+        fn.ensure_all_bound()
         fn.slots['vis'].buffer.set(self.command_queue, vis)
         # Do the computation
         fn()
@@ -143,7 +143,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
             Passed to :meth:`bind`
         """
         self.bind(**kwargs)
-        self.check_all_bound()
+        self.ensure_all_bound()
         VT = accel.divup(self.channels, self.template.csplit)
         xblocks = accel.divup(self.baselines, self.template.wgs)
         yblocks = accel.divup(self.channels, VT)
@@ -176,7 +176,7 @@ class NoiseEstHostFromDevice(object):
             deviations = deviations.T
         fn = self.template.instantiate(self.command_queue, channels, baselines)
         # Allocate and populate memory
-        fn.check_all_bound()
+        fn.ensure_all_bound()
         fn.slots['deviations'].buffer.set(self.command_queue, deviations)
         # Perform computation
         fn()
@@ -254,7 +254,7 @@ class NoiseEstMADDevice(accel.Operation):
             Passed to :meth:`bind`
         """
         self.bind(**kwargs)
-        self.check_all_bound()
+        self.ensure_all_bound()
         blocks = accel.divup(self.baselines, self.template.wgsx)
         vt = accel.divup(self.channels, self.template.wgsy)
         deviations = self.slots['deviations'].buffer
@@ -379,7 +379,7 @@ class NoiseEstMADTDevice(accel.Operation):
             Passed to :meth:`bind`
         """
         self.bind(**kwargs)
-        self.check_all_bound()
+        self.ensure_all_bound()
         deviations = self.slots['deviations'].buffer
         noise = self.slots['noise'].buffer
         self.command_queue.enqueue_kernel(
@@ -405,7 +405,7 @@ class ThresholdHostFromDevice(object):
 
         fn = self.template.instantiate(self.command_queue, channels, baselines)
         # Allocate memory and copy data
-        fn.check_all_bound()
+        fn.ensure_all_bound()
         fn.slots['deviations'].buffer.set(self.command_queue, deviations)
         fn.slots['noise'].buffer.set(self.command_queue, noise)
         # Do computation
@@ -509,7 +509,7 @@ class ThresholdSimpleDevice(accel.Operation):
             Passed to :meth:`bind`
         """
         self.bind(**kwargs)
-        self.check_all_bound()
+        self.ensure_all_bound()
         deviations = self.slots['deviations'].buffer
         noise = self.slots['noise'].buffer
         flags = self.slots['flags'].buffer
@@ -647,7 +647,7 @@ class ThresholdSumDevice(accel.Operation):
             Passed to :meth:`bind`
         """
         self.bind(**kwargs)
-        self.check_all_bound()
+        self.ensure_all_bound()
         deviations = self.slots['deviations'].buffer
         noise = self.slots['noise'].buffer
         flags = self.slots['flags'].buffer
@@ -778,7 +778,7 @@ class FlaggerDevice(accel.Operation):
             Passed to :meth:`bind`
         """
         self.bind(**kwargs)
-        self.check_all_bound()
+        self.ensure_all_bound()
         # Do computations
         self.background()
         if self.transpose_deviations is not None:
@@ -808,7 +808,7 @@ class FlaggerHostFromDevice(object):
     def __call__(self, vis):
         (channels, baselines) = vis.shape
         fn = self.template.instantiate(self.command_queue, channels, baselines)
-        fn.check_all_bound()
+        fn.ensure_all_bound()
         fn.slots['vis'].buffer.set(self.command_queue, vis)
         fn()
         return fn.slots['flags'].buffer.get(self.command_queue)
