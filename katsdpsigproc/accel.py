@@ -18,6 +18,7 @@ from __future__ import division
 import numpy as np
 import mako.lexer
 from mako.lookup import TemplateLookup
+from collections import OrderedDict
 import pkg_resources
 import re
 import os
@@ -604,3 +605,62 @@ class Operation(object):
         for name, slot in self.slots.items():
             if slot.buffer is None:
                 slot.allocate(self.command_queue.context)
+
+class OperationSequence(Operation):
+    """Convenience class for setting up an operation that is built up of
+    from smaller named operations, with mappings of slots to share data.
+    Initially, each slot named *slot* in a child named *op* is remapped to a
+    parent slot named *op*:*slot*. After this, each set provided in
+    `compounds` is removed from the slots and combined into a single compound
+    slot. Finally, each set in `aliases` is removed and combined into an
+    alias slot.
+
+    For both `compounds` and `aliases`, if a child does not exist, it is
+    skipped, and if none of the children exist, no action is taken.
+
+    Parameters
+    ----------
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command queue for the operation
+    operations : sequence of 2-tuples
+        Name, operation pairs to add. Calling the operation executes them in order
+    compounds : mapping of `str` to sequence of `str`, optional
+        Names for compound slots, mapped to the original slot names that are replaced
+    aliases : mapping of `str` to `str`, optional
+        Names for alias slots, mapped to the original slot names that are replaced
+    """
+    def __init__(self, command_queue, operations, compounds=None, aliases=None):
+        super(OperationSequence, self).__init__(command_queue)
+        self.operations = OrderedDict(operations)
+        for (name, operation) in operations:
+            assert operation.command_queue is command_queue
+            for (slot_name, slot) in operation.slots.items():
+                self.slots[name + ':' + slot_name] = slot
+        if compounds is not None:
+            for (name, child_names) in compounds.iteritems():
+                children = self._extract_slots(child_names)
+                if children:
+                    self.slots[name] = CompoundIOSlot(children)
+        if aliases is not None:
+            for (name, child_names) in aliases.iteritems():
+                children = self._extract_slots(child_names)
+                if children:
+                    self.slots[name] = AliasIOSlot(children)
+
+    def _extract_slots(self, names):
+        """Remove and return the slots with the given names"""
+        ans = []
+        for name in names:
+            try:
+                ans.append(self.slots[name])
+                del self.slots[name]
+            except KeyError:
+                # Ignore missing items
+                pass
+        return ans
+
+    def __call__(self, **kwargs):
+        self.bind(**kwargs)
+        self.ensure_all_bound()
+        for operation in self.operations.values():
+            operation()

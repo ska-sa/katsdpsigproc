@@ -695,7 +695,7 @@ class FlaggerDeviceTemplate(object):
         """Create an instance. See :class:`FlaggerDevice`."""
         return FlaggerDevice(self, command_queue, channels, baselines)
 
-class FlaggerDevice(accel.Operation):
+class FlaggerDevice(accel.OperationSequence):
     """Concrete instance of :class:`FlaggerDeviceTemplate`.
 
     Temporary buffers are presented as slots, which allows them to either
@@ -703,8 +703,8 @@ class FlaggerDevice(accel.Operation):
 
     .. rubric:: Slots
 
-    **vis** : channels × baselines, complex64
-        Input visibilities
+    **vis** : channels × baselines, float32 or complex64
+        Input visibilities (or amplitudes, if the backgrounder takes amplitudes)
     **deviations** : channels × baselines, float32
         Temporary, deviations from the background
     **deviations_t** : baselines × channels, float32, optional
@@ -726,7 +726,6 @@ class FlaggerDevice(accel.Operation):
         Shape of the visibilities array
     """
     def __init__(self, template, command_queue, channels, baselines):
-        super(FlaggerDevice, self).__init__(command_queue)
         self.template = template
         self.channels = channels
         self.baselines = baselines
@@ -734,59 +733,44 @@ class FlaggerDevice(accel.Operation):
         self.noise_est = self.template.noise_est.instantiate(command_queue, channels, baselines)
         self.threshold = self.template.threshold.instantiate(command_queue, channels, baselines)
 
-        self.slots['vis'] = accel.CompoundIOSlot([self.background.slots['vis']])
-        # Slots contributing to the non-transposed and transposed versions
-        deviations_slots = ([], [])
-        deviations_slots[0].append(self.background.slots['deviations'])
-        deviations_slots[self.noise_est.transposed].append(self.noise_est.slots['deviations'])
-        deviations_slots[self.threshold.transposed].append(self.threshold.slots['deviations'])
-        if deviations_slots[1]:
-            # Transposition is needed
+        noise_est_suffix = '_t' if self.noise_est.transposed else ''
+        threshold_suffix = '_t' if self.threshold.transposed else ''
+
+        operations = []
+        compounds = {
+                'vis': ['background:vis'],
+                'deviations': ['background:deviations', 'transpose_deviations:src'],
+                'deviations_t': ['transpose_deviations:dest'],
+                'noise': ['noise_est:noise', 'threshold:noise'],
+                'flags_t': ['transpose_flags:src'],
+                'flags': ['transpose_flags:dest']
+                }
+        compounds['deviations' + noise_est_suffix].append('noise_est:deviations')
+        compounds['deviations' + threshold_suffix].append('threshold:deviations')
+        compounds['flags' + threshold_suffix].append('threshold:flags')
+
+        operations.append(('background', self.background))
+        if self.template.transpose_deviations:
             self.transpose_deviations = self.template.transpose_deviations.instantiate(
                     command_queue, (channels, baselines))
-            deviations_slots[0].append(self.transpose_deviations.slots['src'])
-            deviations_slots[1].append(self.transpose_deviations.slots['dest'])
-            self.slots['deviations_t'] = accel.CompoundIOSlot(deviations_slots[1])
-        else:
-            self.transpose_deviations = None
-        self.slots['deviations'] = accel.CompoundIOSlot(deviations_slots[0])
-
-        self.slots['noise'] = accel.CompoundIOSlot([
-            self.noise_est.slots['noise'],
-            self.threshold.slots['noise']])
-
-        # Similar to deviations, but for flags
-        flags_slots = ([], [])
-        flags_slots[self.threshold.transposed].append(self.threshold.slots['flags'])
-        if flags_slots[1]:
-            # Transposition is needed
+            operations.append(('transpose_deviations', self.transpose_deviations))
+        operations.append(('noise_est', self.noise_est))
+        operations.append(('threshold', self.threshold))
+        if self.template.transpose_flags:
             self.transpose_flags = self.template.transpose_flags.instantiate(
                     command_queue, (baselines, channels))
-            flags_slots[1].append(self.transpose_flags.slots['src'])
-            flags_slots[0].append(self.transpose_flags.slots['dest'])
-            self.slots['flags_t'] = accel.CompoundIOSlot(flags_slots[1])
-        else:
-            self.transpose_flags = None
-        self.slots['flags'] = accel.CompoundIOSlot(flags_slots[0])
+            operations.append(('transpose_flags', self.transpose_flags))
 
-    def __call__(self, **kwargs):
-        """Perform the flagging
+        super(FlaggerDevice, self).__init__(command_queue, operations, compounds)
 
-        Parameters
-        ----------
-        **kwargs : :class:`katsdpsigproc.accel.DeviceArray`
-            Passed to :meth:`bind`
+    def _slot_name_t(base, operation):
+        """Determine the resulting slot name used by an operation which has
+        been flagged as either transposed or non-transposed.
         """
-        self.bind(**kwargs)
-        self.ensure_all_bound()
-        # Do computations
-        self.background()
-        if self.transpose_deviations is not None:
-            self.transpose_deviations()
-        self.noise_est()
-        self.threshold()
-        if self.transpose_flags is not None:
-            self.transpose_flags()
+        if operation.transposed:
+            return base + '_t'
+        else:
+            return base
 
 class FlaggerHostFromDevice(object):
     """Wrapper that makes a :class:`FlaggerDeviceTemplate` present the
