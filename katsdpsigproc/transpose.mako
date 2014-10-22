@@ -20,72 +20,38 @@
  */
 
 <%include file="/port.mako"/>
+<%namespace name="transpose" file="transpose_base.mako"/>
 
-#define BLOCK ${block}
-#define VTX ${vtx}
-#define VTY ${vty}
-#define TILEX (VTX * BLOCK)
-#define TILEY (VTY * BLOCK)
-typedef ${ctype} T;
+<%transpose:transpose_data_class class_name="transpose_values" type="${ctype}" block="${block}" vtx="${vtx}" vty="${vty}"/>
+<%transpose:transpose_coords_class class_name="transpose_coords" block="${block}" vtx="${vtx}" vty="${vty}"/>
 
-KERNEL REQD_WORK_GROUP_SIZE(BLOCK, BLOCK, 1) void transpose(
-    GLOBAL T *out,
-    const GLOBAL T * RESTRICT in,
+KERNEL REQD_WORK_GROUP_SIZE(${block}, ${block}, 1) void transpose(
+    GLOBAL ${ctype} *out,
+    const GLOBAL ${ctype} * RESTRICT in,
     int in_rows,
     int in_cols,
     int out_stride,
     int in_stride)
 {
-    // The inner dimension is padded so that column-major accesses will
-    // hit different banks, for 4-byte banks and 1, 2 or 4-byte elements.
-    LOCAL_DECL T arr[TILEY][TILEX + (sizeof(T) > 4 ? 1 : 4 / sizeof(T))];
-
-    int lx = get_local_id(0);
-    int ly = get_local_id(1);
-
-    // Compute origin of the tile, with diagonal addressing
-    int in_row0 = (get_group_id(0) + get_group_id(1)) % get_num_groups(1) * TILEY;
-    int in_col0 = get_group_id(0) * TILEX;
+    LOCAL_DECL transpose_values values;
+    transpose_coords coords;
+    transpose_coords_init_simple(&coords);
 
     // Load a chunk into shared memory
-    {
-        int r[VTY];
-        int c[VTX];
-% for i in range(vty):
-        r[${i}] = in_row0 + ${i} * BLOCK + ly;
-% endfor
-% for i in range(vtx):
-        c[${i}] = in_col0 + ${i} * BLOCK + lx;
-% endfor
-
-% for y in range(vty):
-% for x in range(vtx):
-        if (r[${y}] < in_rows && c[${x}] < in_cols)
-            arr[ly + ${y} * BLOCK][lx + ${x} * BLOCK] =
-                in[r[${y}] * in_stride + c[${x}]];
-% endfor
-% endfor
-    }
+    <%transpose:transpose_load coords="coords" block="${block}" vtx="${vtx}" vty="${vty}" args="r, c, lr, lc">
+        if (${r} < in_rows && ${c} < in_cols)
+        {
+            values.arr[${lr}][${lc}] = in[${r} * in_stride + ${c}];
+        }
+    </%transpose:transpose_load>
 
     BARRIER();
 
     // Write chunk back to global memory, transposed
-    {
-        int r[VTX];
-        int c[VTY];
-% for i in range(vtx):
-        r[${i}] = in_col0 + ${i} * BLOCK + ly;
-% endfor
-% for i in range(vty):
-        c[${i}] = in_row0 + ${i} * BLOCK + lx;
-% endfor
-
-% for y in range(vtx):
-% for x in range(vty):
-        if (r[${y}] < in_cols && c[${x}] < in_rows)
-            out[r[${y}] * out_stride + c[${x}]] =
-                arr[lx + ${x} * BLOCK][ly + ${y} * BLOCK];
-% endfor
-% endfor
-    }
+    <%transpose:transpose_store coords="coords" block="${block}" vtx="${vtx}" vty="${vty}" args="r, c, lr, lc">
+        if (${r} < in_cols && ${c} < in_rows)
+        {
+            out[${r} * out_stride + ${c}] = values.arr[${lr}][${lc}];
+        }
+    </%transpose:transpose_store>
 }
