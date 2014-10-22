@@ -84,27 +84,28 @@ def main():
         print "CPU time (ms):", (end - start) * 1000.0
     else:
         command_queue = context.create_command_queue(profile=True)
-        background = katsdpsigproc.rfi.device.BackgroundMedianFilterDevice(
-                command_queue, args.width)
-        noise_est = katsdpsigproc.rfi.device.NoiseEstMADTDevice(
-                command_queue, 10240)
-        threshold = katsdpsigproc.rfi.device.ThresholdSumDevice(
-                command_queue, args.sigmas)
-        flagger = katsdpsigproc.rfi.device.FlaggerDevice(background, noise_est, threshold)
+        background = katsdpsigproc.rfi.device.BackgroundMedianFilterDeviceTemplate(
+                context, args.width)
+        noise_est = katsdpsigproc.rfi.device.NoiseEstMADTDeviceTemplate(
+                context, 10240)
+        threshold = katsdpsigproc.rfi.device.ThresholdSumDeviceTemplate(
+                context, args.sigmas)
+        template = katsdpsigproc.rfi.device.FlaggerDeviceTemplate(background, noise_est, threshold)
+        flagger = template.instantiate(command_queue, args.channels, args.baselines)
+        flagger.check_all_bound()
 
-        padded_shape = flagger.min_padded_shape(data.shape)
-        data_device = DeviceArray(context, data.shape, data.dtype, padded_shape)
-        flags_device = DeviceArray(context, data.shape, np.uint8, padded_shape)
+        data_device = flagger.slots['vis'].buffer
+        flags_device = flagger.slots['flags'].buffer
 
         data_device.set(command_queue, data)
         # Run once for warmup (allocates memory)
-        flagger(data_device, flags_device)
+        flagger()
         # Run again, timing it
         command_queue.finish()
 
         start_time = time.time()
         start_event = command_queue.enqueue_marker()
-        flagger(data_device, flags_device)
+        flagger()
         end_event = command_queue.enqueue_marker()
         command_queue.finish()
         end_time = time.time()
