@@ -93,3 +93,10 @@ class Fill(accel.Operation):
                 [data.buffer, np.uint32(elements), self.template.dtype.type(value)],
                 global_size=(global_size,),
                 local_size=(self.template.wgs,))
+
+    def parameters(self):
+        return {
+            'dtype': self.template.dtype,
+            'ctype': self.template.ctype,
+            'shape': self.slots['data'].shape
+        }

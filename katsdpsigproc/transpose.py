@@ -110,3 +110,10 @@ class Transpose(accel.Operation):
                 ],
                 global_size=(in_col_tiles * self.template._block, in_row_tiles * self.template._block),
                 local_size=(self.template._block, self.template._block))
+
+    def parameters(self):
+        return {
+            'dtype': self.dtype,
+            'ctype': self.ctype,
+            'shape': self.slots['src'].shape
+        }

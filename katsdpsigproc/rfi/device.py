@@ -163,6 +163,13 @@ class BackgroundMedianFilterDevice(accel.Operation):
                 global_size=(xblocks * self.template.wgs, yblocks),
                 local_size=(self.template.wgs, 1))
 
+    def parameters(self):
+        return {
+            'width': self.template.width,
+            'channels': self.channels,
+            'baselines': self.baselines
+        }
+
 class NoiseEstHostFromDevice(object):
     """Wraps a device-side noise estimator template to present the host interface"""
     def __init__(self, template, command_queue):
@@ -268,6 +275,12 @@ class NoiseEstMADDevice(accel.Operation):
                 ],
                 global_size=(blocks * self.template.wgsx, self.template.wgsy),
                 local_size=(self.template.wgsx, self.template.wgsy))
+
+    def parameters(self):
+        return {
+            'channels': self.channels,
+            'baselines': self.baselines
+        }
 
 class NoiseEstMADTDeviceTemplate(object):
     """Device-side noise estimation by median of absolute deviations. It
@@ -390,6 +403,13 @@ class NoiseEstMADTDevice(accel.Operation):
                 ],
                 global_size=(self.template.wgsx, self.baselines),
                 local_size=(self.template.wgsx, 1))
+
+    def parameters(self):
+        return {
+            'max_channels': self.template.max_channels,
+            'baselines': self.baselines,
+            'channels': self.channels
+        }
 
 class ThresholdHostFromDevice(object):
     """Wraps a device-side thresholder template to present the host interface"""
@@ -527,6 +547,15 @@ class ThresholdSimpleDevice(accel.Operation):
                 global_size=(global_x, global_y),
                 local_size=(self.template.wgsx, self.template.wgsy))
 
+    def parameters(self):
+        return {
+            'n_sigma': self.template.n_sigma,
+            'flag_value': self.template.flag_value,
+            'transposed': self.transposed,
+            'channels': self.channels,
+            'baselines': self.baselines
+        }
+
 class ThresholdSumDeviceTemplate(object):
     """A device version of :class:`katsdpsigproc.rfi.host.ThresholdSumHost`.
     It uses transposed data. Performance will be best with a large work
@@ -660,6 +689,16 @@ class ThresholdSumDevice(accel.Operation):
                 self.template.kernel, args,
                 global_size = (blocks * self.template.wgs, self.baselines),
                 local_size = (self.template.wgs, 1))
+
+    def parameters(self):
+        return {
+            'n_sigma': self.template.n_sigma,
+            'n_windows': self.template.n_windows,
+            'threshold_falloff': self.template.threshold_falloff,
+            'flag_value': self.template.flag_value,
+            'channels': self.channels,
+            'baselines': self.baselines
+        }
 
 class FlaggerDeviceTemplate(object):
     """Combine device backgrounder, noise estimation and thresholder

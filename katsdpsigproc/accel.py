@@ -606,6 +606,10 @@ class Operation(object):
             if slot.buffer is None:
                 slot.allocate(self.command_queue.context)
 
+    def parameters(self):
+        """Returns dictionary of configuration options for this operation"""
+        raise NotImplementedError("subclass must implement parameters()")
+
 class OperationSequence(Operation):
     """Convenience class for setting up an operation that is built up of
     from smaller named operations, with mappings of slots to share data.
@@ -664,3 +668,11 @@ class OperationSequence(Operation):
         self.ensure_all_bound()
         for operation in self.operations.values():
             operation()
+
+    def parameters(self):
+        # Return child parameters, with named prefixes
+        ans = {}
+        for name, operation in self.operations.iteritems():
+            for key, value in operation.parameters():
+                ans[name + ':' + key] = value
+        return ans
