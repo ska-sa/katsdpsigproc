@@ -18,7 +18,10 @@ from __future__ import division
 import numpy as np
 import mako.lexer
 from mako.lookup import TemplateLookup
-from collections import OrderedDict
+try:
+    from collections import OrderedDict
+except ImportError:
+    from ordereddict import OrderedDict
 import pkg_resources
 import re
 import os
