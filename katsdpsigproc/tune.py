@@ -135,16 +135,9 @@ def _open_db():
     conn = sqlite3.connect(cache_file)
     return conn
 
-@decorator
-def autotuner(fn, *args, **kwargs):
-    """Decorator that marks a function as an autotuning function and caches
-    the result. The function must take a class and a context as the first
-    two arguments. The remaining arguments form a cache key, along with
-    properties of the device and the name of the function.
-
-    Every argument to the function must have a name, which implies that the
-    \*args construct may not be used.
-    """
+def autotuner_impl(fn, *args, **kwargs):
+    """Implementation of :func:`autotuner`. It is split into a separate
+    function so that mocks can patch it."""
     cls = args[0]
     classname = '{0}.{1}.{2}'.format(cls.__module__, cls.__name__, fn.__name__)
     tablename = classname.replace('.', '_') + \
@@ -164,7 +157,25 @@ def autotuner(fn, *args, **kwargs):
         conn.close()
     return ans
 
-def autotune(generate, time_limit = 0.1, **kwargs):
+@decorator
+def autotuner(fn, *args, **kwargs):
+    """Decorator that marks a function as an autotuning function and caches
+    the result. The function must take a class and a context as the first
+    two arguments. The remaining arguments form a cache key, along with
+    properties of the device and the name of the function.
+
+    Every argument to the function must have a name, which implies that the
+    \*args construct may not be used.
+    """
+    return autotuner_impl(fn, *args, **kwargs)
+
+def stub_autotuner(fn, *args, **kwargs):
+    """Drop-in replacement for :func:`autotuner_impl` that does not do any
+    caching. It is intended to be used with a mocking framework.
+    """
+    return fn(*args, **kwargs)
+
+def autotune(generate, time_limit=0.1, **kwargs):
     """Run a number of tuning experiments and find the optimal combination
     of parameters.
 
@@ -220,3 +231,9 @@ def autotune(generate, time_limit = 0.1, **kwargs):
         else:
             raise ValueError('No options to test')
     return best
+
+def stub_autotune(generate, time_limit=0.1, **kwargs):
+    """Stub replacement for :func:`autotune` that just returns the first
+    combination. It is intended for use with a mocking framwork.
+    """
+    return dict(zip(kwargs.keys(), [x[0] for x in kwargs.values()]))
