@@ -113,7 +113,7 @@ class Transpose(accel.Operation):
 
     def parameters(self):
         return {
-            'dtype': self.dtype,
-            'ctype': self.ctype,
+            'dtype': self.template.dtype,
+            'ctype': self.template.ctype,
             'shape': self.slots['src'].shape
         }
