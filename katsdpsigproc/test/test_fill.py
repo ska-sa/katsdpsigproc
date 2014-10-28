@@ -15,7 +15,8 @@ class TestFill(object):
         fn = template.instantiate(test_command_queue, shape)
         fn.slots['data'].bind(data)
         # Do the fill
-        fn(0xDEADBEEF)
+        fn.set_value(0xDEADBEEF)
+        fn()
         # Check the result, including padding
         ret = data.get(test_command_queue)
         ret = ret.base

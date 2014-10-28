@@ -80,8 +80,12 @@ class Fill(accel.Operation):
         self.template = template
         self.shape = shape
         self.slots['data'] = accel.IOSlot(shape, self.template.dtype)
+        self.value = self.template.dtype.type()
 
-    def __call__(self, value, **kwargs):
+    def set_value(self, value):
+        self.value = self.template.dtype.type(value)
+
+    def __call__(self, **kwargs):
         self.bind(**kwargs)
         self.ensure_all_bound()
         data = self.slots['data'].buffer
@@ -90,7 +94,7 @@ class Fill(accel.Operation):
         global_size = accel.roundup(elements, self.template.wgs)
         self.command_queue.enqueue_kernel(
                 self.template.kernel,
-                [data.buffer, np.uint32(elements), self.template.dtype.type(value)],
+                [data.buffer, np.uint32(elements), self.value],
                 global_size=(global_size,),
                 local_size=(self.template.wgs,))
 
@@ -98,5 +102,6 @@ class Fill(accel.Operation):
         return {
             'dtype': self.template.dtype,
             'ctype': self.template.ctype,
-            'shape': self.slots['data'].shape
+            'shape': self.slots['data'].shape,
+            'value': self.value
         }
