@@ -48,7 +48,7 @@ class FillTemplate(object):
             def measure(iters):
                 queue.start_tuning()
                 for i in range(iters):
-                    fn(123)
+                    fn()
                 return queue.stop_tuning() / iters
             return measure
 
