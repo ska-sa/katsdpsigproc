@@ -392,10 +392,65 @@ class DeviceArray(object):
                 self.buffer, self._contiguous(ary), blocking=False)
         return ary
 
-class IOSlot(object):
-    """An input/output slot of an operation. It contains a reference to a
-    buffer (initially `None`) and the shape, type, padding and alignment
-    requirements for that buffer. It can allocate the buffer on request.
+class IOSlotBase(object):
+    """An input/output slot of an operation. A slot can be bound to storage,
+    or can allocate storage itself. This base class is untyped and unshaped,
+    so in most cases one will use :class:`IOSlot` instead.
+
+    Slots are arranged in a tree, and only the root can be manipulated
+    directly. The entire tree shares the same storage.
+    A slot cannot be reattached to a new parent.
+    """
+    def __init__(self):
+        self.is_root = True
+
+    def check_root(self):
+        """Check whether this slot is a root slot, and raise an exception if not."""
+        if not self.is_root:
+            raise ValueError('not a root slot')
+
+    def required_bytes(self):
+        """Number of bytes of device storage required"""
+        raise NotImplementedError('abstract base class')
+
+    def is_bound(self):
+        """Whether storage is currently attached to this slot"""
+        raise NotImplementedError('abstract base class')
+
+    def attachable(self):
+        """Whether this slot can be attached as a child to another"""
+        return self.is_root and not self.is_bound()
+
+    def _allocate(self, context, raw=None):
+        """Variant of :meth:`allocate` that does not check whether this is a
+        root slot."""
+        raise NotImplementedError('abstract base class')
+
+    def allocate(self, context, raw=None):
+        """Allocate and immediately bind a buffer satisfying the requirements.
+
+        .. warning:: When `raw` is provided, there is no check that the storage is large enough
+
+        Parameters
+        ----------
+        context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
+            Context in which to allocate the memory
+        raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
+            Backing storage for the :class:`DeviceArray`
+
+        Raises
+        ------
+        ValueError
+            If this is not a root slot
+        """
+        self.check_root()
+        return self._allocate(context, raw)
+
+class IOSlot(IOSlotBase):
+    """An input/output slot with type and shape information. It contains a
+    reference to a buffer (initially `None`) and the shape, type, padding and
+    alignment requirements for that buffer. It can allocate the buffer on
+    request.
 
     Note that `min_padded_round` and `alignment` provide similar but
     different requirements. The former is used to determine a minimum amount
@@ -403,6 +458,9 @@ class IOSlot(object):
     `min_padded_round`. The latter is stricter, always requiring a multiple of
     this value. The latter is not expected to be frequently used except when
     type-punning.
+
+    Slots are arranged in a tree, and only the root can be manipulated
+    directly. A slot cannot be reattached to a new parent.
 
     Parameters
     ----------
@@ -421,6 +479,7 @@ class IOSlot(object):
     """
 
     def __init__(self, shape, dtype, min_padded_round=None, min_padded_shape=None, alignment=None):
+        super(IOSlot, self).__init__()
         self.shape = tuple(shape)
         self.dtype = np.dtype(dtype)
         if min_padded_shape is None:
@@ -439,6 +498,9 @@ class IOSlot(object):
             assert len(alignment) == len(shape)
             self.alignment = tuple(alignment)
         self.buffer = None
+
+    def is_bound(self):
+        return self.buffer is not None
 
     def validate(self, buffer):
         """Check that `buffer` is suitable for binding.
@@ -467,9 +529,17 @@ class IOSlot(object):
             if buffer.padded_shape[i] % self.alignment[i] != 0:
                 raise ValueError('padded shape is not correctly aligned')
 
+    def _bind(self, buffer):
+        """Variant of :meth:`bind` that does not check whether this is a root
+        slot.
+        """
+        if buffer is not None:
+            self.validate(buffer)
+        self.buffer = buffer
+
     def bind(self, buffer):
         """Set the internal buffer reference. Always use this function rather
-        that writing it directly, because subclasses may overload this method.
+        that writing it directly.
 
         If the buffer is not `None`, it is validated (see :meth:`validate`).
 
@@ -477,10 +547,14 @@ class IOSlot(object):
         ----------
         buffer : :class:`DeviceArray` or `None`
             Buffer to store
+
+        Raises
+        ------
+        ValueError
+            If this is not a root slot
         """
-        if buffer is not None:
-            self.validate(buffer)
-        self.buffer = buffer
+        self.check_root()
+        self._bind(buffer)
 
     def required_padded_shape(self):
         """Padded shape required to satisfy only this slot"""
@@ -490,29 +564,17 @@ class IOSlot(object):
         return tuple(padded_shape)
 
     def required_bytes(self):
-        """Number of bytes of device storage required"""
         return np.product(self.required_padded_shape()) * self.dtype.itemsize
 
-    def allocate(self, context, raw=None):
-        """Allocate and immediately bind a buffer satisfying the requirements.
-
-        .. warning:: When `raw` is provided, there is no check that the storage is large enough
-
-        Parameters
-        ----------
-        context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
-            Context in which to allocate the memory
-        raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
-            Backing storage for the :class:`DeviceArray`
-        """
+    def _allocate(self, context, raw=None):
         buffer = DeviceArray(context, self.shape, self.dtype, self.required_padded_shape(), raw=raw)
-        self.bind(buffer)
+        self._bind(buffer)
         return buffer
 
 class CompoundIOSlot(IOSlot):
     """IO slot that owns multiple child slots, and presents the combined
-    requirement. Setting the buffer (via :meth:`bind`) pushes to all the
-    children.
+    requirement. The children must all have the same type and shape. This
+    is used for connecting a single buffer to multiple operations.
 
     Parameters
     ----------
@@ -523,6 +585,8 @@ class CompoundIOSlot(IOSlot):
     ------
     ValueError
         If `children` is empty, or if elements have inconsistent shapes
+    ValueError
+        If any child is not attachable
     TypeError
         If `children` contains inconsistent data types
     """
@@ -537,6 +601,8 @@ class CompoundIOSlot(IOSlot):
         alignment = children[0].alignment
         # Validate consistency and compute combined requirements
         for child in children:
+            if not child.attachable():
+                raise ValueError('child is not attachable')
             if child.shape != shape:
                 raise ValueError('inconsistent shapes')
             if child.dtype != dtype:
@@ -544,33 +610,53 @@ class CompoundIOSlot(IOSlot):
             min_padded_shape = np.maximum(min_padded_shape, child.min_padded_shape)
             alignment = np.maximum(alignment, child.alignment)
         super(CompoundIOSlot, self).__init__(shape, dtype, None, min_padded_shape, alignment)
+        for child in children:
+            child.is_root = False
 
-    def bind(self, buffer):
-        super(CompoundIOSlot, self).bind(buffer)
+    def _bind(self, buffer):
+        super(CompoundIOSlot, self)._bind(buffer)
         for child in self.children:
-            child.bind(buffer)
+            child._bind(buffer)
 
-class AliasIOSlot(object):
+class AliasIOSlot(IOSlotBase):
     """Slot that aggregates multiple child slots (which need not have the same
-    type or shape), and allocates a single buffer to back all of them. The
-    children may be instances of either :class:`IOSlot` or :class:`AliasIOSlot`.
+    type or shape), and allocates a single low-level buffer to back all of them.
 
-    .. note:: This is not a subclass of :class:`IOSlot`, although it has some common members.
+    This is typically used when logically distinct slots can share memory
+    because they do not contain live data at the same time.
+
+    Parameters
+    ----------
+    children : list of :class:`IOSlotBase`
+
+    Raises
+    ------
+    ValueError
+        If `children` is empty or contains non-attachable elements
     """
     def __init__(self, children):
+        super(AliasIOSlot, self).__init__()
         self.children = children
         self.raw = None
         if not len(self.children):
             raise ValueError('empty child list')
+        for child in self.children:
+            if not child.attachable():
+                raise ValueError('child is not attachable')
+        for child in self.children:
+            child.is_root = False
+
+    def is_bound(self):
+        return self.raw is not None
 
     def required_bytes(self):
         return max([child.required_bytes() for child in self.children])
 
-    def allocate(self, context, raw=None):
+    def _allocate(self, context, raw=None):
         if raw is None:
             raw = context.allocate_raw(self.required_bytes())
         for child in self.children:
-            child.allocate(context, raw)
+            child._allocate(context, raw)
         self.raw = raw
         return raw
 
@@ -587,6 +673,12 @@ class Operation(object):
     the slots. It also conventially provides a `__call__` method which takes
     an arbitrary set of keyword arguments, which are passed to :meth:`bind`.
 
+    Operations are arranged in a tree, with internal nodes subclassing
+    :class:`OperationSequence`. Internal nodes provide slots that proxy for
+    the slots of their children; the children's slots should not be
+    manipulated directly. When a parent ceases to exist, its children should
+    no longer be used i.e., they cannot be reattached to a new parent.
+
     Parameters
     ----------
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
@@ -595,6 +687,7 @@ class Operation(object):
     def __init__(self, command_queue):
         self.slots = {}
         self.command_queue = command_queue
+        self.is_root = True
 
     def bind(self, **kwargs):
         """Bind buffers to slots by keyword. Each keyword argument name
@@ -606,8 +699,12 @@ class Operation(object):
     def ensure_all_bound(self):
         """Make sure that all slots have a buffer bound, allocating if necessary"""
         for name, slot in self.slots.items():
-            if slot.buffer is None:
+            if not slot.is_bound():
                 slot.allocate(self.command_queue.context)
+
+    def required_bytes(self):
+        """Number of bytes of device storage required"""
+        return sum([x.required_bytes() for x in self.slots.itervalues()])
 
     def parameters(self):
         """Returns dictionary of configuration options for this operation"""
@@ -640,7 +737,10 @@ class OperationSequence(Operation):
         super(OperationSequence, self).__init__(command_queue)
         self.operations = OrderedDict(operations)
         for (name, operation) in operations:
-            assert operation.command_queue is command_queue
+            if operation.command_queue is not command_queue:
+                raise ValueError('child has a different command queue to the parent')
+            if not operation.is_root:
+                raise ValueError('child already has another parent')
             for (slot_name, slot) in operation.slots.items():
                 self.slots[name + ':' + slot_name] = slot
         if compounds is not None:
@@ -653,6 +753,8 @@ class OperationSequence(Operation):
                 children = self._extract_slots(child_names)
                 if children:
                     self.slots[name] = AliasIOSlot(children)
+        for operation in self.operations.itervalues():
+            operation.is_root = False
 
     def _extract_slots(self, names):
         """Remove and return the slots with the given names"""
