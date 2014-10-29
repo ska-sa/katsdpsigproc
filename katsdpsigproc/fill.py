@@ -85,9 +85,7 @@ class Fill(accel.Operation):
     def set_value(self, value):
         self.value = self.template.dtype.type(value)
 
-    def __call__(self, **kwargs):
-        self.bind(**kwargs)
-        self.ensure_all_bound()
+    def _run(self):
         data = self.slots['data'].buffer
 
         elements = np.product(data.padded_shape)

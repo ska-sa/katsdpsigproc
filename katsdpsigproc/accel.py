@@ -670,8 +670,8 @@ class Operation(object):
     the memory used in the operation.
 
     This class is only useful when subclassed. The subclass will populate
-    the slots. It also conventially provides a `__call__` method which takes
-    an arbitrary set of keyword arguments, which are passed to :meth:`bind`.
+    the slots. Subclasses also provide a `_run` function that handles the
+    implementation of `__call__`.
 
     Operations are arranged in a tree, with internal nodes subclassing
     :class:`OperationSequence`. Internal nodes provide slots that proxy for
@@ -709,6 +709,17 @@ class Operation(object):
     def parameters(self):
         """Returns dictionary of configuration options for this operation"""
         return {}
+
+    def _run(self):
+        raise NotImplementedError('abstract base class')
+
+    def __call__(self, **kwargs):
+        """Run the operation. Any slots that are not already bound will
+        allocate a new buffer. Keyword arguments are passed to :meth:`bind`.
+        """
+        self.bind(**kwargs)
+        self.ensure_all_bound()
+        self._run()
 
 class OperationSequence(Operation):
     """Convenience class for setting up an operation that is built up of
@@ -768,8 +779,6 @@ class OperationSequence(Operation):
                 pass
         return ans
 
-    def __call__(self, **kwargs):
-        self.bind(**kwargs)
-        self.ensure_all_bound()
+    def _run(self):
         for operation in self.operations.values():
             operation()

@@ -92,9 +92,7 @@ class Transpose(accel.Operation):
         self.slots['src'] = accel.IOSlot(shape, template.dtype)
         self.slots['dest'] = accel.IOSlot((shape[1], shape[0]), template.dtype)
 
-    def __call__(self, **kwargs):
-        self.bind(**kwargs)
-        self.ensure_all_bound()
+    def _run(self):
         src = self.slots['src'].buffer
         dest = self.slots['dest'].buffer
         # Round up to number of blocks in each dimension

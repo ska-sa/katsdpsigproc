@@ -134,16 +134,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
                 (channels, baselines), np.float32,
                 (1, self.template.wgs))
 
-    def __call__(self, **kwargs):
-        """Perform the backgrounding.
-
-        Parameters
-        ----------
-        **kwargs : :class:`katsdpsigproc.accel.DeviceArray`
-            Passed to :meth:`bind`
-        """
-        self.bind(**kwargs)
-        self.ensure_all_bound()
+    def _run(self):
         VT = accel.divup(self.channels, self.template.csplit)
         xblocks = accel.divup(self.baselines, self.template.wgs)
         yblocks = accel.divup(self.channels, VT)
@@ -252,16 +243,7 @@ class NoiseEstMADDevice(accel.Operation):
         self.slots['deviations'] = accel.IOSlot(
                 (channels, baselines), np.float32, (1, self.template.wgsx))
 
-    def __call__(self, **kwargs):
-        """Perform the noise estimation.
-
-        Parameters
-        ----------
-        **kwargs : :class:`katsdpsigproc.accel.DeviceArray`
-            Passed to :meth:`bind`
-        """
-        self.bind(**kwargs)
-        self.ensure_all_bound()
+    def _run(self):
         blocks = accel.divup(self.baselines, self.template.wgsx)
         vt = accel.divup(self.channels, self.template.wgsy)
         deviations = self.slots['deviations'].buffer
@@ -383,16 +365,7 @@ class NoiseEstMADTDevice(accel.Operation):
         self.slots['noise'] = accel.IOSlot((baselines,), np.float32)
         self.slots['deviations'] = accel.IOSlot((baselines, channels), np.float32)
 
-    def __call__(self, **kwargs):
-        """Perform the noise estimation.
-
-        Parameters
-        ----------
-        **kwargs : :class:`katsdpsigproc.accel.DeviceArray`
-            Passed to :meth:`bind`
-        """
-        self.bind(**kwargs)
-        self.ensure_all_bound()
+    def _run(self):
         deviations = self.slots['deviations'].buffer
         noise = self.slots['noise'].buffer
         self.command_queue.enqueue_kernel(
@@ -520,16 +493,7 @@ class ThresholdSimpleDevice(accel.Operation):
         self.slots['noise'] = accel.IOSlot((baselines,), np.float32, noise_alignment)
         self.slots['flags'] = accel.IOSlot(shape, np.uint8, alignment)
 
-    def __call__(self, **kwargs):
-        """Apply the thresholding
-
-        Parameters
-        ----------
-        **kwargs : :class:`katsdpsigproc.accel.DeviceArray`
-            Passed to :meth:`bind`
-        """
-        self.bind(**kwargs)
-        self.ensure_all_bound()
+    def _run(self):
         deviations = self.slots['deviations'].buffer
         noise = self.slots['noise'].buffer
         flags = self.slots['flags'].buffer
@@ -667,16 +631,7 @@ class ThresholdSumDevice(accel.Operation):
         self.slots['noise'] = accel.IOSlot((baselines,), np.float32)
         self.slots['flags'] = accel.IOSlot((baselines, channels), np.uint8)
 
-    def __call__(self, **kwargs):
-        """Apply the thresholding
-
-        Parameters
-        ----------
-        **kwargs : :class:`katsdpsigproc.accel.DeviceArray`
-            Passed to :meth:`bind`
-        """
-        self.bind(**kwargs)
-        self.ensure_all_bound()
+    def _run(self):
         deviations = self.slots['deviations'].buffer
         noise = self.slots['noise'].buffer
         flags = self.slots['flags'].buffer
