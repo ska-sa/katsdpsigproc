@@ -29,11 +29,11 @@ def check_host_class(cls, n_sigma):
 
 @device_test
 def test_ThresholdSimpleDevice():
-    check_device_class(device.ThresholdSimpleDeviceTemplate, 11.0, False, 4, 3)
+    check_device_class(device.ThresholdSimpleDeviceTemplate, 11.0, False, tuning={'wgsx': 4, 'wgsy': 3})
 
 @device_test
 def test_ThresholdSimpleDevice_transposed():
-    check_device_class(device.ThresholdSimpleDeviceTemplate, 11.0, True, 4, 3)
+    check_device_class(device.ThresholdSimpleDeviceTemplate, 11.0, True, tuning={'wgsx': 4, 'wgsy': 3})
 
 @device_test
 def test_ThresholdSumDevice():

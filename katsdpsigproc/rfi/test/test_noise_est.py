@@ -31,7 +31,7 @@ def test_NoiseEstMADHost():
 
 @device_test
 def test_NoiseEstMADDevice():
-    check_device_class(device.NoiseEstMADDeviceTemplate, 4, 3)
+    check_device_class(device.NoiseEstMADDeviceTemplate, tuning={'wgsx': 4, 'wgsy': 3})
 
 @device_test
 def test_NoiseEstMADTDevice():

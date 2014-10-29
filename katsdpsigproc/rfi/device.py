@@ -187,22 +187,32 @@ class NoiseEstMADDeviceTemplate(object):
     ----------
     context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
         Context for which kernels will be compiled
-    wgsx : int, optional
-        Number of baselines per workgroup
-    wgsy : int, optional
-        Number of channels per workgroup
+    tuning : mapping, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+
+        - wgsx: number of baselines per workgroup
+        - wgsy: number of channels per workgroup
     """
 
     host_class = host.NoiseEstMADHost
     transposed = False
 
-    def __init__(self, context, wgsx=32, wgsy=8):
+    def __init__(self, context, tuning=None):
+        if tuning is None:
+            tuning = self.autotune(context)
         self.context = context
-        self.wgsx = wgsx
-        self.wgsy = wgsy
+        self.wgsx = tuning['wgsx']
+        self.wgsy = tuning['wgsy']
         program = accel.build(context, 'rfi/madnz.mako',
-                {'wgsx': wgsx, 'wgsy': wgsy})
+                {'wgsx': self.wgsx, 'wgsy': self.wgsy})
         self.kernel = program.get_kernel('madnz')
+
+    @classmethod
+    @tune.autotuner
+    def autotune(cls, context):
+        # TODO: do real autotuning
+        return {'wgsx': 32, 'wgsy': 8}
 
     def instantiate(self, command_queue, channels, baselines):
         """Create an instance. See :class:`NoiseEstMADDevice`."""
@@ -416,22 +426,26 @@ class ThresholdSimpleDeviceTemplate(object):
         Number of (estimated) standard deviations for the threshold
     transposed : boolean
         Whether inputs and outputs are transposed
-    wgsx : int
-        Number of baselines per workgroup
-    wgsy : int
-        Number of channels per workgroup
     flag_value : int
         Number stored in returned value to indicate RFI
+    tuning : mapping, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+
+        - wgsx: number of baselines (channels if `transposed`) per workgroup
+        - wgsy: number of channels (baselines if `transposed`) per workgroup
     """
 
     host_class = host.ThresholdSimpleHost
 
-    def __init__(self, context, n_sigma, transposed, wgsx=32, wgsy=8, flag_value=1):
+    def __init__(self, context, n_sigma, transposed, flag_value=1, tuning=None):
+        if tuning is None:
+            tuning = self.autotune(context)
         self.context = context
         self.n_sigma = n_sigma
         self.transposed = transposed
-        self.wgsx = wgsx
-        self.wgsy = wgsy
+        self.wgsx = tuning['wgsx']
+        self.wgsy = tuning['wgsy']
         self.flag_value = flag_value
         if transposed:
             source_name = 'rfi/threshold_simple_t.mako'
@@ -440,8 +454,15 @@ class ThresholdSimpleDeviceTemplate(object):
             source_name = 'rfi/threshold_simple.mako'
             kernel_name = 'threshold_simple'
         program = accel.build(context, source_name,
-                {'wgsx': wgsx, 'wgsy': wgsy, 'flag_value': flag_value})
+                {'wgsx': self.wgsx, 'wgsy': self.wgsy,
+                    'flag_value': flag_value})
         self.kernel = program.get_kernel(kernel_name)
+
+    @classmethod
+    @tune.autotuner
+    def autotune(cls, context):
+        # TODO: do real autotuning
+        return {'wgsx': 32, 'wgsy': 4}
 
     def instantiate(self, command_queue, channels, baselines):
         """Create an instance. See :class:`ThresholdSimpleDevice`."""
