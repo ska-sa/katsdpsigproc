@@ -45,9 +45,11 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
         if (idx < ${size % rake_width})
             value = ${op('value', 'scratch->data[idx + full_chunks * rake_width]')};
 % endif
+        scratch->data[idx] = value;
     }
-% endif
+% else:
     scratch->data[idx] = value;
+% endif
     BARRIER();
 
 <% N = min(size, rake_width) %>
