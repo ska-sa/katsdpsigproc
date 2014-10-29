@@ -2,10 +2,8 @@
 
 import numpy as np
 from .. import host
-from nose.tools import assert_equal
 from ...test.test_accel import device_test, test_context, test_command_queue
 from .. import device
-from ... import accel
 
 def setup():
     global _deviations, _spikes

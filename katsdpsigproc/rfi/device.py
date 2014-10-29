@@ -12,7 +12,7 @@ from __future__ import division
 from .. import accel
 from .. import tune
 from .. import transpose
-from ..accel import DeviceArray, LinenoLexer
+from ..accel import DeviceArray
 import numpy as np
 from . import host
 
@@ -46,7 +46,7 @@ class BackgroundMedianFilterDeviceTemplate(object):
         The kernel width (must be odd)
     amplitudes : boolean
         If `True`, the inputs are amplitudes rather than complex visibilities
-    tune : mapping, optional
+    tuning : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -57,14 +57,14 @@ class BackgroundMedianFilterDeviceTemplate(object):
     host_class = host.BackgroundMedianFilterHost
     autotune_version = 1
 
-    def __init__(self, context, width, amplitudes=False, tune=None):
-        if tune is None:
-            tune = self.autotune(context, width, amplitudes)
+    def __init__(self, context, width, amplitudes=False, tuning=None):
+        if tuning is None:
+            tuning = self.autotune(context, width, amplitudes)
         self.context = context
         self.width = width
         self.amplitudes = amplitudes
-        self.wgs = tune['wgs']
-        self.csplit = tune['csplit']
+        self.wgs = tuning['wgs']
+        self.csplit = tuning['csplit']
         program = accel.build(context, 'rfi/background_median_filter.mako',
                 {'width': width, 'wgs': self.wgs, 'amplitudes': amplitudes})
         self.kernel = program.get_kernel('background_median_filter')
@@ -85,17 +85,13 @@ class BackgroundMedianFilterDeviceTemplate(object):
         if amplitudes:
             vis_host = rs.rayleigh(shape).astype(np.float32)
         else:
-            vis_host = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(np.complex64)
+            vis_host = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(
+                    np.complex64)
         vis.set(queue, vis_host)
-        def generate(**tune):
-            fn = cls(context, width, amplitudes, tune).instantiate(queue, channels, baselines)
+        def generate(**tuning):
+            fn = cls(context, width, amplitudes, tuning).instantiate(queue, channels, baselines)
             fn.bind(vis=vis, deviations=deviations)
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn()
-                return queue.stop_tuning() / iters
-            return measure
+            return tune.make_measure(queue, fn)
         return tune.autotune(generate, wgs=[32, 64, 128, 256, 512], csplit=[1, 2, 4, 8, 16])
 
     def instantiate(self, command_queue, channels, baselines):
@@ -286,7 +282,7 @@ class NoiseEstMADTDeviceTemplate(object):
     max_channels : int
         Maximum number of channels. Choosing too large a value will
         reduce performance.
-    tune : mapping, optional
+    tuning : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -296,12 +292,12 @@ class NoiseEstMADTDeviceTemplate(object):
     host_class = host.NoiseEstMADHost
     transposed = True
 
-    def __init__(self, context, max_channels, tune=None):
+    def __init__(self, context, max_channels, tuning=None):
         self.context = context
         self.max_channels = max_channels
-        if tune is None:
-            tune = self.autotune(context, max_channels)
-        self.wgsx = tune['wgsx']
+        if tuning is None:
+            tuning = self.autotune(context, max_channels)
+        self.wgsx = tuning['wgsx']
         vt = accel.divup(max_channels, self.wgsx)
         program = accel.build(context, 'rfi/madnz_t.mako',
                 {'vt': vt, 'wgsx': self.wgsx})
@@ -314,20 +310,15 @@ class NoiseEstMADTDeviceTemplate(object):
         baselines = 128
         rs = np.random.RandomState(seed=1)
         host_deviations = rs.uniform(size=(baselines, max_channels)).astype(np.float32)
-        def generate(**tune):
+        def generate(**tuning):
             # Very large values of VT cause the AMD compiler to choke and segfault
-            if max_channels > 256 * tune['wgsx']:
+            if max_channels > 256 * tuning['wgsx']:
                 raise ValueError('wgsx is too small')
-            fn = cls(context, max_channels, tune).instantiate(queue, max_channels, baselines)
-            noise = fn.slots['noise'].allocate(context)
+            fn = cls(context, max_channels, tuning).instantiate(queue, max_channels, baselines)
+            fn.slots['noise'].allocate(context)
             deviations = fn.slots['deviations'].allocate(context)
             deviations.set(queue, host_deviations)
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn()
-                return queue.stop_tuning() / iters
-            return measure
+            return tune.make_measure(queue, fn)
         return tune.autotune(generate, wgsx=[32, 64, 128, 256, 512, 1024])
 
     def instantiate(self, command_queue, channels, baselines):
@@ -535,23 +526,25 @@ class ThresholdSumDeviceTemplate(object):
         Number of window sizes to use
     threshold_falloff : float
         Controls rate at which thresholds decrease (ρ in Offringa 2010)
-    wgs : int
-        Number of work items to use per work group
-    vt : int
-        Number of elements to process in each work item
     flag_value : int
         Number stored in returned value to indicate RFI
+    tuning : mapping, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+
+        - wgs: Number of work items to use per work group
+        - vt: Number of elements to process in each work item
     """
 
     host_class = host.ThresholdSumHost
     transposed = True
 
     def __init__(self, context, n_sigma, n_windows=4, threshold_falloff=1.2,
-            flag_value=1, tune=None):
-        if tune is None:
-            tune = self.autotune(context, n_windows)
-        wgs = tune['wgs']
-        vt = tune['vt']
+            flag_value=1, tuning=None):
+        if tuning is None:
+            tuning = self.autotune(context, n_windows)
+        wgs = tuning['wgs']
+        vt = tuning['vt']
         edge_size = 2 ** n_windows - n_windows - 1
         self.chunk = wgs * vt - 2 * edge_size
         assert self.chunk > 0
@@ -581,15 +574,11 @@ class ThresholdSumDeviceTemplate(object):
         noise = DeviceArray(context, (baselines,), dtype=np.float32)
         noise.set(queue, rs.uniform(high=0.1, size=noise.shape).astype(np.float32))
         flags = DeviceArray(context, shape, dtype=np.uint8)
-        def generate(**tune):
-            template = cls(context, 11.0, n_windows=n_windows, tune=tune)
+        def generate(**tuning):
+            template = cls(context, 11.0, n_windows=n_windows, tuning=tuning)
             fn = template.instantiate(queue, channels, baselines)
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn(deviations=deviations, noise=noise, flags=flags)
-                return queue.stop_tuning() / iters
-            return measure
+            fn.bind(deviations=deviations, noise=noise, flags=flags)
+            return tune.make_measure(queue, fn)
         return tune.autotune(generate,
                 wgs=[32, 64, 128, 256, 512],
                 vt=[1, 2, 3, 4, 8, 16])
@@ -642,8 +631,8 @@ class ThresholdSumDevice(accel.Operation):
         args.extend(self.template.n_sigma)
         self.command_queue.enqueue_kernel(
                 self.template.kernel, args,
-                global_size = (blocks * self.template.wgs, self.baselines),
-                local_size = (self.template.wgs, 1))
+                global_size=(blocks * self.template.wgs, self.baselines),
+                local_size=(self.template.wgs, 1))
 
     def parameters(self):
         return {
@@ -756,15 +745,6 @@ class FlaggerDevice(accel.OperationSequence):
             operations.append(('transpose_flags', self.transpose_flags))
 
         super(FlaggerDevice, self).__init__(command_queue, operations, compounds)
-
-    def _slot_name_t(base, operation):
-        """Determine the resulting slot name used by an operation which has
-        been flagged as either transposed or non-transposed.
-        """
-        if operation.transposed:
-            return base + '_t'
-        else:
-            return base
 
 class FlaggerHostFromDevice(object):
     """Wrapper that makes a :class:`FlaggerDeviceTemplate` present the

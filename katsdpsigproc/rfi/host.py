@@ -15,7 +15,7 @@ class BackgroundMedianFilterHost(object):
     amplitudes : boolean
         If `True`, the inputs are amplitudes rather than complex visibilities
     """
-    def __init__(self, width, amplitudes = False):
+    def __init__(self, width, amplitudes=False):
         self.width = width
         self.amplitudes = amplitudes
 

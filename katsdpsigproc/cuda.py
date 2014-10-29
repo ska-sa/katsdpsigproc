@@ -101,9 +101,9 @@ class Context(object):
                     options=NVCC_FLAGS + extra_flags)
             return Program(module)
 
-    def allocate_raw(self, bytes):
+    def allocate_raw(self, n_bytes):
         with self:
-            return pycuda.driver.mem_alloc(bytes)
+            return pycuda.driver.mem_alloc(n_bytes)
 
     def allocate(self, shape, dtype, raw=None):
         with self:
@@ -182,7 +182,6 @@ class TuningCommandQueue(CommandQueue):
     def start_tuning(self):
         self.is_tuning = True
         self._start_event = self.enqueue_marker()
-        self._end_event = None
 
     def stop_tuning(self):
         elapsed = 0.0

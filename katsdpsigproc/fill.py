@@ -17,20 +17,20 @@ class FillTemplate(object):
         Type of data elements
     ctype : str
         Type (in C/CUDA, not numpy) of data elements
-    tune : dict, optional
+    tuning : dict, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
         - wgs: number of workitems per workgroup
     """
 
-    def __init__(self, context, dtype, ctype, tune=None):
+    def __init__(self, context, dtype, ctype, tuning=None):
         self.context = context
         self.dtype = np.dtype(dtype)
         self.ctype = ctype
-        if tune is None:
-            tune = self.autotune(context, dtype, ctype)
-        self.wgs = tune['wgs']
+        if tuning is None:
+            tuning = self.autotune(context, dtype, ctype)
+        self.wgs = tuning['wgs']
         program = accel.build(context, "fill.mako", {
                 'wgs': self.wgs,
                 'ctype': ctype})
@@ -45,12 +45,7 @@ class FillTemplate(object):
         def generate(wgs):
             fn = cls(context, dtype, ctype, {'wgs': wgs}).instantiate(queue, shape)
             fn.bind(data=data)
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn()
-                return queue.stop_tuning() / iters
-            return measure
+            return tune.make_measure(queue, fn)
 
         return tune.autotune(generate, wgs=[64, 128, 256, 512])
 

@@ -559,8 +559,8 @@ class IOSlot(IOSlotBase):
     def required_padded_shape(self):
         """Padded shape required to satisfy only this slot"""
         padded_shape = list(self.min_padded_shape)
-        for i, a in enumerate(self.alignment):
-            padded_shape[i] = roundup(padded_shape[i], a)
+        for i, alignment in enumerate(self.alignment):
+            padded_shape[i] = roundup(padded_shape[i], alignment)
         return tuple(padded_shape)
 
     def required_bytes(self):
@@ -698,7 +698,7 @@ class Operation(object):
 
     def ensure_all_bound(self):
         """Make sure that all slots have a buffer bound, allocating if necessary"""
-        for name, slot in self.slots.items():
+        for slot in self.slots.itervalues():
             if not slot.is_bound():
                 slot.allocate(self.command_queue.context)
 

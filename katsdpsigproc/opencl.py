@@ -152,9 +152,9 @@ class Context(object):
         program.build(extra_flags)
         return Program(program)
 
-    def allocate_raw(self, bytes):
+    def allocate_raw(self, n_bytes):
         """Create an untyped buffer on the device."""
-        return pyopencl.Buffer(self._pyopencl_context, pyopencl.mem_flags.READ_WRITE, bytes)
+        return pyopencl.Buffer(self._pyopencl_context, pyopencl.mem_flags.READ_WRITE, n_bytes)
 
     def allocate(self, shape, dtype, raw=None):
         """Create a typed buffer on the device.
@@ -181,16 +181,16 @@ class Context(object):
         dtype : numpy dtype
             Type for the data
         """
-        bytes = np.product(shape) * dtype.itemsize
+        n_bytes = np.product(shape) * dtype.itemsize
         buf = pyopencl.Buffer(
                 self._pyopencl_context,
                 pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
-                bytes)
-        (ary, event) = pyopencl.enqueue_map_buffer(
+                n_bytes)
+        ary = pyopencl.enqueue_map_buffer(
                 self._internal_queue,
                 buf,
                 pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
-                0, shape, dtype)
+                0, shape, dtype)[0]
         return ary
 
     def create_command_queue(self, profile=False):

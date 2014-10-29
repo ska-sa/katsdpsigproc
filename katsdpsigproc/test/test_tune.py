@@ -48,11 +48,11 @@ def generate_raise(x):
     raise CustomError('x = {0}'.format(x))
 
 def test_autotune_all_raise():
-    exc_info = None
+    exc_value = None
     with assert_raises(CustomError):
         exc_value = None
         try:
-            tune.autotune(generate_raise, x=[1,2,3])
+            tune.autotune(generate_raise, x=[1, 2, 3])
         except CustomError as e:
             exc_value = e
             raise

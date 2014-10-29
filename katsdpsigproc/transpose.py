@@ -16,7 +16,7 @@ class TransposeTemplate(object):
         Type of data elements
     ctype : str
         Type (in C/CUDA, not numpy) of data elements
-    tune : dict, optional
+    tuning : dict, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -26,19 +26,19 @@ class TransposeTemplate(object):
 
     autotune_version = 1
 
-    def __init__(self, context, dtype, ctype, tune=None):
+    def __init__(self, context, dtype, ctype, tuning=None):
         self.context = context
         self.dtype = np.dtype(dtype)
         self.ctype = ctype
-        if tune is None:
-            tune = self.autotune(context, dtype, ctype)
-        self._block = tune['block']
-        self._tilex = tune['block'] * tune['vtx']
-        self._tiley = tune['block'] * tune['vty']
+        if tuning is None:
+            tuning = self.autotune(context, dtype, ctype)
+        self._block = tuning['block']
+        self._tilex = tuning['block'] * tuning['vtx']
+        self._tiley = tuning['block'] * tuning['vty']
         program = accel.build(context, "transpose.mako", {
-                'block': tune['block'],
-                'vtx': tune['vtx'],
-                'vty': tune['vty'],
+                'block': tuning['block'],
+                'vtx': tuning['vtx'],
+                'vty': tuning['vty'],
                 'ctype': ctype})
         self.kernel = program.get_kernel("transpose")
 
@@ -59,12 +59,7 @@ class TransposeTemplate(object):
                 'vtx': vtx,
                 'vty': vty}).instantiate(queue, in_shape)
             fn.bind(src=in_data, dest=out_data)
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn()
-                return queue.stop_tuning() / iters
-            return measure
+            return tune.make_measure(queue, fn)
 
         return tune.autotune(generate,
                 block=[4, 8, 16, 32],

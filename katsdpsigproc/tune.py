@@ -159,7 +159,7 @@ def autotuner_impl(fn, *args, **kwargs):
 
 @decorator
 def autotuner(fn, *args, **kwargs):
-    """Decorator that marks a function as an autotuning function and caches
+    r"""Decorator that marks a function as an autotuning function and caches
     the result. The function must take a class and a context as the first
     two arguments. The remaining arguments form a cache key, along with
     properties of the device and the name of the function.
@@ -175,19 +175,31 @@ def stub_autotuner(fn, *args, **kwargs):
     """
     return fn(*args, **kwargs)
 
+def make_measure(queue, function):
+    """Generates a measurement function that can be returned by the
+    function passed to :func:`autotune`. It calls `function
+    (with no arguments) the appropriate number of times and returns
+    the averaged elapsed time as measured by `queue`."""
+    def measure(iters):
+        queue.start_tuning()
+        for i in range(iters):
+            function()
+        return queue.stop_tuning() / iters
+    return measure
+
 def autotune(generate, time_limit=0.1, **kwargs):
     """Run a number of tuning experiments and find the optimal combination
     of parameters.
 
-    Each argument is a iterable. The `generated` function is passed each
+    Each argument is a iterable. The `generate` function is passed each
     element of the Cartesian product (by keyword), and returns a callable.
     This callable is passed an iteration count, and returns a score: lower is
     better. If either `generate` or the function it returns raises an
     exception, it is suppressed. Returns a dictionary with the best combination
     of values.
 
-    The scoring function should not do a warmup pass nor perform multiple
-    iterations: that is handled by this function.
+    The scoring function should not do a warmup pass: that is handled by this
+    function.
 
     Parameters
     ----------
@@ -208,8 +220,8 @@ def autotune(generate, time_limit=0.1, **kwargs):
     had_exception = False
     for i in opts:
         try:
-            kw = dict(zip(kwargs.keys(), i))
-            measure = generate(**kw)
+            keywords = dict(zip(kwargs.keys(), i))
+            measure = generate(**keywords)
             # Do a warmup pass
             measure(1)
             # Do an initial timing pass
@@ -221,9 +233,9 @@ def autotune(generate, time_limit=0.1, **kwargs):
             iters = max(3, int(time_limit / elapsed))
             score = measure(iters)
             if best_score is None or score < best_score:
-                best = kw
+                best = keywords
                 best_score = score
-        except Exception:
+        except StandardError:
             had_exception = True
     if best is None:
         if had_exception:

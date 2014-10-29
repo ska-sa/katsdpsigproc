@@ -2,9 +2,7 @@
 
 import numpy as np
 from .. import host, device
-from nose.tools import assert_equal
 from ...test.test_accel import device_test, test_context, test_command_queue
-from ... import accel
 
 _deviations = None
 _deviations_big = None
@@ -40,7 +38,6 @@ def test_NoiseEstMADTDevice():
     check_device_class(device.NoiseEstMADTDeviceTemplate, 10240)
 
 def check_device_class(cls, *device_args, **device_kw):
-    (channels, baselines) = _deviations_big.shape
     template = cls(test_context, *device_args, **device_kw)
     ne_host = cls.host_class()
     ne_device = device.NoiseEstHostFromDevice(template, test_command_queue)
