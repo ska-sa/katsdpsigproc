@@ -392,6 +392,185 @@ class DeviceArray(object):
                 self.buffer, self._contiguous(ary), blocking=False)
         return ary
 
+class Dimension(object):
+    """A single dimension of an :class:`IOSlot`, representing padding and
+    alignment requirements. Instances can be linked together, with all
+    linked instances (whether directly or indirectly linked) exposing the
+    intersection of their requirements. Internally this is represented
+    using a union-find tree with path compression.
+
+    Note that `min_padded_round` and `alignment` provide similar but
+    different requirements. The former is used to determine a minimum amount
+    of padding, but any larger amount is acceptable, even if not a multiple of
+    `min_padded_round`. The latter is stricter, always requiring a multiple of
+    this value. The latter is not expected to be frequently used except when
+    type-punning.
+
+    Dimensions can also be frozen, which is done by :class:`IOSlot` once a
+    buffer is bound. This prevents the requirements from changing later (via
+    linking or otherwise) and hence invalidating the bound buffer, or
+    allowing two buffers with a shared dimension but different strides to
+    be used.
+
+    Parameters
+    ----------
+    size : int
+        Size of the actual data, before padding
+    min_padded_round : int, optional
+        The `min_padded_size` will be computed by rounding `size` up to a
+        multiple of this.
+    min_padded_size : int, optional
+        Minimum size of the padded allocation, overriding `min_padded_round`.
+    alignment : int, optional
+        Padded size is required to be a multiple of this.
+        This must be a power of 2.
+    align_dtype : numpy dtype, optional
+        If specified, it is a hint that this data type is the fastest-varying
+        axis of a multidimensional array. The padded size may be chosen to be
+        such that the stride is a multiple of `ALIGN_BYTES`, to ensure
+        efficient access by GPUs. The hint will be ignored if `exact` is true.
+    exact : bool, optional
+        If true, padding is forbidden
+    """
+    ALIGN_BYTES = 128
+
+    @classmethod
+    def _is_power2(cls, value):
+        return value > 0 and (value & (value - 1)) == 0
+
+    def __init__(self, size,
+                 min_padded_round=None, min_padded_size=None,
+                 alignment=1, align_dtype=None, exact=False):
+        if min_padded_size is None:
+            if min_padded_round is not None:
+                min_padded_size = roundup(size, min_padded_round)
+            else:
+                min_padded_size = size
+
+        if not self._is_power2(alignment):
+            raise ValueError('alignment is not a power of 2')
+        if exact:
+            if min_padded_size > size or size % alignment != 0:
+                raise ValueError('padding requirements are incompatible with exact dimension')
+        if min_padded_size < size:
+            raise ValueError('padded size is less than size')
+
+        self._parent = None
+        self._size = size
+        self._min_padded_size = min_padded_size
+        self._alignment = alignment
+        self._alignment_hint = alignment
+        self._exact = exact
+        self._frozen = False
+        if align_dtype is not None:
+            self.add_align_dtype(align_dtype)
+
+    def _root(self):
+        if self._parent is None:
+            return self
+        else:
+            self._parent = self._parent._root()
+            return self._parent
+
+    @property
+    def size(self):
+        return self._root()._size
+
+    @property
+    def min_padded_size(self):
+        return self._root()._min_padded_size
+
+    @property
+    def alignment(self):
+        return self._root()._alignment
+
+    @property
+    def alignment_hint(self):
+        return self._root()._alignment_hint
+
+    @property
+    def exact(self):
+        return self._root()._exact
+
+    @property
+    def frozen(self):
+        return self._root()._frozen
+
+    def required_padded_size(self):
+        """Padded size required to satisfy this dimension"""
+        root = self._root()
+        if root._exact:
+            assert root._min_padded_size == root._size
+            assert root._size % root._alignment == 0
+            return root._size
+        else:
+            size = roundup(root._min_padded_size, root._alignment)
+            # If the size is less than the alignment hint, it could
+            # waste a huge amount of memory to pad it
+            if size >= root._alignment_hint:
+                size = roundup(size, root._alignment_hint)
+            return size
+
+    def valid(self, padded_size):
+        """Whether `size` is a valid padded size"""
+        root = self._root()
+        return ((not root._exact or padded_size == root._size) and
+                (padded_size >= root._min_padded_size) and
+                (padded_size % root._alignment == 0))
+
+    def add_align_dtype(self, dtype):
+        """Add an alignment hint that this will be used with an array whose
+        fastest-varying dimension is of type `dtype`. If the size is not
+        a power of 2, it is ignored.
+        """
+        if self.frozen:
+            raise ValueError('cannot modify a frozen requirement')
+        itemsize = np.dtype(dtype).itemsize
+        if self._is_power2(itemsize):
+            root = self._root()
+            root._alignment_hint = max(root._alignment_hint, self.ALIGN_BYTES // itemsize)
+
+    def _can_exact(self):
+        """Whether a padded size of the size is valid. self must be a root"""
+        return (self._min_padded_size == self._size
+                and self._size % self._alignment == 0)
+
+    def link(self, other):
+        """Make both `self` and `other` reference a single shared
+        requirement.
+
+        Raises
+        ------
+        ValueError
+            If the resulting requirement is exact and unsatisfiable
+        """
+        root1 = self._root()
+        root2 = other._root()
+        if root1._frozen or root2._frozen:
+            raise ValueError('cannot link frozen requirements')
+        if root1 is root2:
+            return
+        if root1._size != root2._size:
+            raise ValueError('sizes are incompatible')
+        if root1._exact or root2._exact:
+            if not (root1._can_exact() and root2._can_exact()):
+                raise ValueError('linked requirement is unsatisfiable')
+        root1._min_padded_size = max(root1._min_padded_size, root2._min_padded_size)
+        root1._alignment = max(root1._alignment, root2._alignment)
+        root1._alignment_hint = max(root1._alignment_hint, root2._alignment_hint)
+        root1._exact = root1._exact or root2._exact
+        root2._parent = root1
+        # Clear properties on the child, so that they can't accidentally be used
+        # _size can stay as it is immutable
+        del root2._min_padded_size
+        del root2._alignment
+        del root2._alignment_hint
+        del root2._exact
+
+    def freeze(self):
+        """Prevent further modifications"""
+        self._root()._frozen = True
+
 class IOSlotBase(object):
     """An input/output slot of an operation. A slot can be bound to storage,
     or can allocate storage itself. This base class is untyped and unshaped,
@@ -450,22 +629,16 @@ class IOSlot(IOSlotBase):
     """An input/output slot with type and shape information. It contains a
     reference to a buffer (initially `None`) and the shape, type, padding and
     alignment requirements for that buffer. It can allocate the buffer on
-    request.
-
-    Note that `min_padded_round` and `alignment` provide similar but
-    different requirements. The former is used to determine a minimum amount
-    of padding, but any larger amount is acceptable, even if not a multiple of
-    `min_padded_round`. The latter is stricter, always requiring a multiple of
-    this value. The latter is not expected to be frequently used except when
-    type-punning.
+    request. Each dimension is represesented by a :class:`Dimension`.
 
     Slots are arranged in a tree, and only the root can be manipulated
     directly. A slot cannot be reattached to a new parent.
 
     Parameters
     ----------
-    shape : tuple of int
-        The exact size of the data itself
+    dimensions : tuple of int or :class:`Dimension`
+        The dimensions of the slots. Integers are converted to
+        :class:`Dimension` with no further requirements.
     dtype : numpy dtype
         Type of the data elements
     min_padded_round : tuple of int, optional
@@ -478,25 +651,20 @@ class IOSlot(IOSlotBase):
         These values must be powers of 2.
     """
 
-    def __init__(self, shape, dtype, min_padded_round=None, min_padded_shape=None, alignment=None):
+    @classmethod
+    def _make_dimension(cls, dimension):
+        if isinstance(dimension, Dimension):
+            return dimension
+        else:
+            return Dimension(dimension)
+
+    def __init__(self, dimensions, dtype):
         super(IOSlot, self).__init__()
-        self.shape = tuple(shape)
+        self.dimensions = tuple([self._make_dimension(x) for x in dimensions])
+        self.shape = tuple([x.size for x in self.dimensions])
+        if len(self.dimensions) > 1:
+            self.dimensions[-1].add_align_dtype(dtype)
         self.dtype = np.dtype(dtype)
-        if min_padded_shape is None:
-            if min_padded_round is None:
-                self.min_padded_shape = tuple(shape)
-            else:
-                assert len(min_padded_round) == len(shape)
-                self.min_padded_shape = tuple([roundup(x, y) for x, y in zip(shape, min_padded_round)])
-        else:
-            assert len(min_padded_shape) == len(shape)
-            assert np.all(np.greater_equal(min_padded_shape, shape))
-            self.min_padded_shape = tuple(min_padded_shape)
-        if alignment is None:
-            self.alignment = tuple(1 for x in shape)
-        else:
-            assert len(alignment) == len(shape)
-            self.alignment = tuple(alignment)
         self.buffer = None
 
     def is_bound(self):
@@ -515,19 +683,19 @@ class IOSlot(IOSlotBase):
         TypeError
             If the data type does not match
         ValueError
-            If the dimensions or shape do not match, or the padding or alignment are invalid
+            If the dimensions or shape do not match
+        ValueError
+            If a padded size does not match :meth:`Dimension.required_padded_size`
         """
         if buffer.dtype != self.dtype:
             raise TypeError('dtype does not match')
         if len(buffer.shape) != len(self.shape):
             raise ValueError('number of dimensions does not match')
-        if buffer.shape != self.shape:
-            raise ValueError('shape does not match')
-        if np.any(np.less(buffer.padded_shape, self.min_padded_shape)):
-            raise ValueError('padded shape is too small')
-        for i in range(len(self.alignment)):
-            if buffer.padded_shape[i] % self.alignment[i] != 0:
-                raise ValueError('padded shape is not correctly aligned')
+        for size, padded_size, dimension in zip(buffer.shape, buffer.padded_shape, self.dimensions):
+            if size != dimension.size:
+                raise ValueError('size does not match')
+            if padded_size != dimension.required_padded_size():
+                raise ValueError('padded size does not match')
 
     def _bind(self, buffer):
         """Variant of :meth:`bind` that does not check whether this is a root
@@ -536,6 +704,8 @@ class IOSlot(IOSlotBase):
         if buffer is not None:
             self.validate(buffer)
         self.buffer = buffer
+        for dimension in self.dimensions:
+            dimension.freeze()
 
     def bind(self, buffer):
         """Set the internal buffer reference. Always use this function rather
@@ -558,10 +728,7 @@ class IOSlot(IOSlotBase):
 
     def required_padded_shape(self):
         """Padded shape required to satisfy only this slot"""
-        padded_shape = list(self.min_padded_shape)
-        for i, alignment in enumerate(self.alignment):
-            padded_shape[i] = roundup(padded_shape[i], alignment)
-        return tuple(padded_shape)
+        return tuple([x.required_padded_size() for x in self.dimensions])
 
     def required_bytes(self):
         return np.product(self.required_padded_shape()) * self.dtype.itemsize
@@ -597,8 +764,7 @@ class CompoundIOSlot(IOSlot):
             raise ValueError('empty child list')
         shape = children[0].shape
         dtype = children[0].dtype
-        min_padded_shape = children[0].min_padded_shape
-        alignment = children[0].alignment
+        dimensions = children[0].dimensions
         # Validate consistency and compute combined requirements
         for child in children:
             if not child.attachable():
@@ -607,9 +773,13 @@ class CompoundIOSlot(IOSlot):
                 raise ValueError('inconsistent shapes')
             if child.dtype != dtype:
                 raise TypeError('inconsistent dtypes')
-            min_padded_shape = np.maximum(min_padded_shape, child.min_padded_shape)
-            alignment = np.maximum(alignment, child.alignment)
-        super(CompoundIOSlot, self).__init__(shape, dtype, None, min_padded_shape, alignment)
+            for dimension in child.dimensions:
+                if dimension.frozen:
+                    raise ValueError('child has frozen dimensions')
+        for child in children:
+            for x, y in zip(dimensions, child.dimensions):
+                x.link(y)
+        super(CompoundIOSlot, self).__init__(dimensions, dtype)
         for child in children:
             child.is_root = False
 

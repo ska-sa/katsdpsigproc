@@ -111,7 +111,7 @@ DEVICE_FN void median_filter_slide(median_filter *self, float new_sample)
  */
 DEVICE_FN static void medfilt_serial_sliding(
     const GLOBAL in_type * RESTRICT in, GLOBAL float * __restrict out,
-    int first, int last, int N, int in_stride, int out_stride)
+    int first, int last, int N, int stride)
 {
     const int H = WIDTH / 2;
     median_filter filter;
@@ -121,32 +121,32 @@ DEVICE_FN static void medfilt_serial_sliding(
     // These is no need for this on the leading edge, because the
     // constructor initialises with zero samples.
     for (int i = max(0, first - H); i < min(first + H, N); i++)
-        median_filter_slide(&filter, amplitude(in[i * in_stride]));
+        median_filter_slide(&filter, amplitude(in[i * stride]));
     for (int i = N; i < first + H; i++)
         median_filter_slide(&filter, 0.0f);
 
     for (int i = first; i < min(last, N - H); i++)
     {
-        median_filter_slide(&filter, amplitude(in[(i + H) * in_stride]));
-        out[i * out_stride] = median_filter_center(&filter) - median_filter_get(&filter);
+        median_filter_slide(&filter, amplitude(in[(i + H) * stride]));
+        out[i * stride] = median_filter_center(&filter) - median_filter_get(&filter);
     }
     for (int i = max(first, N - H); i < last; i++)
     {
         median_filter_slide(&filter, 0.0f);
-        out[i * out_stride] = median_filter_center(&filter) - median_filter_get(&filter);
+        out[i * stride] = median_filter_center(&filter) - median_filter_get(&filter);
     }
 }
 
 /**
  * Apply median filter to each baseline. The input data are stored
- * channel-major, baseline minor, with a separation of @a in_stride between
+ * channel-major, baseline minor, with a separation of @a stride between
  * rows. Each workitem produces (up to) @a VT channels of output. The
  * input and output must be suitably padded (in the baseline axis) for the
  * number of threads.
  */
 KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
     const GLOBAL in_type * RESTRICT in, GLOBAL float * RESTRICT out,
-    int channels, int in_stride, int out_stride, int VT)
+    int channels, int stride, int VT)
 {
     int bl = get_global_id(0);
     int sub = get_global_id(1);
@@ -154,5 +154,5 @@ KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
     int end_channel = min(start_channel + VT, channels);
     medfilt_serial_sliding(
         in + bl, out + bl,
-        start_channel, end_channel, channels, in_stride, out_stride);
+        start_channel, end_channel, channels, stride);
 }

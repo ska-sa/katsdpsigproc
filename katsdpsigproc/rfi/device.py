@@ -123,12 +123,11 @@ class BackgroundMedianFilterDevice(accel.Operation):
         self.channels = channels
         self.baselines = baselines
         vis_type = np.float32 if template.amplitudes else np.complex64
-        self.slots['vis'] = accel.IOSlot(
-                (channels, baselines), vis_type,
-                (1, self.template.wgs))
-        self.slots['deviations'] = accel.IOSlot(
-                (channels, baselines), np.float32,
-                (1, self.template.wgs))
+        dims = (
+                channels,
+                accel.Dimension(baselines, self.template.wgs))
+        self.slots['vis'] = accel.IOSlot(dims, vis_type)
+        self.slots['deviations'] = accel.IOSlot(dims, np.float32)
 
     def _run(self):
         VT = accel.divup(self.channels, self.template.csplit)
@@ -245,9 +244,10 @@ class NoiseEstMADDevice(accel.Operation):
         self.template = template
         self.channels = channels
         self.baselines = baselines
-        self.slots['noise'] = accel.IOSlot((baselines,), np.float32, (self.template.wgsx,))
+        baselines_dim = accel.Dimension(baselines, self.template.wgsx)
+        self.slots['noise'] = accel.IOSlot((baselines_dim,), np.float32)
         self.slots['deviations'] = accel.IOSlot(
-                (channels, baselines), np.float32, (1, self.template.wgsx))
+                (channels, baselines_dim), np.float32)
 
     def _run(self):
         blocks = accel.divup(self.baselines, self.template.wgsx)
@@ -498,17 +498,19 @@ class ThresholdSimpleDevice(accel.Operation):
         self.transposed = template.transposed
 
         shape = (baselines, channels) if self.transposed else (channels, baselines)
-        alignment = (self.template.wgsy, self.template.wgsx)
-        noise_alignment = (self.template.wgsy if self.transposed else self.template.wgsx,)
+        dims = (accel.Dimension(shape[0], self.template.wgsy),
+                accel.Dimension(shape[1], self.template.wgsx))
+        noise_dim = dims[0] if self.transposed else dims[1]
 
-        self.slots['deviations'] = accel.IOSlot(shape, np.float32, alignment)
-        self.slots['noise'] = accel.IOSlot((baselines,), np.float32, noise_alignment)
-        self.slots['flags'] = accel.IOSlot(shape, np.uint8, alignment)
+        self.slots['deviations'] = accel.IOSlot(dims, np.float32)
+        self.slots['noise'] = accel.IOSlot((noise_dim,), np.float32)
+        self.slots['flags'] = accel.IOSlot(dims, np.uint8)
 
     def _run(self):
         deviations = self.slots['deviations'].buffer
         noise = self.slots['noise'].buffer
         flags = self.slots['flags'].buffer
+        stride = deviations.padded_shape[1]
 
         global_x = accel.roundup(deviations.shape[1], self.template.wgsx)
         global_y = accel.roundup(deviations.shape[0], self.template.wgsy)
@@ -516,8 +518,7 @@ class ThresholdSimpleDevice(accel.Operation):
                 self.template.kernel,
                 [
                     deviations.buffer, noise.buffer, flags.buffer,
-                    np.int32(deviations.padded_shape[1]),
-                    np.int32(flags.padded_shape[1]),
+                    np.int32(stride),
                     np.float32(self.template.n_sigma)
                 ],
                 global_size=(global_x, global_y),
@@ -637,9 +638,13 @@ class ThresholdSumDevice(accel.Operation):
         self.template = template
         self.channels = channels
         self.baselines = baselines
-        self.slots['deviations'] = accel.IOSlot((baselines, channels), np.float32)
+        # For channels we must construct the Dimension here rather than in
+        # the IOSlot constructor, so that the deviations and flags share
+        # the same object and hence have the same stride.
+        dims = (baselines, accel.Dimension(channels))
+        self.slots['deviations'] = accel.IOSlot(dims, np.float32)
         self.slots['noise'] = accel.IOSlot((baselines,), np.float32)
-        self.slots['flags'] = accel.IOSlot((baselines, channels), np.uint8)
+        self.slots['flags'] = accel.IOSlot(dims, np.uint8)
 
     def _run(self):
         deviations = self.slots['deviations'].buffer
