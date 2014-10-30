@@ -235,7 +235,7 @@ def autotune(generate, time_limit=0.1, **kwargs):
             if best_score is None or score < best_score:
                 best = keywords
                 best_score = score
-        except StandardError:
+        except Exception:
             had_exception = True
     if best is None:
         if had_exception:
