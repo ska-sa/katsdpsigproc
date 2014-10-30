@@ -136,14 +136,14 @@ class BackgroundMedianFilterDevice(accel.Operation):
 
         vis = self.slots['vis'].buffer
         deviations = self.slots['deviations'].buffer
+        stride = vis.padded_shape[1]
         self.command_queue.enqueue_kernel(
                 self.template.kernel,
                 [
                     vis.buffer,
                     deviations.buffer,
                     np.int32(self.channels),
-                    np.int32(vis.padded_shape[1]),
-                    np.int32(deviations.padded_shape[1]),
+                    np.int32(stride),
                     np.int32(VT)
                 ],
                 global_size=(xblocks * self.template.wgs, yblocks),
