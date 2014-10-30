@@ -7,6 +7,7 @@ interfaces.
 import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
+import pycuda.characterize
 
 NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
@@ -56,6 +57,11 @@ class Device(object):
         return 'CUDA'
 
     @property
+    def driver_version(self):
+        return 'CUDA:{0[0]}{0[1]}{0[2]} Driver:{1}'.format(
+                pycuda.driver.get_version(), pycuda.driver.get_driver_version())
+
+    @property
     def is_cuda(self):
         return True
 
@@ -70,6 +76,10 @@ class Device(object):
     @property
     def is_cpu(self):
         return False
+
+    @property
+    def simd_group_size(self):
+        return self._pycuda_device.warp_size
 
     @classmethod
     def get_devices(cls):
@@ -99,8 +109,11 @@ class Context(object):
         with self:
             return pycuda.driver.pagelocked_empty(shape, dtype)
 
-    def create_command_queue(self):
-        return CommandQueue(self)
+    def create_command_queue(self, profile=False):
+        return CommandQueue(self, profile=profile)
+
+    def create_tuning_command_queue(self):
+        return TuningCommandQueue(self)
 
     def __enter__(self):
         self._pycuda_context.push()
@@ -111,7 +124,7 @@ class Context(object):
         return False
 
 class CommandQueue(object):
-    def __init__(self, context, pycuda_stream=None):
+    def __init__(self, context, pycuda_stream=None, profile=False):
         self.context = context
         if pycuda_stream is None:
             with context:
@@ -155,3 +168,23 @@ class CommandQueue(object):
     def finish(self):
         with self.context:
             self._pycuda_stream.synchronize()
+
+class TuningCommandQueue(CommandQueue):
+    def __init__(self, *args, **kwargs):
+        super(TuningCommandQueue, self).__init__(*args, **kwargs)
+        self.is_tuning = False
+        self._start_event = None
+
+    def start_tuning(self):
+        self.is_tuning = True
+        self._start_event = self.enqueue_marker()
+        self._end_event = None
+
+    def stop_tuning(self):
+        elapsed = 0.0
+        if self._start_event is not None:
+            end_event = self.enqueue_marker()
+            elapsed = self._start_event.time_till(end_event)
+        self._start_event = None
+        self.is_tuning = False
+        return elapsed

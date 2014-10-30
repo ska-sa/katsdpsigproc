@@ -14,6 +14,7 @@ have_opencl : boolean
     True if PyOpenCL could be imported (does not guarantee any OpenCL devices)
 """
 
+from __future__ import division
 import numpy as np
 import mako.lexer
 from mako.lookup import TemplateLookup
@@ -21,6 +22,7 @@ import pkg_resources
 import re
 import os
 import sys
+from . import tune
 
 try:
     import pycuda.driver
@@ -35,6 +37,14 @@ try:
     have_opencl = True
 except ImportError:
     have_opencl = False
+
+def divup(x, y):
+    """Divide x by y and round the result upwards"""
+    return (x + y - 1) // y
+
+def roundup(x, y):
+    """Rounds x up to the next multiple of y"""
+    return divup(x, y) * y
 
 class LinenoLexer(mako.lexer.Lexer):
     """A wrapper that inserts #line directives into the source code. It
@@ -95,7 +105,9 @@ def build(context, name, render_kws=None, extra_flags=None):
         render_kws = {}
     if extra_flags is None:
         extra_flags = []
-    source = _lookup.get_template(name).render(**render_kws)
+    source = _lookup.get_template(name).render(
+            simd_group_size=context.device.simd_group_size,
+            **render_kws)
     return context.compile(source, extra_flags)
 
 def create_some_context(interactive=True):
@@ -369,15 +381,59 @@ class Transpose(object):
     ----------
     command_queue : :class:`cuda.CommandQueue` or :class:`opencl.CommandQueue`
         Command queue in which work will be enqueued
+    dtype : numpy dtype
+        Type of data elements
     ctype : str
         Type (in C/CUDA, not numpy) of data elements
+    tune : dict, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+        - block: number of workitems per workgroup in each dimension
+        - vtx, vty: elements per workitem in each dimension
     """
-    def __init__(self, command_queue, ctype):
+
+    autotune_version = 1
+
+    def __init__(self, command_queue, dtype, ctype, tune=None):
         self.command_queue = command_queue
         self.ctype = ctype
-        self._block = 16   # TODO: tune based on hardware
-        program = build(command_queue.context, "transpose.mako", {'block': self._block, 'ctype': ctype})
+        if tune is None:
+            tune = self.autotune(command_queue.context, dtype, ctype)
+        self._block = tune['block']
+        self._tilex = tune['block'] * tune['vtx']
+        self._tiley = tune['block'] * tune['vty']
+        program = build(command_queue.context, "transpose.mako", {
+                'block': tune['block'],
+                'vtx': tune['vtx'],
+                'vty': tune['vty'],
+                'ctype': ctype})
         self.kernel = program.get_kernel("transpose")
+
+    @classmethod
+    @tune.autotuner
+    def autotune(cls, context, dtype, ctype):
+        queue = context.create_tuning_command_queue()
+        in_data = DeviceArray(context, (2048, 2048), dtype=dtype)
+        out_data = DeviceArray(context, (2048, 2048), dtype=dtype)
+        def generate(block, vtx, vty):
+            local_mem = (block * vtx + 1) * (block * vty) * np.dtype(dtype).itemsize
+            if local_mem > 32768:
+                return 1e9 # Skip configurations using lots of lmem
+            fn = cls(queue, dtype, ctype, {
+                'block': block,
+                'vtx': vtx,
+                'vty': vty})
+            def measure(iters):
+                queue.start_tuning()
+                for i in range(iters):
+                    fn(out_data, in_data)
+                return queue.stop_tuning() / iters
+            return measure
+
+        return tune.autotune(generate,
+                block=[4, 8, 16, 32],
+                vtx=[1, 2, 3, 4],
+                vty=[1, 2, 3, 4])
 
     def __call__(self, dest, src):
         """Apply the transposition. The input and output must have
@@ -396,8 +452,8 @@ class Transpose(object):
         assert src.shape[0] == dest.shape[1]
         assert src.shape[1] == dest.shape[0]
         # Round up to number of blocks in each dimension
-        in_row_blocks = (src.shape[0] + self._block - 1) // self._block
-        in_col_blocks = (src.shape[1] + self._block - 1) // self._block
+        in_row_tiles = divup(src.shape[0], self._tiley)
+        in_col_tiles = divup(src.shape[1], self._tilex)
         self.command_queue.enqueue_kernel(
                 self.kernel,
                 [
@@ -406,5 +462,5 @@ class Transpose(object):
                     np.int32(dest.padded_shape[1]),
                     np.int32(src.padded_shape[1])
                 ],
-                global_size=(in_col_blocks * self._block, in_row_blocks * self._block),
+                global_size=(in_col_tiles * self._block, in_row_tiles * self._block),
                 local_size=(self._block, self._block))

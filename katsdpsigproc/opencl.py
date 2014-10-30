@@ -80,6 +80,11 @@ class Device(object):
         return self._pyopencl_device.platform.name
 
     @property
+    def driver_version(self):
+        """Return human-readable name for the driver version"""
+        return self._pyopencl_device.driver_version
+
+    @property
     def is_cuda(self):
         """Whether the device is a CUDA device"""
         return False
@@ -99,6 +104,14 @@ class Device(object):
     def is_cpu(self):
         """Whether the device is a CPU"""
         return self._pyopencl_device.type & pyopencl.device_type.CPU
+
+    @property
+    def simd_group_size(self):
+        """The number of workitems that run in lock-step. This must only
+        be used to tune performance parameters; there are no guarantees about
+        memory coherency, forward progress etc.
+        """
+        return pyopencl.characterize.get_simd_group_size(self._pyopencl_device, 4)
 
     @classmethod
     def get_devices(cls):
@@ -173,9 +186,20 @@ class Context(object):
                 0, shape, dtype)
         return ary
 
-    def create_command_queue(self):
-        """Create a new command queue associated with this context"""
-        return CommandQueue(self)
+    def create_command_queue(self, profile=False):
+        """Create a new command queue associated with this context
+
+        Parameters
+        ----------
+        profile : boolean
+            If true, the command queue will support timing kernels
+        """
+        return CommandQueue(self, profile=profile)
+
+    def create_tuning_command_queue(self):
+        """Create a new command queue for doing autotuning"""
+        return TuningCommandQueue(self)
+
 
 class CommandQueue(object):
     """Abstraction of a command queue. If no existing command queue is passed
@@ -187,14 +211,20 @@ class CommandQueue(object):
         Context owning the queue
     pyopencl_command_queue : :class:`pyopencl.CommandQueue` (optional)
         Existing command queue to wrap
+    profile : boolean
+        If true and `pyopencl_command_queue` is omitted, enabling profiling
+        (timing) on the queue.
     """
-    def __init__(self, context, pyopencl_command_queue=None):
+    def __init__(self, context, pyopencl_command_queue=None, profile=False):
         self.context = context
         if pyopencl_command_queue is None:
             pyopencl_device = context._pyopencl_context.devices[0]
+            properties = 0
+            if profile:
+                properties |= pyopencl.command_queue_properties.PROFILING_ENABLE
             pyopencl_command_queue = pyopencl.CommandQueue(
                     context._pyopencl_context, pyopencl_device,
-                    properties=pyopencl.command_queue_properties.PROFILING_ENABLE)
+                    properties)
         self._pyopencl_command_queue = pyopencl_command_queue
 
     def enqueue_read_buffer(self, buffer, data, blocking=True):
@@ -237,6 +267,21 @@ class CommandQueue(object):
         else:
             return arg
 
+    def _enqueue_kernel(self, kernel, args, global_size, local_size):
+        """Enqueue a kernel to the command queue.
+
+        This version returns the OpenCL event object. Refer to
+        :meth:`enqueue_queue` for the public interface.
+        """
+        # PyOpenCL doesn't allow Array objects to be passed through
+        args = [self._raw_arg(x) for x in args]
+        # OpenCL allows local_size to be None, but this is not portable to
+        # CUDA
+        assert local_size is not None
+        assert len(local_size) == len(global_size)
+        return kernel._pyopencl_kernel(self._pyopencl_command_queue,
+                global_size, local_size, *args)
+
     def enqueue_kernel(self, kernel, args, global_size, local_size):
         """Enqueue a kernel to the command queue.
 
@@ -257,15 +302,7 @@ class CommandQueue(object):
             Number of work-items in each local dimension. Must divide
             exactly into `global_size`.
         """
-
-        # PyOpenCL doesn't allow Array objects to be passed through
-        args = [self._raw_arg(x) for x in args]
-        # OpenCL allows local_size to be None, but this is not portable to
-        # CUDA
-        assert local_size is not None
-        assert len(local_size) == len(global_size)
-        kernel._pyopencl_kernel(self._pyopencl_command_queue,
-                global_size, local_size, *args)
+        self._enqueue_kernel(kernel, args, global_size, local_size)
 
     def enqueue_marker(self):
         """Create an event at this point in the command queue"""
@@ -274,3 +311,38 @@ class CommandQueue(object):
     def finish(self):
         """Block until all enqueued work has completed"""
         self._pyopencl_command_queue.finish()
+
+class TuningCommandQueue(CommandQueue):
+    """Command queue with extra facilities for autotuning. It keeps
+    track of kernels that are enqueued since the last call to
+    :meth:`start_tuning`, and reports the total time they consume
+    when :meth:`stop_tuning` is called.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs['profile'] = True
+        super(TuningCommandQueue, self).__init__(*args, **kwargs)
+        self.is_tuning = False
+        self.events = []
+
+    def start_tuning(self):
+        self.is_tuning = True
+        self.events = []
+
+    def enqueue_kernel(self, kernel, args, global_size, local_size):
+        if not self.is_tuning:
+            super(TuningCommandQueue, self).enqueue_kernel(kernel, args, global_size, local_size)
+        else:
+            event = self._enqueue_kernel(kernel, args, global_size, local_size)
+            self.events.append(event)
+
+    def stop_tuning(self):
+        self.finish()
+        elapsed = 0.0
+        if self.events:
+            start = self.events[0].profile.start
+            end = self.events[-1].profile.end
+            elapsed = (end - start) * 1e-9
+        self.is_tuning = False
+        self.events = []
+        return elapsed

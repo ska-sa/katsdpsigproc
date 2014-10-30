@@ -32,10 +32,6 @@ def main():
     parser.add_argument('--width', '-w', type=int, help='median filter kernel size (must be odd)', default=13)
     parser.add_argument('--sigmas', type=float, help='Threshold for detecting RFI', default=11.0)
 
-    parser.add_argument_group('Backgrounder tuning')
-    parser.add_argument('--bg-wgs', type=int, default=128, help='work group size')
-    parser.add_argument('--bg-csplit', type=int, default=4, help='work items per channel')
-
     args = parser.parse_args()
 
     if args.file is not None:
@@ -57,7 +53,7 @@ def main():
                 args.channels = 8192
             elif args.preset == 'big':
                 args.antennas = 64
-                args.channels = 10000
+                args.channels = 10240
             else:
                 raise argparse.ArgumentError('Unexpected value for preset')
         if args.baselines is None:
@@ -79,19 +75,22 @@ def main():
 
     if context is None:
         background = katsdpsigproc.rfi.host.BackgroundMedianFilterHost(args.width)
-        threshold = katsdpsigproc.rfi.host.ThresholdMADHost(args.sigmas)
-        flagger = katsdpsigproc.rfi.host.FlaggerHost(background, threshold)
+        noise_est = katsdpsigproc.rfi.host.NoiseEstMADHost()
+        threshold = katsdpsigproc.rfi.host.ThresholdSumHost(args.sigmas)
+        flagger = katsdpsigproc.rfi.host.FlaggerHost(background, noise_est, threshold)
         start = time.time()
         flags = flagger(data)
         end = time.time()
         print "CPU time (ms):", (end - start) * 1000.0
     else:
-        command_queue = context.create_command_queue()
+        command_queue = context.create_command_queue(profile=True)
         background = katsdpsigproc.rfi.device.BackgroundMedianFilterDevice(
-                command_queue, args.width, args.bg_wgs, args.bg_csplit)
-        threshold = katsdpsigproc.rfi.device.ThresholdMADTDevice(
-                command_queue, args.sigmas, 10240)
-        flagger = katsdpsigproc.rfi.device.FlaggerDevice(background, threshold)
+                command_queue, args.width)
+        noise_est = katsdpsigproc.rfi.device.NoiseEstMADTDevice(
+                command_queue, 10240)
+        threshold = katsdpsigproc.rfi.device.ThresholdSumDevice(
+                command_queue, args.sigmas)
+        flagger = katsdpsigproc.rfi.device.FlaggerDevice(background, noise_est, threshold)
 
         padded_shape = flagger.min_padded_shape(data.shape)
         data_device = DeviceArray(context, data.shape, data.dtype, padded_shape)

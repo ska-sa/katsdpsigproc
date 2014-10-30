@@ -1,3 +1,7 @@
 numpy
 scipy
+decorator
 mako
+appdirs
+unittest2
+nose-ignore-docstring

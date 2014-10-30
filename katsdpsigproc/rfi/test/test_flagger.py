@@ -26,26 +26,40 @@ def setup():
 
 def test_flagger_host():
     background = host.BackgroundMedianFilterHost(13)
-    threshold = host.ThresholdMADHost(11.0)
-    flagger = host.FlaggerHost(background, threshold)
+    noise_est = host.NoiseEstMADHost()
+    threshold = host.ThresholdSimpleHost(11.0)
+    flagger = host.FlaggerHost(background, noise_est, threshold)
+    flags = flagger(_vis)
+    np.testing.assert_equal(_spikes, flags)
+
+def check_flagger_device(transpose_noise_est, transpose_threshold):
+    background = device.BackgroundMedianFilterDevice(test_command_queue, 13)
+    if transpose_noise_est:
+        noise_est = device.NoiseEstMADTDevice(test_command_queue, 1024)
+    else:
+        noise_est = device.NoiseEstMADDevice(test_command_queue, 8, 8)
+    threshold = device.ThresholdSimpleDevice(test_command_queue,
+            11.0, transpose_threshold, 8, 8)
+    flagger_device = device.FlaggerDevice(background, noise_est, threshold)
+    flagger = device.FlaggerHostFromDevice(flagger_device)
     flags = flagger(_vis)
     np.testing.assert_equal(_spikes, flags)
 
 @device_test
 def test_flagger_device():
-    background = device.BackgroundMedianFilterDevice(test_command_queue, 13)
-    threshold = device.ThresholdMADDevice(test_command_queue, 11.0, 8, 8)
-    flagger_device = device.FlaggerDevice(background, threshold)
-    flagger = device.FlaggerHostFromDevice(flagger_device)
-    flags = flagger(_vis)
-    np.testing.assert_equal(_spikes, flags)
+    check_flagger_device(False, False)
 
 @device_test
-def test_flagger_device_transpose():
+def test_flagger_device_transpose_noise_est():
+    """Test device flagger with a transposed noise estimator"""
+    check_flagger_device(True, False)
+
+@device_test
+def test_flagger_device_transpose_threshold():
     """Test device flagger with a transposed thresholder"""
-    background = device.BackgroundMedianFilterDevice(test_command_queue, 13)
-    threshold = device.ThresholdMADTDevice(test_command_queue, 11.0, 1024)
-    flagger_device = device.FlaggerDevice(background, threshold)
-    flagger = device.FlaggerHostFromDevice(flagger_device)
-    flags = flagger(_vis)
-    np.testing.assert_equal(_spikes, flags)
+    check_flagger_device(False, True)
+
+@device_test
+def test_flagger_device_transpose_both():
+    """Test device flagger with a transposed noise estimator and thresholder"""
+    check_flagger_device(True, True)
