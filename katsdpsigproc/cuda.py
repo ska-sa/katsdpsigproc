@@ -141,7 +141,10 @@ class CommandQueue(object):
                 # TODO: PyCUDA doesn't take a stream argument here!
                 buffer.get(data)
             else:
-                buffer.get_async(data, stream=self._pycuda_stream)
+                # The order of arguments in PyCUDA 2014.1 doesn't match the
+                # documentation (https://github.com/inducer/pycuda/issues/58).
+                # Rather than guessing which will get fixed, pass by keyword.
+                buffer.get_async(ary=data, stream=self._pycuda_stream)
 
     def enqueue_write_buffer(self, buffer, data, blocking=True):
         with self.context:
