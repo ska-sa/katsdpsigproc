@@ -135,7 +135,13 @@ def _open_db():
     conn = sqlite3.connect(cache_file)
     return conn
 
-def autotuner_impl(fn, *args, **kwargs):
+def _close_db(conn):
+    """Close a database. This is split into a separate function for the benefit
+    of testing, because the close member of the object itself is read-only and
+    hence cannot be patched."""
+    conn.close()
+
+def autotuner_impl(test, fn, *args, **kwargs):
     """Implementation of :func:`autotuner`. It is split into a separate
     function so that mocks can patch it."""
     cls = args[0]
@@ -154,11 +160,10 @@ def autotuner_impl(fn, *args, **kwargs):
             values = dict([('value_' + key, value) for (key, value) in ans.iteritems()])
             _save(conn, tablename, keys, values)
     finally:
-        conn.close()
+        _close_db(conn)
     return ans
 
-@decorator
-def autotuner(fn, *args, **kwargs):
+def autotuner(test):
     r"""Decorator that marks a function as an autotuning function and caches
     the result. The function must take a class and a context as the first
     two arguments. The remaining arguments form a cache key, along with
@@ -166,14 +171,36 @@ def autotuner(fn, *args, **kwargs):
 
     Every argument to the function must have a name, which implies that the
     \*args construct may not be used.
-    """
-    return autotuner_impl(fn, *args, **kwargs)
 
-def stub_autotuner(fn, *args, **kwargs):
+    Parameters
+    ----------
+    test : dictionary
+        A value that will be returned by :func:`stub_autotuner`.
+    """
+    @decorator
+    def autotuner(fn, *args, **kwargs):
+        r"""Decorator that marks a function as an autotuning function and caches
+        the result. The function must take a class and a context as the first
+        two arguments. The remaining arguments form a cache key, along with
+        properties of the device and the name of the function.
+
+        Every argument to the function must have a name, which implies that the
+        \*args construct may not be used.
+        """
+        return autotuner_impl(test, fn, *args, **kwargs)
+    return autotuner
+
+def force_autotuner(test, fn, *args, **kwargs):
     """Drop-in replacement for :func:`autotuner_impl` that does not do any
     caching. It is intended to be used with a mocking framework.
     """
     return fn(*args, **kwargs)
+
+def stub_autotuner(test, fn, *args, **kwargs):
+    """Drop-in replacement for :func:`autotuner_impl` that does not do
+    any tuning, but instead returns the provided value. It is intended to be
+    used with a mocking framework."""
+    return test
 
 def make_measure(queue, function):
     """Generates a measurement function that can be returned by the
@@ -243,9 +270,3 @@ def autotune(generate, time_limit=0.1, **kwargs):
         else:
             raise ValueError('No options to test')
     return best
-
-def stub_autotune(generate, time_limit=0.1, **kwargs):
-    """Stub replacement for :func:`autotune` that just returns the first
-    combination. It is intended for use with a mocking framwork.
-    """
-    return dict(zip(kwargs.keys(), [x[0] for x in kwargs.values()]))

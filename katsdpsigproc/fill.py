@@ -37,7 +37,7 @@ class FillTemplate(object):
         self.kernel = program.get_kernel("fill")
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'wgs': 128})
     def autotune(cls, context, dtype, ctype):
         queue = context.create_tuning_command_queue()
         shape = (1048576,)

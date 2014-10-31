@@ -43,7 +43,7 @@ class TransposeTemplate(object):
         self.kernel = program.get_kernel("transpose")
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'block': 8, 'vtx': 2, 'vty': 3})
     def autotune(cls, context, dtype, ctype):
         queue = context.create_tuning_command_queue()
         in_shape = (2048, 2048)

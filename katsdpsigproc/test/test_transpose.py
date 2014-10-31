@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
-from .test_accel import test_context, test_command_queue, device_test
+from .test_accel import test_context, test_command_queue, device_test, force_autotune
 from .. import accel
 from .. import transpose
 
@@ -11,10 +11,6 @@ class TestTranspose(object):
         yield self.check_transpose, 53, 81
         yield self.check_transpose, 32, 64
 
-    @device_test
-    def setup(self):
-        self.template = transpose.TransposeTemplate(test_context, np.float32, 'float')
-
     @classmethod
     def pad_dimension(cls, dim, extra):
         """Modifies `dim` to have at least `extra` padding"""
@@ -23,7 +19,8 @@ class TestTranspose(object):
 
     @device_test
     def check_transpose(self, R, C):
-        fn = self.template.instantiate(test_command_queue, (R, C))
+        template = transpose.TransposeTemplate(test_context, np.float32, 'float')
+        fn = template.instantiate(test_command_queue, (R, C))
         # Force some padded, to check that stride calculation works
         self.pad_dimension(fn.slots['src'].dimensions[0], 1)
         self.pad_dimension(fn.slots['src'].dimensions[1], 4)
@@ -37,3 +34,9 @@ class TestTranspose(object):
         fn(src=src, dest=dest)
         out = dest.get(test_command_queue)
         np.testing.assert_equal(ary.T, out)
+
+    @device_test
+    @force_autotune
+    def test_autotune(self):
+        """Check that the autotuner runs successfully"""
+        transpose.TransposeTemplate(test_context, np.uint8, 'unsigned char')

@@ -70,7 +70,7 @@ class BackgroundMedianFilterDeviceTemplate(object):
         self.kernel = program.get_kernel('background_median_filter')
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'wgs': 128, 'csplit': 4})
     def autotune(cls, context, width, amplitudes):
         queue = context.create_tuning_command_queue()
         # Note: baselines must be a multiple of any tested workgroup size
@@ -83,7 +83,7 @@ class BackgroundMedianFilterDeviceTemplate(object):
         # Initialize with Gaussian random values
         rs = np.random.RandomState(seed=1)
         if amplitudes:
-            vis_host = rs.rayleigh(shape).astype(np.float32)
+            vis_host = rs.rayleigh(size=shape).astype(np.float32)
         else:
             vis_host = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(
                     np.complex64)
@@ -208,7 +208,7 @@ class NoiseEstMADDeviceTemplate(object):
         self.kernel = program.get_kernel('madnz')
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'wgsx': 32, 'wgsy': 8})
     def autotune(cls, context):
         # TODO: do real autotuning
         return {'wgsx': 32, 'wgsy': 8}
@@ -314,7 +314,7 @@ class NoiseEstMADTDeviceTemplate(object):
         self.kernel = program.get_kernel('madnz_t')
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'wgsx': 128})
     def autotune(cls, context, max_channels):
         queue = context.create_tuning_command_queue()
         baselines = 128
@@ -459,7 +459,7 @@ class ThresholdSimpleDeviceTemplate(object):
         self.kernel = program.get_kernel(kernel_name)
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'wgsx': 32, 'wgsy': 4})
     def autotune(cls, context):
         # TODO: do real autotuning
         return {'wgsx': 32, 'wgsy': 4}
@@ -584,7 +584,7 @@ class ThresholdSumDeviceTemplate(object):
         self.kernel = program.get_kernel('threshold_sum')
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'wgs': 128, 'vt': 3})
     def autotune(cls, context, n_windows):
         queue = context.create_tuning_command_queue()
         channels = 4096

@@ -7,7 +7,7 @@ from nose.tools import assert_equal
 from .test_tune import assert_raises
 from nose.plugins.skip import SkipTest
 import mock
-from .. import accel
+from .. import accel, tune
 from ..accel import HostArray, DeviceArray, LinenoLexer
 if accel.have_cuda:
     import pycuda
@@ -26,10 +26,21 @@ except RuntimeError:
 
 @decorator
 def device_test(test, *args, **kw):
-    """Decorator that causes a test to be skipped if a compute device is not available"""
+    """Decorator that causes a test to be skipped if a compute device is not
+    available, and which disables autotuning. If autotuning is desired, use
+    :func:`force_autotune` inside (hence, afterwards on the decorator list)
+    this one."""
     if not test_context:
         raise SkipTest('CUDA/OpenCL not found')
-    return test(*args, **kw)
+    with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.stub_autotuner):
+        return test(*args, **kw)
+
+@decorator
+def force_autotune(test, *args, **kw):
+    """Decorator that disables autotuning for a test. Instead, the test
+    value specified for each class is returned."""
+    with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.force_autotuner):
+        return test(*args, **kw)
 
 # Prevent nose from treating it as a test
 device_test.__test__ = False

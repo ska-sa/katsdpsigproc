@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import numpy as np
 from nose.tools import assert_equal
-from .test_accel import test_context, test_command_queue, device_test
+from .test_accel import test_context, test_command_queue, device_test, force_autotune
 from .. import accel
 from .. import fill
 
@@ -28,3 +28,9 @@ class TestFill(object):
         ret = data.get(test_command_queue)
         ret = ret.base
         np.testing.assert_equal(ret, 0xDEADBEEF)
+
+    @device_test
+    @force_autotune
+    def test_autotune(self):
+        """Test that autotuner runs successfully"""
+        fill.FillTemplate(test_context, np.uint8, 'unsigned char')

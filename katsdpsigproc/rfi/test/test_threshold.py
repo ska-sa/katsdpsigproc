@@ -2,7 +2,7 @@
 
 import numpy as np
 from .. import host
-from ...test.test_accel import device_test, test_context, test_command_queue
+from ...test.test_accel import device_test, test_context, test_command_queue, force_autotune
 from .. import device
 
 def setup():
@@ -27,23 +27,31 @@ def check_host_class(cls, n_sigma):
     flags = threshold(_deviations, noise)
     np.testing.assert_equal(flags.astype(np.bool_), _spikes)
 
-@device_test
-def test_ThresholdSimpleDevice():
-    check_device_class(device.ThresholdSimpleDeviceTemplate, 11.0, False, tuning={'wgsx': 4, 'wgsy': 3})
+class BaseTestDeviceClass(object):
+    @device_test
+    def test_result(self):
+        n_sigma = 11.0
+        template = self.factory(n_sigma)
+        th_host = template.host_class(n_sigma)
+        th_device = device.ThresholdHostFromDevice(template, test_command_queue)
+        noise = np.linspace(0.0, 50.0, _deviations.shape[1]).astype(np.float32)
+        flags_host = th_host(_deviations, noise)
+        flags_device = th_device(_deviations, noise)
+        np.testing.assert_equal(flags_host, flags_device)
 
-@device_test
-def test_ThresholdSimpleDevice_transposed():
-    check_device_class(device.ThresholdSimpleDeviceTemplate, 11.0, True, tuning={'wgsx': 4, 'wgsy': 3})
+    @device_test
+    @force_autotune
+    def test_autotune(self):
+        self.factory(11.0)
 
-@device_test
-def test_ThresholdSumDevice():
-    check_device_class(device.ThresholdSumDeviceTemplate, 11.0)
+class TestThresholdSimpleDevice(BaseTestDeviceClass):
+    def factory(self, n_sigma):
+        return device.ThresholdSimpleDeviceTemplate(test_context, n_sigma, False)
 
-def check_device_class(cls, n_sigma, *device_args, **device_kw):
-    th_host = cls.host_class(n_sigma)
-    template = cls(test_context, n_sigma, *device_args, **device_kw)
-    th_device = device.ThresholdHostFromDevice(template, test_command_queue)
-    noise = np.linspace(0.0, 50.0, _deviations.shape[1]).astype(np.float32)
-    flags_host = th_host(_deviations, noise)
-    flags_device = th_device(_deviations, noise)
-    np.testing.assert_equal(flags_host, flags_device)
+class TestThresholdSimpleDeviceTransposed(BaseTestDeviceClass):
+    def factory(self, n_sigma):
+        return device.ThresholdSimpleDeviceTemplate(test_context, n_sigma, True)
+
+class TestThresholdSumDevice(BaseTestDeviceClass):
+    def factory(self, n_sigma):
+        return device.ThresholdSumDeviceTemplate(test_context, n_sigma)
