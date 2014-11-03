@@ -2,7 +2,7 @@
 
 import numpy as np
 from .. import host
-from ...test.test_accel import device_test, test_context, test_command_queue, force_autotune
+from ...test.test_accel import device_test, force_autotune
 from .. import device
 
 def setup():
@@ -29,11 +29,11 @@ def check_host_class(cls, n_sigma):
 
 class BaseTestDeviceClass(object):
     @device_test
-    def test_result(self):
+    def test_result(self, context, queue):
         n_sigma = 11.0
-        template = self.factory(n_sigma)
+        template = self.factory(context, n_sigma)
         th_host = template.host_class(n_sigma)
-        th_device = device.ThresholdHostFromDevice(template, test_command_queue)
+        th_device = device.ThresholdHostFromDevice(template, queue)
         noise = np.linspace(0.0, 50.0, _deviations.shape[1]).astype(np.float32)
         flags_host = th_host(_deviations, noise)
         flags_device = th_device(_deviations, noise)
@@ -41,17 +41,17 @@ class BaseTestDeviceClass(object):
 
     @device_test
     @force_autotune
-    def test_autotune(self):
-        self.factory(11.0)
+    def test_autotune(self, context, queue):
+        self.factory(context, 11.0)
 
 class TestThresholdSimpleDevice(BaseTestDeviceClass):
-    def factory(self, n_sigma):
-        return device.ThresholdSimpleDeviceTemplate(test_context, n_sigma, False)
+    def factory(self, context, n_sigma):
+        return device.ThresholdSimpleDeviceTemplate(context, n_sigma, False)
 
 class TestThresholdSimpleDeviceTransposed(BaseTestDeviceClass):
-    def factory(self, n_sigma):
-        return device.ThresholdSimpleDeviceTemplate(test_context, n_sigma, True)
+    def factory(self, context, n_sigma):
+        return device.ThresholdSimpleDeviceTemplate(context, n_sigma, True)
 
 class TestThresholdSumDevice(BaseTestDeviceClass):
-    def factory(self, n_sigma):
-        return device.ThresholdSumDeviceTemplate(test_context, n_sigma)
+    def factory(self, context, n_sigma):
+        return device.ThresholdSumDeviceTemplate(context, n_sigma)

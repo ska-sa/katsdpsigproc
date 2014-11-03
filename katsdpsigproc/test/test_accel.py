@@ -2,6 +2,7 @@
 import sys
 import numpy as np
 from decorator import decorator
+import functools
 from mako.template import Template
 from nose.tools import assert_equal
 from .test_tune import assert_raises
@@ -14,26 +15,35 @@ if accel.have_cuda:
 if accel.have_opencl:
     import pyopencl
 
-test_context = None
-test_command_queue = None
-try:
-    test_context = accel.create_some_context(False)
-    test_command_queue = test_context.create_command_queue()
-    print >>sys.stderr, "Testing on {0} ({1})".format(
-            test_context.device.name, test_context.device.platform_name)
-except RuntimeError:
-    pass  # No devices available
+_test_context = None
+_test_command_queue = None
+_test_initialized = False
 
-@decorator
-def device_test(test, *args, **kw):
+def device_test(test):
     """Decorator that causes a test to be skipped if a compute device is not
     available, and which disables autotuning. If autotuning is desired, use
     :func:`force_autotune` inside (hence, afterwards on the decorator list)
     this one."""
-    if not test_context:
-        raise SkipTest('CUDA/OpenCL not found')
-    with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.stub_autotuner):
-        return test(*args, **kw)
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        global _test_initialized, _test_context, _test_command_queue
+        if not _test_initialized:
+            try:
+                _test_context = accel.create_some_context(False)
+                _test_command_queue = _test_context.create_command_queue()
+                print >>sys.stderr, "Testing on {0} ({1})".format(
+                        _test_context.device.name, _test_context.device.platform_name)
+            except RuntimeError:
+                pass  # No devices available
+            _test_initialized = True
+
+        if not _test_context:
+            raise SkipTest('CUDA/OpenCL not found')
+        with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.stub_autotuner):
+            args += (_test_context, _test_command_queue)
+            return test(*args, **kwargs)
+
+    return wrapper
 
 @decorator
 def force_autotune(test, *args, **kw):
@@ -75,52 +85,52 @@ class TestArray(object):
 
 class TestDeviceArray(object):
     @device_test
-    def setup(self):
+    def setup(self, context, queue):
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
         self.strides = (64, 4)
         self.array = DeviceArray(
-                context=test_context,
+                context=context,
                 shape=self.shape,
                 dtype=np.int32,
                 padded_shape=self.padded_shape)
 
     @device_test
-    def test_strides(self):
+    def test_strides(self, context, queue):
         assert_equal(self.strides, self.array.strides)
 
     @device_test
-    def test_empty_like(self):
+    def test_empty_like(self, context, queue):
         ary = self.array.empty_like()
         assert_equal(self.shape, ary.shape)
         assert_equal(self.strides, ary.strides)
         assert HostArray.safe(ary)
 
     @device_test
-    def test_set_get(self):
+    def test_set_get(self, context, queue):
         ary = np.random.randint(0, 100, self.shape).astype(np.int32)
-        self.array.set(test_command_queue, ary)
+        self.array.set(queue, ary)
         # Read back results, check that it matches
         buf = np.zeros(self.padded_shape, dtype=np.int32)
         if hasattr(self.array.buffer, 'gpudata'):
             # It's CUDA
-            with test_context:
+            with context:
                 pycuda.driver.memcpy_dtoh(buf, self.array.buffer.gpudata)
         else:
             pyopencl.enqueue_copy(
-                    test_command_queue._pyopencl_command_queue,
+                    queue._pyopencl_command_queue,
                     buf, self.array.buffer.data)
         buf = buf[0:self.shape[0], 0:self.shape[1]]
         np.testing.assert_equal(ary, buf)
         # Check that it matches get
-        buf = self.array.get(test_command_queue)
+        buf = self.array.get(queue)
         np.testing.assert_equal(ary, buf)
 
     @device_test
-    def test_raw(self):
-        raw = test_context.allocate_raw(2048)
+    def test_raw(self, context, queue):
+        raw = context.allocate_raw(2048)
         ary = DeviceArray(
-                context=test_context,
+                context=context,
                 shape=self.shape,
                 dtype=np.int32,
                 padded_shape=self.padded_shape,

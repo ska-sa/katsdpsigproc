@@ -1,6 +1,6 @@
 import numpy as np
 from .. import host
-from ...test.test_accel import device_test, test_context, test_command_queue, force_autotune
+from ...test.test_accel import device_test, force_autotune
 from .. import device
 
 def setup():
@@ -23,11 +23,11 @@ class TestBackgroundMedianFilterHost(object):
 
 class BaseTestBackgroundDeviceClass(object):
     @device_test
-    def test_result(self):
+    def test_result(self, context, queue):
         width = 5
-        bg_device_template = self.factory(width)
+        bg_device_template = self.factory(context, width)
         bg_host = bg_device_template.host_class(width, self.amplitudes)
-        bg_device = device.BackgroundHostFromDevice(bg_device_template, test_command_queue)
+        bg_device = device.BackgroundHostFromDevice(bg_device_template, queue)
         if self.amplitudes:
             vis = np.abs(_vis_big)
         else:
@@ -39,15 +39,15 @@ class BaseTestBackgroundDeviceClass(object):
 
     @device_test
     @force_autotune
-    def test_autotune(self):
-        self.factory(5)
+    def test_autotune(self, context, queue):
+        self.factory(context, 5)
 
 class TestBackgroundMedianFilterDevice(BaseTestBackgroundDeviceClass):
     amplitudes = False
 
-    def factory(self, width):
+    def factory(self, context, width):
         return device.BackgroundMedianFilterDeviceTemplate(
-                test_context, width, self.amplitudes)
+                context, width, self.amplitudes)
 
 class TestBackgroundMedianFilterDeviceAmplitudes(TestBackgroundMedianFilterDevice):
     amplitudes = True
