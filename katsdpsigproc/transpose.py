@@ -53,7 +53,7 @@ class TransposeTemplate(object):
         def generate(block, vtx, vty):
             local_mem = (block * vtx + 1) * (block * vty) * np.dtype(dtype).itemsize
             if local_mem > 32768:
-                return lambda iters: 1e9 # Skip configurations using lots of lmem
+                raise RuntimeError('too much local memory') # Skip configurations using lots of lmem
             fn = cls(context, dtype, ctype, {
                 'block': block,
                 'vtx': vtx,
