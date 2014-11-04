@@ -135,7 +135,14 @@ class TestDeviceArray(object):
                 dtype=np.int32,
                 padded_shape=self.padded_shape,
                 raw=raw)
-        assert ary.buffer is raw
+        actual_raw = None
+        try:
+            # CUDA
+            actual_raw = ary.buffer.gpudata
+        except AttributeError:
+            # OpenCL
+            actual_raw = ary.buffer.data
+        assert actual_raw is raw
 
 class TestDimension(object):
     """Tests for :class:`katsdpsigproc.accel.Dimension`"""

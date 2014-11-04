@@ -313,10 +313,7 @@ class DeviceArray(object):
         self.dtype = np.dtype(dtype)
         self.padded_shape = padded_shape
         self.context = context
-        if raw is None:
-            self.buffer = context.allocate(padded_shape, dtype, raw)
-        else:
-            self.buffer = raw
+        self.buffer = context.allocate(padded_shape, dtype, raw)
 
     @property
     def ndim(self):
