@@ -94,8 +94,8 @@ def main():
         flagger = template.instantiate(command_queue, args.channels, args.baselines)
         flagger.ensure_all_bound()
 
-        data_device = flagger.slots['vis'].buffer
-        flags_device = flagger.slots['flags'].buffer
+        data_device = flagger.buffer('vis')
+        flags_device = flagger.buffer('flags')
 
         data_device.set(command_queue, data)
         # Run once for warmup (allocates memory)

@@ -853,9 +853,22 @@ class Operation(object):
     ----------
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command queue for the operation
+
+    Attributes
+    ----------
+    slots : dictionary
+        Maps names to slot instances
+    hidden_slots : dictionary
+        Extra slots which are not root slots, and hence cannot have buffers
+        bound to them, but whose buffers can still be referenced. This is
+        generally used by :class:`OperationSequence` when several slots are
+        aliased to the same memory.
+    is_root : boolean
+        True if this operation is not part of an :class:`OperationSequence`.
     """
     def __init__(self, command_queue):
         self.slots = {}
+        self.hidden_slots = {}
         self.command_queue = command_queue
         self.is_root = True
 
@@ -871,6 +884,18 @@ class Operation(object):
         for slot in self.slots.itervalues():
             if not slot.is_bound():
                 slot.allocate(self.command_queue.context)
+
+    def buffer(self, name):
+        """Retrieve the buffer bound to the slot named `name`. It will consult
+        both :ivar:`slots` and :ivar:`hidden_slots`."""
+        try:
+            slot = self.slots[name]
+        except KeyError:
+            try:
+                slot = self.hidden_slots[name]
+            except KeyError:
+                raise KeyError('no slot named ' + name)
+        return slot.buffer
 
     def required_bytes(self):
         """Number of bytes of device storage required"""
@@ -926,24 +951,27 @@ class OperationSequence(Operation):
                 self.slots[name + ':' + slot_name] = slot
         if compounds is not None:
             for (name, child_names) in compounds.iteritems():
-                children = self._extract_slots(child_names)
+                children = self._extract_slots(child_names, False)
                 if children:
                     self.slots[name] = CompoundIOSlot(children)
         if aliases is not None:
             for (name, child_names) in aliases.iteritems():
-                children = self._extract_slots(child_names)
+                children = self._extract_slots(child_names, True)
                 if children:
                     self.slots[name] = AliasIOSlot(children)
         for operation in self.operations.itervalues():
             operation.is_root = False
 
-    def _extract_slots(self, names):
+    def _extract_slots(self, names, add_to_hidden):
         """Remove and return the slots with the given names"""
         ans = []
         for name in names:
             try:
                 ans.append(self.slots[name])
                 del self.slots[name]
+                if add_to_hidden:
+                    assert name not in self.hidden_slots
+                    self.hidden_slots[name] = ans[-1]
             except KeyError:
                 # Ignore missing items
                 pass

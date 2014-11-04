@@ -20,7 +20,7 @@ class TestFill(object):
         self.pad_dimension(fn.slots['data'].dimensions[0], 5)
         self.pad_dimension(fn.slots['data'].dimensions[1], 10)
         fn.ensure_all_bound()
-        data = fn.slots['data'].buffer
+        data = fn.buffer('data')
         # Do the fill
         fn.set_value(0xDEADBEEF)
         fn()

@@ -27,10 +27,10 @@ class BackgroundHostFromDevice(object):
         fn = self.template.instantiate(self.command_queue, channels, baselines)
         # Trigger allocations
         fn.ensure_all_bound()
-        fn.slots['vis'].buffer.set(self.command_queue, vis)
+        fn.buffer('vis').set(self.command_queue, vis)
         # Do the computation
         fn()
-        return fn.slots['deviations'].buffer.get(self.command_queue)
+        return fn.buffer('deviations').get(self.command_queue)
 
 class BackgroundMedianFilterDeviceTemplate(object):
     """Device algorithm that applies a median filter to each baseline
@@ -134,8 +134,8 @@ class BackgroundMedianFilterDevice(accel.Operation):
         xblocks = accel.divup(self.baselines, self.template.wgs)
         yblocks = accel.divup(self.channels, VT)
 
-        vis = self.slots['vis'].buffer
-        deviations = self.slots['deviations'].buffer
+        vis = self.buffer('vis')
+        deviations = self.buffer('deviations')
         stride = vis.padded_shape[1]
         self.command_queue.enqueue_kernel(
                 self.template.kernel,
@@ -170,11 +170,11 @@ class NoiseEstHostFromDevice(object):
         fn = self.template.instantiate(self.command_queue, channels, baselines)
         # Allocate and populate memory
         fn.ensure_all_bound()
-        fn.slots['deviations'].buffer.set(self.command_queue, deviations)
+        fn.buffer('deviations').set(self.command_queue, deviations)
         # Perform computation
         fn()
         # Copy back results
-        noise = fn.slots['noise'].buffer.get(self.command_queue)
+        noise = fn.buffer('noise').get(self.command_queue)
         return noise
 
 class NoiseEstMADDeviceTemplate(object):
@@ -252,8 +252,8 @@ class NoiseEstMADDevice(accel.Operation):
     def _run(self):
         blocks = accel.divup(self.baselines, self.template.wgsx)
         vt = accel.divup(self.channels, self.template.wgsy)
-        deviations = self.slots['deviations'].buffer
-        noise = self.slots['noise'].buffer
+        deviations = self.buffer('deviations')
+        noise = self.buffer('noise')
         self.command_queue.enqueue_kernel(
                 self.template.kernel,
                 [
@@ -367,8 +367,8 @@ class NoiseEstMADTDevice(accel.Operation):
         self.slots['deviations'] = accel.IOSlot((baselines, channels), np.float32)
 
     def _run(self):
-        deviations = self.slots['deviations'].buffer
-        noise = self.slots['noise'].buffer
+        deviations = self.buffer('deviations')
+        noise = self.buffer('noise')
         self.command_queue.enqueue_kernel(
                 self.template.kernel,
                 [
@@ -400,12 +400,12 @@ class ThresholdHostFromDevice(object):
         fn = self.template.instantiate(self.command_queue, channels, baselines)
         # Allocate memory and copy data
         fn.ensure_all_bound()
-        fn.slots['deviations'].buffer.set(self.command_queue, deviations)
-        fn.slots['noise'].buffer.set(self.command_queue, noise)
+        fn.buffer('deviations').set(self.command_queue, deviations)
+        fn.buffer('noise').set(self.command_queue, noise)
         # Do computation
         fn()
         # Copy back results
-        flags = fn.slots['flags'].buffer.get(self.command_queue)
+        flags = fn.buffer('flags').get(self.command_queue)
         if transposed:
             flags = flags.T
         return flags
@@ -507,9 +507,9 @@ class ThresholdSimpleDevice(accel.Operation):
         self.slots['flags'] = accel.IOSlot(dims, np.uint8)
 
     def _run(self):
-        deviations = self.slots['deviations'].buffer
-        noise = self.slots['noise'].buffer
-        flags = self.slots['flags'].buffer
+        deviations = self.buffer('deviations')
+        noise = self.buffer('noise')
+        flags = self.buffer('flags')
         stride = deviations.padded_shape[1]
 
         global_x = accel.roundup(deviations.shape[1], self.template.wgsx)
@@ -647,9 +647,9 @@ class ThresholdSumDevice(accel.Operation):
         self.slots['flags'] = accel.IOSlot(dims, np.uint8)
 
     def _run(self):
-        deviations = self.slots['deviations'].buffer
-        noise = self.slots['noise'].buffer
-        flags = self.slots['flags'].buffer
+        deviations = self.buffer('deviations')
+        noise = self.buffer('noise')
+        flags = self.buffer('flags')
 
         blocks = accel.divup(self.channels, self.template.chunk)
         args = [deviations.buffer, noise.buffer, flags.buffer,
@@ -793,6 +793,6 @@ class FlaggerHostFromDevice(object):
         (channels, baselines) = vis.shape
         fn = self.template.instantiate(self.command_queue, channels, baselines)
         fn.ensure_all_bound()
-        fn.slots['vis'].buffer.set(self.command_queue, vis)
+        fn.buffer('vis').set(self.command_queue, vis)
         fn()
-        return fn.slots['flags'].buffer.get(self.command_queue)
+        return fn.buffer('flags').get(self.command_queue)

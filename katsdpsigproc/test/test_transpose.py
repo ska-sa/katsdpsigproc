@@ -32,7 +32,7 @@ class TestTranspose(object):
         src = fn.slots['src'].allocate(context)
         dest = fn.slots['dest'].allocate(context)
         src.set_async(queue, ary)
-        fn(src=src, dest=dest)
+        fn()
         out = dest.get(queue)
         np.testing.assert_equal(ary.T, out)
 

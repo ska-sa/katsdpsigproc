@@ -81,7 +81,7 @@ class Fill(accel.Operation):
         self.value = self.template.dtype.type(value)
 
     def _run(self):
-        data = self.slots['data'].buffer
+        data = self.buffer('data')
 
         elements = np.product(data.padded_shape)
         global_size = accel.roundup(elements, self.template.wgs)
