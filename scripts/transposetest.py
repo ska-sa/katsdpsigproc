@@ -1,23 +1,24 @@
 #!/usr/bin/env python
-from katsdpsigproc import accel
+from katsdpsigproc import accel, transpose
 import numpy as np
 
-# dtype = np.complex64
-# ctype = 'float2'
-dtype = np.float32
-ctype = 'float'
+dtype = np.complex64
+ctype = 'float2'
+# dtype = np.float32
+# ctype = 'float'
 
-R = 10240
-C = 8256
+R = 3072
+C = 8320
 ctx = accel.create_some_context(True)
+template = transpose.TransposeTemplate(ctx, dtype, ctype)
+
 queue = ctx.create_tuning_command_queue()
-rm = accel.DeviceArray(ctx, (R, C), dtype)
-cm = accel.DeviceArray(ctx, (C, R), dtype)
-transpose = accel.Transpose(queue, dtype, ctype)
-transpose(rm, cm)
-queue.start_tuning()
-transpose(rm, cm)
-print queue.stop_tuning()
-queue.start_tuning()
-transpose(cm, rm)
-print queue.stop_tuning()
+proc = template.instantiate(queue, (R, C))
+proc.ensure_all_bound()
+rm = proc.buffer('src')
+cm = proc.buffer('dest')
+proc()  # Warmup
+for i in range(4):
+    queue.start_tuning()
+    proc()
+    print queue.stop_tuning()
