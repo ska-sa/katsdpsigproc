@@ -41,7 +41,7 @@ KERNEL REQD_WORK_GROUP_SIZE(${block}, ${block}, 1) void transpose(
     <%transpose:transpose_load coords="coords" block="${block}" vtx="${vtx}" vty="${vty}" args="r, c, lr, lc">
         if (${r} < in_rows && ${c} < in_cols)
         {
-            values.arr[${lr}][${lc}] = in[${r} * in_stride + ${c}];
+            values.arr[${lr}][${lc}] = in[mad24(${r}, in_stride, ${c})];
         }
     </%transpose:transpose_load>
 
@@ -51,7 +51,7 @@ KERNEL REQD_WORK_GROUP_SIZE(${block}, ${block}, 1) void transpose(
     <%transpose:transpose_store coords="coords" block="${block}" vtx="${vtx}" vty="${vty}" args="r, c, lr, lc">
         if (${r} < in_cols && ${c} < in_rows)
         {
-            out[${r} * out_stride + ${c}] = values.arr[${lr}][${lc}];
+            out[mad24(${r}, out_stride, ${c})] = values.arr[${lr}][${lc}];
         }
     </%transpose:transpose_store>
 }

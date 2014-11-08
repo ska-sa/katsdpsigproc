@@ -246,6 +246,6 @@ DEVICE_FN float ${prefix}median_non_zero_float(${ranker_class} *ranker, int N)
 {
     int zeros = ${ranker_class}_zeros(ranker);
     int rank2 = N + zeros;
-    return ${prefix}find_rank_float(ranker, rank2 / 2, !(rank2 & 1));
+    return ${prefix}find_rank_float(ranker, rank2 >> 1, !(rank2 & 1));
 }
 </%def>
