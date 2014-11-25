@@ -26,6 +26,7 @@ import pkg_resources
 import re
 import os
 import sys
+import itertools
 from . import tune
 
 try:
@@ -130,7 +131,7 @@ def create_some_context(interactive=True):
 
      - KATSDPSIGPROC_DEVICE: device number from amongst all devices
      - CUDA_DEVICE: CUDA device number (compatible with PyCUDA)
-     - PYOPENCL_CTX: OpenCL device number (compatible with PyOpenCL)
+     - PYOPENCL_CTX: OpenCL platform and optionally device number (compatible with PyOpenCL)
 
     The first of these that is encountered takes effect. If it does not exist,
     an exception is thrown.
@@ -169,6 +170,27 @@ def create_some_context(interactive=True):
                 pass
         return None
 
+    def parse_id_list(envar, max_parts):
+        """Split an environment variable of the form a[:b[:c...]] into
+        its components. If the variable is not validly formatted, returns
+        `None`.
+        """
+        if envar in os.environ:
+            try:
+                fields = os.environ[envar].split(':', max_parts)
+                out = []
+                for value in fields:
+                    num = int(value)
+                    if num < 0:
+                        raise ValueError('')
+                    out.append(num)
+                if not out:
+                    raise ValueError('')
+                return out
+            except ValueError:
+                pass
+        return None
+
     cuda_id = None
     opencl_id = None
     device_id = None
@@ -177,7 +199,8 @@ def create_some_context(interactive=True):
     if device_id is None:
         cuda_id = parse_id('CUDA_DEVICE')
         if cuda_id is None:
-            opencl_id = parse_id('PYOPENCL_CTX')
+            # Fields are platform number and device number
+            opencl_id = parse_id_list('PYOPENCL_CTX', 2)
 
     cuda_devices = []
     opencl_devices = []
@@ -185,16 +208,22 @@ def create_some_context(interactive=True):
         pycuda.driver.init()
         cuda_devices = cuda.Device.get_devices()
     if have_opencl:
-        opencl_devices = opencl.Device.get_devices()
+        opencl_devices = opencl.Device.get_devices_by_platform()
 
-    if cuda_id is not None:
-        devices = [cuda_devices[cuda_id]]
-    elif opencl_id is not None:
-        devices = [opencl_devices[opencl_id]]
-    else:
-        devices = cuda_devices + opencl_devices
-        if device_id is not None:
-            devices = [devices[device_id]]
+    try:
+        if cuda_id is not None:
+            devices = [cuda_devices[cuda_id]]
+        elif opencl_id is not None:
+            if len(opencl_id) == 1:
+                devices = opencl_devices[opencl_id[0]]
+            else:
+                devices = [opencl_devices[opencl_id[0]][opencl_id[1]]]
+        else:
+            devices = cuda_devices + list(itertools.chain(*opencl_devices))
+            if device_id is not None:
+                devices = [devices[device_id]]
+    except IndexError:
+        raise RuntimeError('Out-of-range device selected')
 
     if not devices:
         raise RuntimeError('No compute devices found')

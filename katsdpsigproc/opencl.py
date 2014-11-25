@@ -123,6 +123,14 @@ class Device(object):
                 ans.append(Device(device))
         return ans
 
+    @classmethod
+    def get_devices_by_platform(cls):
+        """Return a list of all devices, with a sub-list per platform."""
+        ans = []
+        for platform in pyopencl.get_platforms():
+            ans.append([Device(device) for device in platform.get_devices()])
+        return ans
+
 class Context(object):
     """Abstraction of an OpenCL context"""
     def __init__(self, pyopencl_context):
