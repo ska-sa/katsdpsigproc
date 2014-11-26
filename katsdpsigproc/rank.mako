@@ -33,7 +33,7 @@ DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
 {
     int r = 0;
     <%call expr="caller.foreach('self')" args="v">
-        r += ${v} < value;
+        r += (${v}) < value;
     </%call>
     return r;
 }

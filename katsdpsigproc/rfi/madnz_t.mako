@@ -74,7 +74,7 @@ KERNEL REQD_WORK_GROUP_SIZE(WGSX, 1, 1) void madnz_t(
     ranker_abs_parallel_init(
         &ranker, in + bl * stride, get_local_id(0),
         WGSX, channels, &scratch);
-    float s = 1.4826 * median_non_zero_float(&ranker, channels);
+    float s = 1.4826f * median_non_zero_float(&ranker, channels);
     if (get_local_id(0) == 0)
         noise[bl] = s;
 }

@@ -12,6 +12,7 @@ The class may define an autotune_version class attribute to version the table.
 
 At present, caching is implemented in an sqlite3 database. There is a table
 corresponding to each autotuning method. The table has the following columns:
+
 - `device_name`: string, name for the compute device
 - `device_platform`: string, name for the compute device's platform
 - `device_version`: version string for the driver
@@ -134,16 +135,15 @@ def _open_db():
     conn = sqlite3.connect(cache_file)
     return conn
 
-@decorator
-def autotuner(fn, *args, **kwargs):
-    """Decorator that marks a function as an autotuning function and caches
-    the result. The function must take a class and a context as the first
-    two arguments. The remaining arguments form a cache key, along with
-    properties of the device and the name of the function.
+def _close_db(conn):
+    """Close a database. This is split into a separate function for the benefit
+    of testing, because the close member of the object itself is read-only and
+    hence cannot be patched."""
+    conn.close()
 
-    Every argument to the function must have a name, which implies that the
-    *args construct may not be used.
-    """
+def autotuner_impl(test, fn, *args, **kwargs):
+    """Implementation of :func:`autotuner`. It is split into a separate
+    function so that mocks can patch it."""
     cls = args[0]
     classname = '{0}.{1}.{2}'.format(cls.__module__, cls.__name__, fn.__name__)
     tablename = classname.replace('.', '_') + \
@@ -160,22 +160,73 @@ def autotuner(fn, *args, **kwargs):
             values = dict([('value_' + key, value) for (key, value) in ans.iteritems()])
             _save(conn, tablename, keys, values)
     finally:
-        conn.close()
+        _close_db(conn)
     return ans
 
-def autotune(generate, time_limit = 0.1, **kwargs):
+def autotuner(test):
+    r"""Decorator that marks a function as an autotuning function and caches
+    the result. The function must take a class and a context as the first
+    two arguments. The remaining arguments form a cache key, along with
+    properties of the device and the name of the function.
+
+    Every argument to the function must have a name, which implies that the
+    \*args construct may not be used.
+
+    Parameters
+    ----------
+    test : dictionary
+        A value that will be returned by :func:`stub_autotuner`.
+    """
+    @decorator
+    def autotuner(fn, *args, **kwargs):
+        r"""Decorator that marks a function as an autotuning function and caches
+        the result. The function must take a class and a context as the first
+        two arguments. The remaining arguments form a cache key, along with
+        properties of the device and the name of the function.
+
+        Every argument to the function must have a name, which implies that the
+        \*args construct may not be used.
+        """
+        return autotuner_impl(test, fn, *args, **kwargs)
+    return autotuner
+
+def force_autotuner(test, fn, *args, **kwargs):
+    """Drop-in replacement for :func:`autotuner_impl` that does not do any
+    caching. It is intended to be used with a mocking framework.
+    """
+    return fn(*args, **kwargs)
+
+def stub_autotuner(test, fn, *args, **kwargs):
+    """Drop-in replacement for :func:`autotuner_impl` that does not do
+    any tuning, but instead returns the provided value. It is intended to be
+    used with a mocking framework."""
+    return test
+
+def make_measure(queue, function):
+    """Generates a measurement function that can be returned by the
+    function passed to :func:`autotune`. It calls `function
+    (with no arguments) the appropriate number of times and returns
+    the averaged elapsed time as measured by `queue`."""
+    def measure(iters):
+        queue.start_tuning()
+        for i in range(iters):
+            function()
+        return queue.stop_tuning() / iters
+    return measure
+
+def autotune(generate, time_limit=0.1, **kwargs):
     """Run a number of tuning experiments and find the optimal combination
     of parameters.
 
-    Each argument is a iterable. The `generated` function is passed each
+    Each argument is a iterable. The `generate` function is passed each
     element of the Cartesian product (by keyword), and returns a callable.
     This callable is passed an iteration count, and returns a score: lower is
     better. If either `generate` or the function it returns raises an
     exception, it is suppressed. Returns a dictionary with the best combination
     of values.
 
-    The scoring function should not do a warmup pass nor perform multiple
-    iterations: that is handled by this function.
+    The scoring function should not do a warmup pass: that is handled by this
+    function.
 
     Parameters
     ----------
@@ -196,8 +247,8 @@ def autotune(generate, time_limit = 0.1, **kwargs):
     had_exception = False
     for i in opts:
         try:
-            kw = dict(zip(kwargs.keys(), i))
-            measure = generate(**kw)
+            keywords = dict(zip(kwargs.keys(), i))
+            measure = generate(**keywords)
             # Do a warmup pass
             measure(1)
             # Do an initial timing pass
@@ -209,7 +260,7 @@ def autotune(generate, time_limit = 0.1, **kwargs):
             iters = max(3, int(time_limit / elapsed))
             score = measure(iters)
             if best_score is None or score < best_score:
-                best = kw
+                best = keywords
                 best_score = score
         except Exception:
             had_exception = True

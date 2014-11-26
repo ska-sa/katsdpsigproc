@@ -1,7 +1,6 @@
 import numpy as np
 from .. import host
-from nose.tools import assert_equal
-from ...test.test_accel import device_test, test_command_queue
+from ...test.test_accel import device_test, force_autotune
 from .. import device
 
 def setup():
@@ -22,15 +21,33 @@ class TestBackgroundMedianFilterHost(object):
         ref = np.array([[0.0, 0.25, -0.5, 0.25, -0.25, 0.25]]).T.astype(np.float32)
         np.testing.assert_equal(ref, out)
 
-@device_test
-def test_BackgroundMedianFilterDevice():
-    check_device_class(device.BackgroundMedianFilterDevice, 5, {'wgs': 128, 'csplit': 4})
+class BaseTestBackgroundDeviceClass(object):
+    @device_test
+    def test_result(self, context, queue):
+        width = 5
+        bg_device_template = self.factory(context, width)
+        bg_host = bg_device_template.host_class(width, self.amplitudes)
+        bg_device = device.BackgroundHostFromDevice(bg_device_template, queue)
+        if self.amplitudes:
+            vis = np.abs(_vis_big)
+        else:
+            vis = _vis_big
+        out_host = bg_host(vis)
+        out_device = bg_device(vis)
+        # Uses an abs tolerance because backgrounding subtracts nearby values
+        np.testing.assert_allclose(out_host, out_device, atol=1e-6)
 
-def check_device_class(cls, width, *device_args, **device_kw):
-    bg_host = cls.host_class(width)
-    bg_device = device.BackgroundHostFromDevice(
-            cls(test_command_queue, width, *device_args, **device_kw))
-    out_host = bg_host(_vis_big)
-    out_device = bg_device(_vis_big)
-    # Uses an abs tolerance because backgrounding subtracts nearby values
-    np.testing.assert_allclose(out_host, out_device, atol=1e-6)
+    @device_test
+    @force_autotune
+    def test_autotune(self, context, queue):
+        self.factory(context, 5)
+
+class TestBackgroundMedianFilterDevice(BaseTestBackgroundDeviceClass):
+    amplitudes = False
+
+    def factory(self, context, width):
+        return device.BackgroundMedianFilterDeviceTemplate(
+                context, width, self.amplitudes)
+
+class TestBackgroundMedianFilterDeviceAmplitudes(TestBackgroundMedianFilterDevice):
+    amplitudes = True

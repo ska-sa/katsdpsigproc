@@ -12,12 +12,18 @@ class BackgroundMedianFilterHost(object):
     ----------
     width : int
         The kernel width (must be odd)
+    amplitudes : boolean
+        If `True`, the inputs are amplitudes rather than complex visibilities
     """
-    def __init__(self, width):
+    def __init__(self, width, amplitudes=False):
         self.width = width
+        self.amplitudes = amplitudes
 
     def __call__(self, vis):
-        amp = np.abs(vis)
+        if self.amplitudes:
+            amp = vis
+        else:
+            amp = np.abs(vis)
         return amp - signal.medfilt2d(amp, [self.width, 1])
 
 class NoiseEstMADHost(object):

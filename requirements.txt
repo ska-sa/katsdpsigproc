@@ -5,3 +5,6 @@ mako
 appdirs
 unittest2
 nose-ignore-docstring
+mock
+sphinx
+numpydoc

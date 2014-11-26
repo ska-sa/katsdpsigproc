@@ -11,26 +11,28 @@ kernel at the appropriate point.
 from __future__ import division
 from .. import accel
 from .. import tune
-from ..accel import DeviceArray, LinenoLexer, Transpose
+from .. import transpose
+from ..accel import DeviceArray
 import numpy as np
 from . import host
 
 class BackgroundHostFromDevice(object):
-    """Wraps a device-side backgrounder to present the host interface"""
-    def __init__(self, real_background):
-        self.real_background = real_background
+    """Wraps a device-side background template to present the host interface."""
+    def __init__(self, template, command_queue):
+        self.template = template
+        self.command_queue = command_queue
 
     def __call__(self, vis):
-        padded_shape = self.real_background.min_padded_shape(vis.shape)
-        device_vis = DeviceArray(
-                self.real_background.command_queue.context, vis.shape, np.complex64, padded_shape)
-        device_vis.set(self.real_background.command_queue, vis)
-        device_deviations = DeviceArray(
-                self.real_background.command_queue.context, vis.shape, np.float32, padded_shape)
-        self.real_background(device_vis, device_deviations)
-        return device_deviations.get(self.real_background.command_queue)
+        (channels, baselines) = vis.shape
+        fn = self.template.instantiate(self.command_queue, channels, baselines)
+        # Trigger allocations
+        fn.ensure_all_bound()
+        fn.buffer('vis').set(self.command_queue, vis)
+        # Do the computation
+        fn()
+        return fn.buffer('deviations').get(self.command_queue)
 
-class BackgroundMedianFilterDevice(object):
+class BackgroundMedianFilterDeviceTemplate(object):
     """Device algorithm that applies a median filter to each baseline
     (in amplitude). It is the same algorithm as
     :class:`host.BackgroundMedianFilterHost`, but may give slightly different
@@ -38,196 +40,239 @@ class BackgroundMedianFilterDevice(object):
 
     Parameters
     ----------
-    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
-        Command-queue in which work will be enqueued
+    context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
+        Context for which kernels will be compiled
     width : int
         The kernel width (must be odd)
-    tune : mapping, optional
+    amplitudes : boolean
+        If `True`, the inputs are amplitudes rather than complex visibilities
+    tuning : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
+
         - wgs: number of work-items per baseline
         - csplit: approximate number of workitems for each channel
     """
 
     host_class = host.BackgroundMedianFilterHost
+    autotune_version = 1
 
-    def __init__(self, command_queue, width, tune=None):
-        if tune is None:
-            tune = self.autotune(command_queue.context, width)
-        self.command_queue = command_queue
+    def __init__(self, context, width, amplitudes=False, tuning=None):
+        if tuning is None:
+            tuning = self.autotune(context, width, amplitudes)
+        self.context = context
         self.width = width
-        self.wgs = tune['wgs']
-        self.csplit = tune['csplit']
-        program = accel.build(command_queue.context, 'rfi/background_median_filter.mako',
-                {'width': width, 'wgs': self.wgs})
+        self.amplitudes = amplitudes
+        self.wgs = tuning['wgs']
+        self.csplit = tuning['csplit']
+        program = accel.build(context, 'rfi/background_median_filter.mako',
+                {'width': width, 'wgs': self.wgs, 'amplitudes': amplitudes})
         self.kernel = program.get_kernel('background_median_filter')
 
-    def min_padded_shape(self, shape):
-        """Minimum padded size for inputs and outputs"""
-        (channels, baselines) = shape
-        padded_baselines = accel.roundup(baselines, self.wgs)
-        return (channels, padded_baselines)
-
     @classmethod
-    @tune.autotuner
-    def autotune(cls, context, width):
+    @tune.autotuner(test={'wgs': 128, 'csplit': 4})
+    def autotune(cls, context, width, amplitudes):
         queue = context.create_tuning_command_queue()
         # Note: baselines must be a multiple of any tested workgroup size
         channels = 4096
         baselines = 8192
         shape = (channels, baselines)
-        vis = DeviceArray(context, shape, np.complex64)
+        vis_type = np.float32 if amplitudes else np.complex64
+        vis = DeviceArray(context, shape, vis_type)
         deviations = DeviceArray(context, shape, np.float32)
         # Initialize with Gaussian random values
         rs = np.random.RandomState(seed=1)
-        vis_host = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(np.complex64)
+        if amplitudes:
+            vis_host = rs.rayleigh(size=shape).astype(np.float32)
+        else:
+            vis_host = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(
+                    np.complex64)
         vis.set(queue, vis_host)
-        def generate(**tune):
-            # Very large values of VT cause the AMD compiler to choke and segfault
-            fn = cls(queue, width, tune)
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn(vis, deviations)
-                return queue.stop_tuning() / iters
-            return measure
+        def generate(**tuning):
+            fn = cls(context, width, amplitudes, tuning).instantiate(queue, channels, baselines)
+            fn.bind(vis=vis, deviations=deviations)
+            return tune.make_measure(queue, fn)
         return tune.autotune(generate, wgs=[32, 64, 128, 256, 512], csplit=[1, 2, 4, 8, 16])
 
-    def __call__(self, vis, deviations):
-        """Perform the backgrounding.
+    def instantiate(self, command_queue, channels, baselines):
+        """Create an instance. See :class:`BackgroundMedianFilterDevice`."""
+        return BackgroundMedianFilterDevice(self, command_queue, channels, baselines)
 
-        Parameters
-        ----------
-        vis : :class:`katsdpsigproc.accel.DeviceArray`, complex64
-            Input visibilities: 2D complex64 array indexed by channel
-            then baseline. The padded size must be at least
-            :meth:`min_padded_shape`.
-        deviations : :class:`katsdpsigproc.accel.DeviceArray`
-            Output deviations, of the same shape and padding as `vis`.
-        """
-        assert vis.shape == deviations.shape
-        assert vis.padded_shape == deviations.padded_shape
-        (channels, baselines) = vis.shape
-        VT = accel.divup(channels, self.csplit)
-        xblocks = accel.divup(baselines, self.wgs)
-        yblocks = accel.divup(channels, VT)
-        assert xblocks * self.wgs <= vis.padded_shape[1]
+class BackgroundMedianFilterDevice(accel.Operation):
+    """Concrete instance of :class:`BackgroundMedianFilterDeviceTemplate`.
 
+    .. rubric:: Slots
+
+    **vis** : channels × baselines, float32 or complex64
+        Input visibilities, or their amplitudes if `template.amplitudes` is true
+    **deviations** : channels × baselines, float32
+        Output deviations from the background
+
+    Parameters
+    ----------
+    template : :class:`BackgroundMedianFilterDevice`
+        Operation template
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command queue for the operation
+    channels, baselines : int
+        Shape of the visibilities array
+    """
+    def __init__(self, template, command_queue, channels, baselines):
+        super(BackgroundMedianFilterDevice, self).__init__(command_queue)
+        self.template = template
+        self.channels = channels
+        self.baselines = baselines
+        vis_type = np.float32 if template.amplitudes else np.complex64
+        dims = (
+                channels,
+                accel.Dimension(baselines, self.template.wgs))
+        self.slots['vis'] = accel.IOSlot(dims, vis_type)
+        self.slots['deviations'] = accel.IOSlot(dims, np.float32)
+
+    def _run(self):
+        VT = accel.divup(self.channels, self.template.csplit)
+        xblocks = accel.divup(self.baselines, self.template.wgs)
+        yblocks = accel.divup(self.channels, VT)
+
+        vis = self.buffer('vis')
+        deviations = self.buffer('deviations')
+        stride = vis.padded_shape[1]
         self.command_queue.enqueue_kernel(
-                self.kernel,
+                self.template.kernel,
                 [
                     vis.buffer,
                     deviations.buffer,
-                    np.int32(channels),
-                    np.int32(vis.padded_shape[1]),
+                    np.int32(self.channels),
+                    np.int32(stride),
                     np.int32(VT)
                 ],
-                global_size=(xblocks * self.wgs, yblocks),
-                local_size=(self.wgs, 1))
+                global_size=(xblocks * self.template.wgs, yblocks),
+                local_size=(self.template.wgs, 1))
+
+    def parameters(self):
+        return {
+            'width': self.template.width,
+            'channels': self.channels,
+            'baselines': self.baselines
+        }
 
 class NoiseEstHostFromDevice(object):
-    """Wraps a device-side noise estimator to present the host interface"""
-    def __init__(self, real_noise_est):
-        self.real_noise_est = real_noise_est
+    """Wraps a device-side noise estimator template to present the host interface"""
+    def __init__(self, template, command_queue):
+        self.template = template
+        self.command_queue = command_queue
 
     def __call__(self, deviations):
-        baselines = deviations.shape[1]
-        transposed = self.real_noise_est.transposed
+        (channels, baselines) = deviations.shape
+        transposed = self.template.transposed
         if transposed:
             deviations = deviations.T
-        padded_shape = self.real_noise_est.min_padded_shape(deviations.shape)
-        padded_noise_shape = self.real_noise_est.min_padded_noise_shape(baselines)
-        # Allocate memory and copy data
-        device_deviations = DeviceArray(self.real_noise_est.command_queue.context,
-                shape=deviations.shape, dtype=np.float32, padded_shape=padded_shape)
-        device_deviations.set(self.real_noise_est.command_queue, deviations)
-        device_noise = DeviceArray(self.real_noise_est.command_queue.context,
-                shape=(baselines,), dtype=np.float32,
-                padded_shape=padded_noise_shape)
+        fn = self.template.instantiate(self.command_queue, channels, baselines)
+        # Allocate and populate memory
+        fn.ensure_all_bound()
+        fn.buffer('deviations').set(self.command_queue, deviations)
         # Perform computation
-        self.real_noise_est(device_deviations, device_noise)
+        fn()
         # Copy back results
-        noise = device_noise.get(self.real_noise_est.command_queue)
+        noise = fn.buffer('noise').get(self.command_queue)
         return noise
 
-class NoiseEstMADDevice(object):
+class NoiseEstMADDeviceTemplate(object):
     """Estimate noise using the median of non-zero absolute deviations.
 
-    In most cases NoiseEstMADTDevice is more efficient.
+    In most cases NoiseEstMADTDeviceTemplate is more efficient.
 
-    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
-        Command-queue in which work will be enqueued
-    wgsx : int, optional
-        Number of baselines per workgroup
-    wgsy : int, optional
-        Number of channels per workgroup
+    Parameters
+    ----------
+    context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
+        Context for which kernels will be compiled
+    tuning : mapping, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+
+        - wgsx: number of baselines per workgroup
+        - wgsy: number of channels per workgroup
     """
 
     host_class = host.NoiseEstMADHost
     transposed = False
 
-    def __init__(self, command_queue, wgsx=32, wgsy=8):
-        self.command_queue = command_queue
-        self.wgsx = wgsx
-        self.wgsy = wgsy
-        program = accel.build(command_queue.context, 'rfi/madnz.mako',
-                {'wgsx': wgsx, 'wgsy': wgsy})
+    def __init__(self, context, tuning=None):
+        if tuning is None:
+            tuning = self.autotune(context)
+        self.context = context
+        self.wgsx = tuning['wgsx']
+        self.wgsy = tuning['wgsy']
+        program = accel.build(context, 'rfi/madnz.mako',
+                {'wgsx': self.wgsx, 'wgsy': self.wgsy})
         self.kernel = program.get_kernel('madnz')
 
-    def min_padded_shape(self, shape):
-        """Minimum padded size for inputs and outputs"""
-        (channels, baselines) = shape
-        padded_baselines = accel.roundup(baselines, self.wgsx)
-        return (channels, padded_baselines)
+    @classmethod
+    @tune.autotuner(test={'wgsx': 32, 'wgsy': 8})
+    def autotune(cls, context):
+        # TODO: do real autotuning
+        return {'wgsx': 32, 'wgsy': 8}
 
-    def min_padded_noise_shape(self, baselines):
-        """Minimum padded shape for noise"""
-        return (accel.roundup(baselines, self.wgsx),)
+    def instantiate(self, command_queue, channels, baselines):
+        """Create an instance. See :class:`NoiseEstMADDevice`."""
+        return NoiseEstMADDevice(self, command_queue, channels, baselines)
 
-    def _blocks(self, deviations):
-        """Number of baseline-axis workgroups"""
-        baselines = deviations.shape[1]
-        blocks = accel.divup(baselines, self.wgsx)
-        assert blocks * self.wgsx <= deviations.padded_shape[1]
-        return blocks
+class NoiseEstMADDevice(accel.Operation):
+    """Concrete instantiation of :class:`NoiseEstMADDeviceTemplate`.
 
-    def _vt(self, deviations):
-        """Number of channels processed by each thread"""
-        channels = deviations.shape[0]
-        vt = accel.divup(channels, self.wgsy)
-        return vt
+    .. rubric:: Slots
 
-    def __call__(self, deviations, noise):
-        """Perform the noise estimation
+    **deviations** : channels × baselines, float32
+        Input deviations from the background, computed by a backgrounder
+    **noise** : baselines, float32
+        Output per-baseline noise estimate
 
-        Parameters
-        ----------
-        deviations : :class:`katsdpsigproc.accel.DeviceArray`, float32
-            Deviations from the background amplitude, indexed by channel
-            then baseline. It must have a padded size at least that
-            given by :meth:`min_padded_shape`.
-        noise : :class:`katsdpsigproc.accel.DeviceArray`, float32
-            Output estimates, with the same shape and padding as baseline axis
-            of `deviations`
-        """
-        (channels, baselines) = deviations.shape
-        assert noise.shape[0] == baselines
-        assert noise.padded_shape[0] >= self.min_padded_noise_shape(baselines)[0]
-        blocks = self._blocks(deviations)
-        vt = self._vt(deviations)
+    Parameters
+    ----------
+    template : :class:`NoiseEstMADDeviceTemplate`
+        Operation template
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command-queue in which work will be enqueued
+    channels, baselines : int
+        Shape of the visibility array
+    """
+
+    transposed = False
+
+    def __init__(self, template, command_queue, channels, baselines):
+        super(NoiseEstMADDevice, self).__init__(command_queue)
+        self.template = template
+        self.channels = channels
+        self.baselines = baselines
+        baselines_dim = accel.Dimension(baselines, self.template.wgsx)
+        self.slots['noise'] = accel.IOSlot((baselines_dim,), np.float32)
+        self.slots['deviations'] = accel.IOSlot(
+                (channels, baselines_dim), np.float32)
+
+    def _run(self):
+        blocks = accel.divup(self.baselines, self.template.wgsx)
+        vt = accel.divup(self.channels, self.template.wgsy)
+        deviations = self.buffer('deviations')
+        noise = self.buffer('noise')
         self.command_queue.enqueue_kernel(
-                self.kernel,
+                self.template.kernel,
                 [
                     deviations.buffer, noise.buffer,
-                    np.int32(channels), np.int32(deviations.padded_shape[1]),
+                    np.int32(self.channels), np.int32(deviations.padded_shape[1]),
                     np.int32(vt)
                 ],
-                global_size=(blocks * self.wgsx, self.wgsy),
-                local_size=(self.wgsx, self.wgsy))
+                global_size=(blocks * self.template.wgsx, self.template.wgsy),
+                local_size=(self.template.wgsx, self.template.wgsy))
 
-class NoiseEstMADTDevice(object):
-    """Device-side thresholding by median of absolute deviations. It
-    should give the same results as :class:`ThresholdMADHost`, up to
+    def parameters(self):
+        return {
+            'channels': self.channels,
+            'baselines': self.baselines
+        }
+
+class NoiseEstMADTDeviceTemplate(object):
+    """Device-side noise estimation by median of absolute deviations. It
+    should give the same results as :class:`NoiseEstMADHost`, up to
     floating-point accuracy. It uses transposed (baseline-major) memory
     order, which allows an entire baseline to be efficiently loaded into
     registers.
@@ -237,137 +282,135 @@ class NoiseEstMADTDevice(object):
         increases the overhead of reduction operations.
 
     .. note:: This class may fail for very large numbers of channels (10k can
-        definitely be supported), in which case :class:`ThresholdMADDevice` may be
+        definitely be supported), in which case :class:`NoiseEstMADDevice` may be
         used.
 
     Parameters
     ----------
-    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
-        Command-queue in which work will be enqueued
+    context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
+        Context for which kernels will be compiled
     max_channels : int
         Maximum number of channels. Choosing too large a value will
         reduce performance.
-    tune : mapping, optional
+    tuning : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
-        - wgsx: number of work-items per baseline
 
-    Attributes
-    ----------
-    max_channels : int
-        Maximum number of channels that can be supported
-    _vt : int
-        Number of elements handled by each thread
-    _wgsx : int
-        Number of work-items per baseline
+        - wgsx: number of work-items per baseline
     """
+
     host_class = host.NoiseEstMADHost
     transposed = True
 
-    def __init__(self, command_queue, max_channels, tune=None):
-        self.command_queue = command_queue
+    def __init__(self, context, max_channels, tuning=None):
+        self.context = context
         self.max_channels = max_channels
-        if tune is None:
-            tune = self.autotune(command_queue.context, max_channels)
-        self._wgsx = tune['wgsx']
-        self._vt = accel.divup(max_channels, self._wgsx)
-        program = accel.build(command_queue.context, 'rfi/madnz_t.mako',
-                {'vt': self._vt, 'wgsx': self._wgsx})
+        if tuning is None:
+            tuning = self.autotune(context, max_channels)
+        self.wgsx = tuning['wgsx']
+        vt = accel.divup(max_channels, self.wgsx)
+        program = accel.build(context, 'rfi/madnz_t.mako',
+                {'vt': vt, 'wgsx': self.wgsx})
         self.kernel = program.get_kernel('madnz_t')
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'wgsx': 128})
     def autotune(cls, context, max_channels):
         queue = context.create_tuning_command_queue()
         baselines = 128
-        shape = (baselines, max_channels)
-        shape = cls.min_padded_shape(shape)
-        deviations = DeviceArray(context, shape, dtype=np.float32)
         rs = np.random.RandomState(seed=1)
-        deviations.set(queue, rs.uniform(size=deviations.shape).astype(np.float32))
-        noise = DeviceArray(context, (baselines,), dtype=np.float32)
-        def generate(**tune):
+        host_deviations = rs.uniform(size=(baselines, max_channels)).astype(np.float32)
+        def generate(**tuning):
             # Very large values of VT cause the AMD compiler to choke and segfault
-            if max_channels > 256 * tune['wgsx']:
+            if max_channels > 256 * tuning['wgsx']:
                 raise ValueError('wgsx is too small')
-            fn = cls(queue, max_channels, tune)
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn(deviations, noise)
-                return queue.stop_tuning() / iters
-            return measure
+            fn = cls(context, max_channels, tuning).instantiate(queue, max_channels, baselines)
+            fn.slots['noise'].allocate(context)
+            deviations = fn.slots['deviations'].allocate(context)
+            deviations.set(queue, host_deviations)
+            return tune.make_measure(queue, fn)
         return tune.autotune(generate, wgsx=[32, 64, 128, 256, 512, 1024])
 
-    @classmethod
-    def min_padded_shape(cls, shape):
-        """Minimum padded size for inputs and outputs"""
-        (baselines, channels) = shape
-        # TODO: this is just for alignment, and should move to accel.py
-        padded_channels = accel.roundup(channels, 32)
-        return (baselines, padded_channels)
+    def instantiate(self, command_queue, channels, baselines):
+        """Create an instance. See :class:`NoiseEstMADTDevice`."""
+        return NoiseEstMADTDevice(self, command_queue, channels, baselines)
 
-    @classmethod
-    def min_padded_noise_shape(cls, baselines):
-        """Minimum padded shape for noise"""
-        return (baselines,)
+class NoiseEstMADTDevice(accel.Operation):
+    """Concrete instance of :class:`NoiseEstMADTDeviceTemplate`.
 
-    def __call__(self, deviations, noise):
-        """Perform the noise estimation
+    .. rubric:: Slots
 
-        Parameters
-        ----------
-        deviations : :class:`katsdpsigproc.accel.DeviceArray`, float32
-            Deviations from the background amplitude, indexed by baseline
-            then channel. It must have a padded size at least that
-            given by :meth:`min_padded_shape`.
-        noise : :class:`katsdpsigproc.accel.DeviceArray`, float32
-            Output estimates, with the same shape and padding as baseline axis
-            of `deviations`
-        """
-        (baselines, channels) = deviations.shape
-        assert noise.shape[0] == baselines
-        assert channels <= self.max_channels
+    **deviations** : baselines × channels, float32
+        Input deviations from the background, computed by a backgrounder
+    **noise** : baselines, float32
+        Output per-baseline noise estimate
+
+    Parameters
+    ----------
+    template : :class:`NoiseEstMADTDeviceTemplate`
+        Operation template
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command-queue in which work will be enqueued
+    channels, baselines : int
+        Shape of the visibility array
+    """
+    transposed = True
+
+    def __init__(self, template, command_queue, channels, baselines):
+        super(NoiseEstMADTDevice, self).__init__(command_queue)
+        self.template = template
+        if channels > self.template.max_channels:
+            raise ValueError('channels exceeds max_channels')
+        self.channels = channels
+        self.baselines = baselines
+        self.slots['noise'] = accel.IOSlot((baselines,), np.float32)
+        self.slots['deviations'] = accel.IOSlot((baselines, channels), np.float32)
+
+    def _run(self):
+        deviations = self.buffer('deviations')
+        noise = self.buffer('noise')
         self.command_queue.enqueue_kernel(
-                self.kernel,
+                self.template.kernel,
                 [
                     deviations.buffer, noise.buffer,
-                    np.int32(channels), np.int32(deviations.padded_shape[1])
+                    np.int32(self.channels), np.int32(deviations.padded_shape[1])
                 ],
-                global_size=(self._wgsx, baselines),
-                local_size=(self._wgsx, 1))
+                global_size=(self.template.wgsx, self.baselines),
+                local_size=(self.template.wgsx, 1))
+
+    def parameters(self):
+        return {
+            'max_channels': self.template.max_channels,
+            'baselines': self.baselines,
+            'channels': self.channels
+        }
 
 class ThresholdHostFromDevice(object):
-    """Wraps a device-side thresholder to present the host interface"""
-    def __init__(self, real_threshold):
-        self.real_threshold = real_threshold
+    """Wraps a device-side thresholder template to present the host interface"""
+    def __init__(self, template, command_queue):
+        self.template = template
+        self.command_queue = command_queue
 
     def __call__(self, deviations, noise):
         (channels, baselines) = deviations.shape
-        transposed = self.real_threshold.transposed
+        transposed = self.template.transposed
         if transposed:
             deviations = deviations.T
-        padded_shape = self.real_threshold.min_padded_shape(deviations.shape)
-        padded_noise_shape = self.real_threshold.min_padded_noise_shape(baselines)
+
+        fn = self.template.instantiate(self.command_queue, channels, baselines)
         # Allocate memory and copy data
-        device_deviations = DeviceArray(self.real_threshold.command_queue.context,
-                shape=deviations.shape, dtype=np.float32, padded_shape=padded_shape)
-        device_deviations.set(self.real_threshold.command_queue, deviations)
-        device_noise = DeviceArray(self.real_threshold.command_queue.context,
-                shape=(baselines,), dtype=np.float32,
-                padded_shape=padded_noise_shape)
-        device_noise.set(self.real_threshold.command_queue, noise)
-        device_flags = DeviceArray(self.real_threshold.command_queue.context,
-                shape=deviations.shape, dtype=np.uint8, padded_shape=padded_shape)
+        fn.ensure_all_bound()
+        fn.buffer('deviations').set(self.command_queue, deviations)
+        fn.buffer('noise').set(self.command_queue, noise)
         # Do computation
-        self.real_threshold(device_deviations, device_noise, device_flags)
+        fn()
         # Copy back results
-        flags = device_flags.get(self.real_threshold.command_queue)
+        flags = fn.buffer('flags').get(self.command_queue)
         if transposed:
             flags = flags.T
         return flags
 
-class ThresholdSimpleDevice(object):
+class ThresholdSimpleDeviceTemplate(object):
     """Device-side thresholding, operating independently on each sample. It
     should give the same results as :class:`ThresholdSimpleHost`, up to
     floating-point accuracy.
@@ -375,27 +418,34 @@ class ThresholdSimpleDevice(object):
     This class can operate on either transposed or non-transposed inputs,
     depending on a constructor argument.
 
-    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
-        Command-queue in which work will be enqueued
+    Parameters
+    ----------
+    context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
+        Context for which kernels will be compiled
     n_sigma : float
         Number of (estimated) standard deviations for the threshold
     transposed : boolean
         Whether inputs and outputs are transposed
-    wgsx : int
-        Number of baselines per workgroup
-    wgsy : int
-        Number of channels per workgroup
     flag_value : int
         Number stored in returned value to indicate RFI
+    tuning : mapping, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+
+        - wgsx: number of baselines (channels if `transposed`) per workgroup
+        - wgsy: number of channels (baselines if `transposed`) per workgroup
     """
+
     host_class = host.ThresholdSimpleHost
 
-    def __init__(self, command_queue, n_sigma, transposed, wgsx=32, wgsy=8, flag_value=1):
-        self.command_queue = command_queue
+    def __init__(self, context, n_sigma, transposed, flag_value=1, tuning=None):
+        if tuning is None:
+            tuning = self.autotune(context)
+        self.context = context
         self.n_sigma = n_sigma
         self.transposed = transposed
-        self.wgsx = wgsx
-        self.wgsy = wgsy
+        self.wgsx = tuning['wgsx']
+        self.wgsy = tuning['wgsy']
         self.flag_value = flag_value
         if transposed:
             source_name = 'rfi/threshold_simple_t.mako'
@@ -403,105 +453,130 @@ class ThresholdSimpleDevice(object):
         else:
             source_name = 'rfi/threshold_simple.mako'
             kernel_name = 'threshold_simple'
-        program = accel.build(command_queue.context, source_name,
-                {'wgsx': wgsx, 'wgsy': wgsy, 'flag_value': flag_value})
+        program = accel.build(context, source_name,
+                {'wgsx': self.wgsx, 'wgsy': self.wgsy,
+                    'flag_value': flag_value})
         self.kernel = program.get_kernel(kernel_name)
 
-    def min_padded_shape(self, shape):
-        """Minimum padded size for inputs and outputs"""
-        return (
-                accel.roundup(shape[0], self.wgsy),
-                accel.roundup(shape[1], self.wgsx))
+    @classmethod
+    @tune.autotuner(test={'wgsx': 32, 'wgsy': 4})
+    def autotune(cls, context):
+        # TODO: do real autotuning
+        return {'wgsx': 32, 'wgsy': 4}
 
-    def min_padded_noise_shape(self, baselines):
-        if self.transposed:
-            wgs = self.wgsy
-        else:
-            wgs = self.wgsx
-        return (accel.roundup(baselines, wgs),)
+    def instantiate(self, command_queue, channels, baselines):
+        """Create an instance. See :class:`ThresholdSimpleDevice`."""
+        return ThresholdSimpleDevice(self, command_queue, channels, baselines)
 
-    def __call__(self, deviations, noise, flags):
-        """Apply the thresholding
+class ThresholdSimpleDevice(accel.Operation):
+    """Concrete instance of :class:`ThresholdSimpleDeviceTemplate`.
 
-        Parameters
-        ----------
-        deviations : :class:`katsdpsigproc.accel.DeviceArray`, float32
-            Deviations from the background amplitude. It must have a padded
-            size at least that given by :meth:`min_padded_shape`.
-        noise : :class:`katsdpsigproc.accel.DeviceArray`, float32
-            Noise estimates, with the same shape as the baseline axis of
-            `deviations`, and padded shape of at least
-            :meth:`min_padded_noise_shape`
-        flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
-            Output flags, with the same shape and padding as `deviations`
-        """
-        assert deviations.shape == flags.shape
-        assert deviations.padded_shape == flags.padded_shape
-        bl_axis = 1 - int(self.transposed)
-        baselines = deviations.shape[bl_axis]
-        assert noise.shape[0] == baselines
-        assert noise.padded_shape[0] >= self.min_padded_noise_shape(baselines)[0]
+    .. rubric:: Slots
 
+    **deviations** : channels × baselines (or transposed), float32
+        Input deviations from the background
+    **noise** : baselines, float32
+        Noise estimates per baseline
+    **flags** : channels × baselines (or transposed), uint8
+        Output flags
+
+    Parameters
+    ----------
+    template : :class:`ThresholdSimpleDeviceTemplate`
+        Operation template
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command-queue in which work will be enqueued
+    channels, baselines : int
+        Shape of the visibility array
+    """
+
+    def __init__(self, template, command_queue, channels, baselines):
+        super(ThresholdSimpleDevice, self).__init__(command_queue)
+        self.template = template
+        self.channels = channels
+        self.baselines = baselines
+        self.transposed = template.transposed
+
+        shape = (baselines, channels) if self.transposed else (channels, baselines)
+        dims = (accel.Dimension(shape[0], self.template.wgsy),
+                accel.Dimension(shape[1], self.template.wgsx))
+        noise_dim = dims[0] if self.transposed else dims[1]
+
+        self.slots['deviations'] = accel.IOSlot(dims, np.float32)
+        self.slots['noise'] = accel.IOSlot((noise_dim,), np.float32)
+        self.slots['flags'] = accel.IOSlot(dims, np.uint8)
+
+    def _run(self):
+        deviations = self.buffer('deviations')
+        noise = self.buffer('noise')
+        flags = self.buffer('flags')
+        stride = deviations.padded_shape[1]
+
+        global_x = accel.roundup(deviations.shape[1], self.template.wgsx)
+        global_y = accel.roundup(deviations.shape[0], self.template.wgsy)
         self.command_queue.enqueue_kernel(
-                self.kernel,
+                self.template.kernel,
                 [
                     deviations.buffer, noise.buffer, flags.buffer,
-                    np.int32(deviations.padded_shape[1]),
-                    np.float32(self.n_sigma)
+                    np.int32(stride),
+                    np.float32(self.template.n_sigma)
                 ],
-                global_size=tuple(reversed(self.min_padded_shape(deviations.shape))),
-                local_size=(self.wgsx, self.wgsy))
+                global_size=(global_x, global_y),
+                local_size=(self.template.wgsx, self.template.wgsy))
 
-class ThresholdSumDevice(object):
-    """A device version of :class:`katsdpsigproc.rfi.host.ThresholdSumHost.
+    def parameters(self):
+        return {
+            'n_sigma': self.template.n_sigma,
+            'flag_value': self.template.flag_value,
+            'transposed': self.transposed,
+            'channels': self.channels,
+            'baselines': self.baselines
+        }
+
+class ThresholdSumDeviceTemplate(object):
+    """A device version of :class:`katsdpsigproc.rfi.host.ThresholdSumHost`.
     It uses transposed data. Performance will be best with a large work
     group size, because of the stencil-like nature of the computation.
 
     Parameters
     ----------
-    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
-        Command-queue in which work will be enqueued
+    context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
+        Context for which kernels will be compiled
     n_sigma : float
         Number of (estimated) standard deviations for the threshold
     n_windows : int
         Number of window sizes to use
     threshold_falloff : float
         Controls rate at which thresholds decrease (ρ in Offringa 2010)
-    wgs : int
-        Number of work items to use per work group
-    vt : int
-        Number of elements to process in each work item
     flag_value : int
         Number stored in returned value to indicate RFI
+    tuning : mapping, optional
+        Kernel tuning parameters; if omitted, will autotune. The possible
+        parameters are
+
+        - wgs: Number of work items to use per work group
+        - vt: Number of elements to process in each work item
     """
+
     host_class = host.ThresholdSumHost
     transposed = True
 
-    @classmethod
-    def min_padded_shape(cls, shape):
-        """Minimum padded size for inputs and outputs"""
-        return shape
-
-    @classmethod
-    def min_padded_noise_shape(cls, baselines):
-        return (baselines,)
-
-    def __init__(self, command_queue, n_sigma, n_windows=4, threshold_falloff=1.2,
-            flag_value=1, tune=None):
-        if tune is None:
-            tune = self.autotune(command_queue.context, n_windows)
-        wgs = tune['wgs']
-        vt = tune['vt']
+    def __init__(self, context, n_sigma, n_windows=4, threshold_falloff=1.2,
+            flag_value=1, tuning=None):
+        if tuning is None:
+            tuning = self.autotune(context, n_windows)
+        wgs = tuning['wgs']
+        vt = tuning['vt']
         edge_size = 2 ** n_windows - n_windows - 1
         self.chunk = wgs * vt - 2 * edge_size
         assert self.chunk > 0
-        self.command_queue = command_queue
+        self.context = context
         self.n_windows = n_windows
         self.n_sigma = [np.float32(n_sigma * pow(threshold_falloff, -i)) for i in range(n_windows)]
         self.wgs = wgs
         self.vt = vt
         self.flag_value = flag_value
-        program = accel.build(command_queue.context, 'rfi/threshold_sum.mako',
+        program = accel.build(context, 'rfi/threshold_sum.mako',
                 {'wgs': self.wgs,
                  'vt': self.vt,
                  'windows' : self.n_windows,
@@ -509,215 +584,215 @@ class ThresholdSumDevice(object):
         self.kernel = program.get_kernel('threshold_sum')
 
     @classmethod
-    @tune.autotuner
+    @tune.autotuner(test={'wgs': 128, 'vt': 3})
     def autotune(cls, context, n_windows):
         queue = context.create_tuning_command_queue()
         channels = 4096
         baselines = 128
         shape = (baselines, channels)
-        shape = cls.min_padded_shape(shape)
-        deviations = DeviceArray(context, shape, dtype=np.float32)
         rs = np.random.RandomState(seed=1)
+        deviations = DeviceArray(context, shape, dtype=np.float32)
         deviations.set(queue, rs.uniform(size=deviations.shape).astype(np.float32))
-        noise_shape = cls.min_padded_noise_shape(baselines)
-        noise = DeviceArray(context, noise_shape, dtype=np.float32)
+        noise = DeviceArray(context, (baselines,), dtype=np.float32)
         noise.set(queue, rs.uniform(high=0.1, size=noise.shape).astype(np.float32))
         flags = DeviceArray(context, shape, dtype=np.uint8)
-        def generate(**tune):
-            fn = cls(queue, 11.0, n_windows=n_windows, tune=tune)
-            def measure(iters):
-                queue.start_tuning()
-                for i in range(iters):
-                    fn(deviations, noise, flags)
-                return queue.stop_tuning() / iters
-            return measure
+        def generate(**tuning):
+            template = cls(context, 11.0, n_windows=n_windows, tuning=tuning)
+            fn = template.instantiate(queue, channels, baselines)
+            fn.bind(deviations=deviations, noise=noise, flags=flags)
+            return tune.make_measure(queue, fn)
         return tune.autotune(generate,
                 wgs=[32, 64, 128, 256, 512],
                 vt=[1, 2, 3, 4, 8, 16])
 
-    def __call__(self, deviations, noise, flags):
-        """Apply the thresholding
+    def instantiate(self, command_queue, channels, baselines):
+        """Create an instance. See :class:`ThresholdSumDevice`."""
+        return ThresholdSumDevice(self, command_queue, channels, baselines)
 
-        Parameters
-        ----------
-        deviations : :class:`katsdpsigproc.accel.DeviceArray`, float32
-            Deviations from the background amplitude. It must have a padded
-            size at least that given by :meth:`min_padded_shape`.
-        noise : :class:`katsdpsigproc.accel.DeviceArray`, float32
-            Noise estimates, with the same shape as the baseline axis of
-            `deviations`, and padded shape of at least
-            :meth:`min_padded_noise_shape`
-        flags : :class:`katsdpsigproc.accel.DeviceArray`, uint8
-            Output flags, with the same shape and padding as `deviations`
-        """
-        assert deviations.shape == flags.shape
-        assert deviations.padded_shape == flags.padded_shape
-        (baselines, channels) = deviations.shape
-        assert noise.shape[0] == baselines
-        assert noise.padded_shape[0] >= self.min_padded_noise_shape(baselines)[0]
+class ThresholdSumDevice(accel.Operation):
+    """Concrete instance of :class:`ThresholdSumDeviceTemplate`.
 
-        blocks = accel.divup(channels, self.chunk)
-        args = [deviations.buffer, noise.buffer, flags.buffer,
-                np.int32(channels), np.int32(deviations.padded_shape[1])]
-        args.extend(self.n_sigma)
-        self.command_queue.enqueue_kernel(
-                self.kernel, args,
-                global_size = (blocks * self.wgs, baselines),
-                local_size = (self.wgs, 1))
+    .. rubric:: Slots
 
-class FlaggerDevice(object):
-    """Combine device backgrounder and thresholder implementations to
-    create a flagger. The thresholder may take transposed input, in which
-    case this object will manage temporary buffers and the transposition
-    automatically.
+    **deviations** : baselines × channels, float32
+        Input deviations from the background
+    **noise** : baselines, float32
+        Noise estimates per baseline
+    **flags** : baselines × channels, uint8
+        Output flags
 
-    Intermediate buffers are allocated when first required or when the
-    sizes of inputs change. Thus, the first call may be slower than subsequent
-    calls. It is also a good idea to make subsequent calls with the same size
-    input data. For example, if using two subarrays (of different sizes), it
-    will be more efficient to use a separate flagger object for each rather
-    than multiplexing them through one flagger.
-
-    Attributes
+    Parameters
     ----------
+    template : :class:`ThresholSumDeviceTemplate`
+        Operation template
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command-queue in which work will be enqueued
-    background
-        Backgrounder object
-    noise_est
-        Noise estimator object
-    threshold
-        Thresholder object
-    _deviations : :class`:katsdpsigproc.accel.DeviceArray`, float32
-        Deviations of the amplitude from the background
-    _deviations_t : :class`:katsdpsigproc.accel.DeviceArray`, float32
-        Transposed deviations
-    _noise : :class:`katsdpsigproc.accel.DeviceArray`, float32
-        Noise estimate for each baseline
-    _flags_t : :class`:katsdpsigproc.accel.DeviceArray`, uint8
-        Transposed flags
-    _transpose_deviations : :class:`katsdpsigproc.accel.Transpose`
-        Kernel for transposing deviations
-    _transpose_flags : :class:`katsdpsigproc.accel.Transpose`
-        Kernel for transposing flags
+    channels, baselines : int
+        Shape of the visibility array
+    """
+    host_class = host.ThresholdSumHost
+    transposed = True
+
+    def __init__(self, template, command_queue, channels, baselines):
+        super(ThresholdSumDevice, self).__init__(command_queue)
+        self.template = template
+        self.channels = channels
+        self.baselines = baselines
+        # For channels we must construct the Dimension here rather than in
+        # the IOSlot constructor, so that the deviations and flags share
+        # the same object and hence have the same stride.
+        dims = (baselines, accel.Dimension(channels))
+        self.slots['deviations'] = accel.IOSlot(dims, np.float32)
+        self.slots['noise'] = accel.IOSlot((baselines,), np.float32)
+        self.slots['flags'] = accel.IOSlot(dims, np.uint8)
+
+    def _run(self):
+        deviations = self.buffer('deviations')
+        noise = self.buffer('noise')
+        flags = self.buffer('flags')
+
+        blocks = accel.divup(self.channels, self.template.chunk)
+        args = [deviations.buffer, noise.buffer, flags.buffer,
+                np.int32(self.channels), np.int32(deviations.padded_shape[1])]
+        args.extend(self.template.n_sigma)
+        self.command_queue.enqueue_kernel(
+                self.template.kernel, args,
+                global_size=(blocks * self.template.wgs, self.baselines),
+                local_size=(self.template.wgs, 1))
+
+    def parameters(self):
+        return {
+            'n_sigma': self.template.n_sigma,
+            'n_windows': self.template.n_windows,
+            'threshold_falloff': self.template.threshold_falloff,
+            'flag_value': self.template.flag_value,
+            'channels': self.channels,
+            'baselines': self.baselines
+        }
+
+class FlaggerDeviceTemplate(object):
+    """Combine device backgrounder, noise estimation and thresholder
+    implementations to create a flagger. The thresholder and/or noise
+    estimation may take transposed input, in which case this object will manage
+    temporary buffers and the transposition automatically.
+
+    Parameters
+    ----------
+    background, noise_est, threshold : template types
+        The templates for the individual steps
     """
     def __init__(self, background, noise_est, threshold):
         self.background = background
         self.noise_est = noise_est
         self.threshold = threshold
-        assert self.background.command_queue is self.threshold.command_queue
-        self.command_queue = self.background.command_queue
-        self._deviations = None
-        self._noise = None
-        self._deviations_t = None
-        self._flags_t = None
+        context = self.background.context
+        # Check that all operations work in the same context
+        assert self.noise_est.context is context
+        assert self.threshold.context is context
+
+        # Create transposition operations if needed
         if noise_est.transposed or threshold.transposed:
-            self._transpose_deviations = Transpose(self.command_queue, np.float32, 'float')
+            self.transpose_deviations = transpose.TransposeTemplate(context, np.float32, 'float')
+        else:
+            self.transpose_deviations = None
         if threshold.transposed:
-            self._transpose_flags = Transpose(self.command_queue, np.uint8, 'unsigned char')
-
-    def _min_padded_shape_t(self, shape_t):
-        padded_shape = (0, 0)
-        if self.noise_est.transposed:
-            padded_shape = map(max,
-                    padded_shape,
-                    self.noise_est.min_padded_shape(shape_t))
-        if self.threshold.transposed:
-            padded_shape = map(max,
-                    padded_shape,
-                    self.threshold.min_padded_shape(shape_t))
-        return tuple(padded_shape)
-
-    def _min_padded_noise_shape(self, baselines):
-        return tuple(map(max,
-                self.noise_est.min_padded_noise_shape(baselines),
-                self.threshold.min_padded_noise_shape(baselines)))
-
-    def min_padded_shape(self, shape):
-        """The minimum padding needed for the inputs and outputs of the
-        flagger."""
-        padded_shape = self.background.min_padded_shape(shape)
-        if not self.noise_est.transposed:
-            padded_shape = map(max,
-                    padded_shape,
-                    self.noise_est.min_padded_shape(shape))
-        if not self.threshold.transposed:
-            padded_shape = map(max,
-                    padded_shape,
-                    self.threshold.min_padded_shape(shape))
-        return padded_shape
-
-    def _ensure_array(self, ary, shape, padded_shape, dtype):
-        """Allocates array if needed, returns the new value"""
-        if ary is None or ary.shape != shape or ary.padded_shape != padded_shape:
-            ary = DeviceArray(
-                    self.command_queue.context, shape, dtype, padded_shape)
-        return ary
-
-    def __call__(self, vis, flags):
-        """Perform the flagging.
-
-        Parameters
-        ----------
-        vis : :class:`katsdpsigproc.accel.DeviceArray`, complex64
-            The input visibilities as a 2D array, indexed
-            by channel and baseline, and with padded size given by
-            :meth:`min_padded_shape`.
-        flags : :class:katsdpsigproc.accel.DeviceArray`, uint8
-            The output flags, with the same shape and padding as `vis`.
-        """
-        (channels, baselines) = vis.shape
-        assert vis.shape == flags.shape
-        assert vis.padded_shape == flags.padded_shape
-        assert np.all(np.greater_equal(
-                self.min_padded_shape(vis.shape), vis.padded_shape))
-
-        # Allocate or reallocate internal buffers if necessary
-        shape_t = (vis.shape[1], vis.shape[0])
-        padded_shape_t = self._min_padded_shape_t(shape_t)
-        padded_noise_shape = self._min_padded_noise_shape(baselines)
-        self._deviations = self._ensure_array(
-                self._deviations, vis.shape, vis.padded_shape, np.float32)
-        self._noise = self._ensure_array(
-                self._noise, (baselines,), padded_noise_shape, np.float32)
-        if self.noise_est.transposed or self.threshold.transposed:
-            self._deviations_t = self._ensure_array(
-                    self._deviations_t, shape_t, padded_shape_t, np.float32)
-        if self.threshold.transposed:
-            self._flags_t = self._ensure_array(
-                    self._flags_t, shape_t, padded_shape_t, np.uint8)
-
-        # Do computations
-        self.background(vis, self._deviations)
-        if self.noise_est.transposed or self.threshold.transposed:
-            self._transpose_deviations(self._deviations_t, self._deviations)
-
-        if self.noise_est.transposed:
-            self.noise_est(self._deviations_t, self._noise)
+            self.transpose_flags = transpose.TransposeTemplate(context, np.uint8, 'unsigned char')
         else:
-            self.noise_est(self._deviations, self._noise)
+            self.transpose_flags = None
 
-        if self.threshold.transposed:
-            self.threshold(self._deviations_t, self._noise, self._flags_t)
-            self._transpose_flags(flags, self._flags_t)
-        else:
-            self.threshold(self._deviations, self._noise, flags)
+    def instantiate(self, command_queue, channels, baselines):
+        """Create an instance. See :class:`FlaggerDevice`."""
+        return FlaggerDevice(self, command_queue, channels, baselines)
+
+class FlaggerDevice(accel.OperationSequence):
+    """Concrete instance of :class:`FlaggerDeviceTemplate`.
+
+    Temporary buffers are presented as slots, which allows them to either
+    be set by the user or allocated automatically on first use.
+
+    .. rubric:: Slots
+
+    **vis** : channels × baselines, float32 or complex64
+        Input visibilities (or amplitudes, if the backgrounder takes amplitudes)
+    **deviations** : channels × baselines, float32
+        Temporary, deviations from the background
+    **deviations_t** : baselines × channels, float32, optional
+        Transpose of `deviations`
+    **noise** : baselines, float32
+        Estimate of per-baseline noise
+    **flags_t** : baselines × channels, uint8, optional
+        Transpose of `flags`
+    **flags** : channels × baselines, uint8
+        Output flags
+
+    Parameters
+    ----------
+    template : :class:`BackgroundMedianFilterDevice`
+        Operation template
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command queue for the operation
+    channels, baselines : int
+        Shape of the visibilities array
+    """
+    def __init__(self, template, command_queue, channels, baselines):
+        self.template = template
+        self.channels = channels
+        self.baselines = baselines
+        self.background = self.template.background.instantiate(command_queue, channels, baselines)
+        self.noise_est = self.template.noise_est.instantiate(command_queue, channels, baselines)
+        self.threshold = self.template.threshold.instantiate(command_queue, channels, baselines)
+
+        noise_est_suffix = '_t' if self.noise_est.transposed else ''
+        threshold_suffix = '_t' if self.threshold.transposed else ''
+
+        operations = []
+        compounds = {
+                'vis': ['background:vis'],
+                'deviations': ['background:deviations', 'transpose_deviations:src'],
+                'deviations_t': ['transpose_deviations:dest'],
+                'noise': ['noise_est:noise', 'threshold:noise'],
+                'flags_t': ['transpose_flags:src'],
+                'flags': ['transpose_flags:dest']
+                }
+        compounds['deviations' + noise_est_suffix].append('noise_est:deviations')
+        compounds['deviations' + threshold_suffix].append('threshold:deviations')
+        compounds['flags' + threshold_suffix].append('threshold:flags')
+
+        operations.append(('background', self.background))
+        if self.template.transpose_deviations:
+            self.transpose_deviations = self.template.transpose_deviations.instantiate(
+                    command_queue, (channels, baselines))
+            operations.append(('transpose_deviations', self.transpose_deviations))
+        operations.append(('noise_est', self.noise_est))
+        operations.append(('threshold', self.threshold))
+        if self.template.transpose_flags:
+            self.transpose_flags = self.template.transpose_flags.instantiate(
+                    command_queue, (baselines, channels))
+            operations.append(('transpose_flags', self.transpose_flags))
+
+        super(FlaggerDevice, self).__init__(command_queue, operations, compounds)
 
 class FlaggerHostFromDevice(object):
-    """Wrapper that makes a :class:`FlaggerDeviceFromHost` present the
+    """Wrapper that makes a :class:`FlaggerDeviceTemplate` present the
     interface of :class:`FlaggerHost`. This is intended only for ease of
     use. It is not efficient, because it allocates and frees memory on
     every call.
+
+    Parameters
+    ----------
+    template : :class:`FlaggerDeviceTemplate`
+        Operation template
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command queue for the operation
     """
-    def __init__(self, real_flagger):
-        self.real_flagger = real_flagger
+    def __init__(self, template, command_queue):
+        self.template = template
+        self.command_queue = command_queue
 
     def __call__(self, vis):
-        padded_shape = self.real_flagger.min_padded_shape(vis.shape)
-        device_vis = DeviceArray(self.real_flagger.command_queue.context, vis.shape,
-                np.complex64, padded_shape)
-        device_vis.set(self.real_flagger.command_queue, vis)
-        device_flags = DeviceArray(self.real_flagger.command_queue.context, vis.shape,
-                np.uint8, padded_shape)
-        self.real_flagger(device_vis, device_flags)
-        return device_flags.get(self.real_flagger.command_queue)
+        (channels, baselines) = vis.shape
+        fn = self.template.instantiate(self.command_queue, channels, baselines)
+        fn.ensure_all_bound()
+        fn.buffer('vis').set(self.command_queue, vis)
+        fn()
+        return fn.buffer('flags').get(self.command_queue)

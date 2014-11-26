@@ -4,8 +4,7 @@ properly."""
 
 import numpy as np
 from .. import host
-from nose.tools import assert_equal
-from ...test.test_accel import device_test, test_command_queue
+from ...test.test_accel import device_test
 from .. import device
 
 def setup():
@@ -32,34 +31,34 @@ def test_flagger_host():
     flags = flagger(_vis)
     np.testing.assert_equal(_spikes, flags)
 
-def check_flagger_device(transpose_noise_est, transpose_threshold):
-    background = device.BackgroundMedianFilterDevice(test_command_queue, 13)
+def check_flagger_device(transpose_noise_est, transpose_threshold, context, queue):
+    background = device.BackgroundMedianFilterDeviceTemplate(context, 13)
     if transpose_noise_est:
-        noise_est = device.NoiseEstMADTDevice(test_command_queue, 1024)
+        noise_est = device.NoiseEstMADTDeviceTemplate(context, 1024)
     else:
-        noise_est = device.NoiseEstMADDevice(test_command_queue, 8, 8)
-    threshold = device.ThresholdSimpleDevice(test_command_queue,
-            11.0, transpose_threshold, 8, 8)
-    flagger_device = device.FlaggerDevice(background, noise_est, threshold)
-    flagger = device.FlaggerHostFromDevice(flagger_device)
+        noise_est = device.NoiseEstMADDeviceTemplate(context, tuning={'wgsx': 8, 'wgsy': 8})
+    threshold = device.ThresholdSimpleDeviceTemplate(context,
+            11.0, transpose_threshold, tuning={'wgsx': 8, 'wgsy': 8})
+    flagger_device = device.FlaggerDeviceTemplate(background, noise_est, threshold)
+    flagger = device.FlaggerHostFromDevice(flagger_device, queue)
     flags = flagger(_vis)
     np.testing.assert_equal(_spikes, flags)
 
 @device_test
-def test_flagger_device():
-    check_flagger_device(False, False)
+def test_flagger_device(context, queue):
+    check_flagger_device(False, False, context, queue)
 
 @device_test
-def test_flagger_device_transpose_noise_est():
+def test_flagger_device_transpose_noise_est(context, queue):
     """Test device flagger with a transposed noise estimator"""
-    check_flagger_device(True, False)
+    check_flagger_device(True, False, context, queue)
 
 @device_test
-def test_flagger_device_transpose_threshold():
+def test_flagger_device_transpose_threshold(context, queue):
     """Test device flagger with a transposed thresholder"""
-    check_flagger_device(False, True)
+    check_flagger_device(False, True, context, queue)
 
 @device_test
-def test_flagger_device_transpose_both():
+def test_flagger_device_transpose_both(context, queue):
     """Test device flagger with a transposed noise estimator and thresholder"""
-    check_flagger_device(True, True)
+    check_flagger_device(True, True, context, queue)

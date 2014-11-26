@@ -20,11 +20,24 @@
 
 #define WIDTH ${width}
 
-/// Complex absolute value
-DEVICE_FN float absc(float2 v)
+% if amplitudes:
+
+typedef float in_type;
+DEVICE_FN float amplitude(in_type v)
+{
+    return v;
+}
+
+% else:
+
+typedef float2 in_type;
+/// Amplitude of a visibility
+DEVICE_FN float amplitude(in_type v)
 {
     return hypot(v.x, v.y);
 }
+
+% endif
 
 /**
  * Serial sliding-window median filter. New elements are added using
@@ -97,7 +110,7 @@ DEVICE_FN void median_filter_slide(median_filter *self, float new_sample)
  * size @a N.
  */
 DEVICE_FN static void medfilt_serial_sliding(
-    const GLOBAL float2 * RESTRICT in, GLOBAL float * __restrict out,
+    const GLOBAL in_type * RESTRICT in, GLOBAL float * __restrict out,
     int first, int last, int N, int stride)
 {
     const int H = WIDTH / 2;
@@ -108,13 +121,13 @@ DEVICE_FN static void medfilt_serial_sliding(
     // These is no need for this on the leading edge, because the
     // constructor initialises with zero samples.
     for (int i = max(0, first - H); i < min(first + H, N); i++)
-        median_filter_slide(&filter, absc(in[i * stride]));
+        median_filter_slide(&filter, amplitude(in[i * stride]));
     for (int i = N; i < first + H; i++)
         median_filter_slide(&filter, 0.0f);
 
     for (int i = first; i < min(last, N - H); i++)
     {
-        median_filter_slide(&filter, absc(in[(i + H) * stride]));
+        median_filter_slide(&filter, amplitude(in[(i + H) * stride]));
         out[i * stride] = median_filter_center(&filter) - median_filter_get(&filter);
     }
     for (int i = max(first, N - H); i < last; i++)
@@ -128,16 +141,18 @@ DEVICE_FN static void medfilt_serial_sliding(
  * Apply median filter to each baseline. The input data are stored
  * channel-major, baseline minor, with a separation of @a stride between
  * rows. Each workitem produces (up to) @a VT channels of output. The
- * input must be suitably padded (in the baseline access) for the number
- * of threads.
+ * input and output must be suitably padded (in the baseline axis) for the
+ * number of threads.
  */
 KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
-    const GLOBAL float2 * RESTRICT in, GLOBAL float * RESTRICT out,
+    const GLOBAL in_type * RESTRICT in, GLOBAL float * RESTRICT out,
     int channels, int stride, int VT)
 {
     int bl = get_global_id(0);
     int sub = get_global_id(1);
     int start_channel = sub * VT;
     int end_channel = min(start_channel + VT, channels);
-    medfilt_serial_sliding(in + bl, out + bl, start_channel, end_channel, channels, stride);
+    medfilt_serial_sliding(
+        in + bl, out + bl,
+        start_channel, end_channel, channels, stride);
 }

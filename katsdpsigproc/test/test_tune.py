@@ -2,6 +2,8 @@ import sys
 import traceback
 from nose.tools import assert_equal
 import unittest2 as unittest
+import mock
+import sqlite3
 from .. import tune
 
 # nose.tools uses unittest rather than unittest2 for assertRaises, which
@@ -48,11 +50,11 @@ def generate_raise(x):
     raise CustomError('x = {0}'.format(x))
 
 def test_autotune_all_raise():
-    exc_info = None
+    exc_value = None
     with assert_raises(CustomError):
         exc_value = None
         try:
-            tune.autotune(generate_raise, x=[1,2,3])
+            tune.autotune(generate_raise, x=[1, 2, 3])
         except CustomError as e:
             exc_value = e
             raise
@@ -62,3 +64,37 @@ def test_autotune_all_raise():
     # where it was re-raised
     frames = traceback.extract_tb(sys.exc_info()[2])
     assert_equal('generate_raise', frames[-1][2])
+
+class TestAutotuner(object):
+    """Tests for the `autotuner` decorator. We use mocking to substitute an
+    in-memory database, which is made to persist for the test instead of
+    being closed each time the decorator is called."""
+
+    def setup(self):
+        self.conn = sqlite3.connect(':memory:')
+        self.__class__.autotune_mock = mock.Mock()
+
+    def teardown(self):
+        self.conn.close()
+        del self.__class__.autotune_mock
+
+    @classmethod
+    @tune.autotuner(test={'a': 3, 'b': -1})
+    def autotune(cls, context, param):
+        return cls.autotune_mock(context, param)
+
+    @mock.patch('katsdpsigproc.tune._close_db')
+    @mock.patch('katsdpsigproc.tune._open_db')
+    def test(self, open_db_mock, close_db_mock):
+        open_db_mock.return_value = self.conn
+        tuning = {'a': 1, 'b': 2}
+        context = mock.NonCallableMock()
+        context.device.driver_version = 'mock version'
+        context.device.platform_name = 'mock platform'
+        context.device.name = 'mock device'
+        self.autotune_mock.return_value = tuning
+        ret1 = self.autotune(context, 'xyz')
+        ret2 = self.autotune(context, 'xyz')
+        self.autotune_mock.assert_called_once_with(context, 'xyz')
+        assert_equal(tuning, ret1)
+        assert_equal(tuning, ret2)

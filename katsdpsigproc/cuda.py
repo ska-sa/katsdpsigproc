@@ -101,9 +101,13 @@ class Context(object):
                     options=NVCC_FLAGS + extra_flags)
             return Program(module)
 
-    def allocate(self, shape, dtype):
+    def allocate_raw(self, n_bytes):
         with self:
-            return pycuda.gpuarray.GPUArray(shape, dtype)
+            return pycuda.driver.mem_alloc(n_bytes)
+
+    def allocate(self, shape, dtype, raw=None):
+        with self:
+            return pycuda.gpuarray.GPUArray(shape, dtype, gpudata=raw)
 
     def allocate_pinned(self, shape, dtype):
         with self:
@@ -137,7 +141,10 @@ class CommandQueue(object):
                 # TODO: PyCUDA doesn't take a stream argument here!
                 buffer.get(data)
             else:
-                buffer.get_async(data, stream=self._pycuda_stream)
+                # The order of arguments in PyCUDA 2014.1 doesn't match the
+                # documentation (https://github.com/inducer/pycuda/issues/58).
+                # Rather than guessing which will get fixed, pass by keyword.
+                buffer.get_async(ary=data, stream=self._pycuda_stream)
 
     def enqueue_write_buffer(self, buffer, data, blocking=True):
         with self.context:
@@ -178,7 +185,6 @@ class TuningCommandQueue(CommandQueue):
     def start_tuning(self):
         self.is_tuning = True
         self._start_event = self.enqueue_marker()
-        self._end_event = None
 
     def stop_tuning(self):
         elapsed = 0.0

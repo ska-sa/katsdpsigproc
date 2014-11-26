@@ -2,9 +2,7 @@
 
 import numpy as np
 from .. import host, device
-from nose.tools import assert_equal
-from ...test.test_accel import device_test, test_context, test_command_queue
-from ... import accel
+from ...test.test_accel import device_test, force_autotune
 
 _deviations = None
 _deviations_big = None
@@ -31,18 +29,25 @@ def test_NoiseEstMADHost():
     actual = noise_est(_deviations)
     np.testing.assert_allclose(_expected, actual)
 
-@device_test
-def test_NoiseEstMADDevice():
-    check_device_class(device.NoiseEstMADDevice, 4, 3)
+class BaseTestNoiseEstDeviceClass(object):
+    @device_test
+    def test_result(self, context, queue):
+        template = self.factory(context)
+        ne_host = template.host_class()
+        ne_device = device.NoiseEstHostFromDevice(template, queue)
+        noise_host = ne_host(_deviations_big)
+        noise_device = ne_device(_deviations_big)
+        np.testing.assert_allclose(noise_host, noise_device)
 
-@device_test
-def test_NoiseEstMADTDevice():
-    check_device_class(device.NoiseEstMADTDevice, 10240)
+    @device_test
+    @force_autotune
+    def test_autotune(self, context, queue):
+        self.factory(context)
 
-def check_device_class(cls, *device_args, **device_kw):
-    ne_host = cls.host_class()
-    ne_device = device.NoiseEstHostFromDevice(
-            cls(test_command_queue, *device_args, **device_kw))
-    noise_host = ne_host(_deviations_big)
-    noise_device = ne_device(_deviations_big)
-    np.testing.assert_allclose(noise_host, noise_device)
+class TestNoiseEstMADDevice(BaseTestNoiseEstDeviceClass):
+    def factory(self, context):
+        return device.NoiseEstMADDeviceTemplate(context)
+
+class TestNoiseEstMADTDevice(BaseTestNoiseEstDeviceClass):
+    def factory(self, context):
+        return device.NoiseEstMADTDeviceTemplate(context, 10240)
