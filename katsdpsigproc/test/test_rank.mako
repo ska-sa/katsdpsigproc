@@ -45,6 +45,17 @@ KERNEL REQD_WORK_GROUP_SIZE(1, 1, 1) void test_rank_serial(
         out[i] = ranker_serial_int_rank(&ranker, i);
 }
 
+<%def name="partition()">
+    {
+        int lid = get_local_id(0);
+        int start = lid * N / ${size};
+        int end = (lid + 1) * N / ${size};
+        ranker.serial.values = in + start;
+        ranker.serial.N = end - start;
+        ranker.scratch = &scratch;
+    }
+</%def>
+
 /**
  * Measure the rank of values 0 to @a M - 1 against a given array.
  * It uses only a single work-group.
@@ -55,16 +66,28 @@ KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void test_rank_parallel(
     int N, int M)
 {
     LOCAL_DECL ranker_parallel_int_scratch scratch;
-
-    int lid = get_local_id(0);
-    int start = lid * N / ${size};
-    int end = (lid + 1) * N / ${size};
     ranker_parallel_int ranker;
-    ranker.serial.values = in + start;
-    ranker.serial.N = end - start;
-    ranker.scratch = &scratch;
+    ${partition()}
     for (int i = 0; i < M; i++)
         out[i] = ranker_parallel_int_rank(&ranker, i);
+}
+
+<%rank:find_min_float ranker_class="ranker_parallel_float"/>
+<%rank:find_max_float ranker_class="ranker_parallel_float"/>
+
+/**
+ * Finds the minimum and maximum elements of an array.
+ */
+KERNEL void test_find_min_max_float(
+    GLOBAL const float * RESTRICT in,
+    GLOBAL float * RESTRICT out,
+    int N)
+{
+    LOCAL_DECL ranker_parallel_float_scratch scratch;
+    ranker_parallel_float ranker;
+    ${partition()}
+    out[0] = find_min_float(&ranker);
+    out[1] = find_max_float(&ranker);
 }
 
 <%rank:median_non_zero_float ranker_class="ranker_parallel_float" uniform="True" prefix="uniform_"/>
@@ -83,12 +106,7 @@ KERNEL void test_median_non_zero(
 {
     LOCAL_DECL ranker_parallel_float_scratch scratch;
     ranker_parallel_float ranker;
-    int lid = get_local_id(0);
-    int start = N * lid / ${size};
-    int end = N * (lid + 1) / ${size};
-    ranker.serial.values = in + start;
-    ranker.serial.N = end - start;
-    ranker.scratch = &scratch;
+    ${partition()}
     out[0] = uniform_median_non_zero_float(&ranker, N);
     out[1] = nonuniform_median_non_zero_float(&ranker, N);
 }
