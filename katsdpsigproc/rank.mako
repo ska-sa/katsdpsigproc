@@ -39,6 +39,34 @@ DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
 }
 
 /**
+ * Return the smallest value. The identity value must be at least as big as
+ * any array element. The result is undefined if there are larger elements or
+ * if there are any NaN values.
+ */
+DEVICE_FN ${type} ${class_name}_min(${class_name} *self, ${type} identity)
+{
+    ${type} ans = identity;
+    <%call expr="caller.foreach('self')" args="v">
+        ans = min(ans, ${v});
+    </%call>
+    return ans;
+}
+
+/**
+ * Return the smallest value. The identity value must be at least as small as
+ * any array element. The result is undefined if there are smaller elements or
+ * if there are any NaN values.
+ */
+DEVICE_FN ${type} ${class_name}_max(${class_name} *self, ${type} identity)
+{
+    ${type} ans = identity;
+    <%call expr="caller.foreach('self')" args="v">
+        ans = max(ans, ${v});
+    </%call>
+    return ans;
+}
+
+/**
  * Return the largest value that is strictly less than @a limit.
  * Returns 0 if there isn't one.
  */
@@ -63,14 +91,15 @@ DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
  * that must range from 0 to @a size - 1.
  */
 ${wg_reduce.define_scratch('int', size, class_name + '_scratch_sum')}
-${wg_reduce.define_scratch(type, size, class_name + '_scratch_max')}
+${wg_reduce.define_scratch(type, size, class_name + '_scratch_minmax')}
 ${wg_reduce.define_function('int', size, class_name + '_reduce_sum', class_name + '_scratch_sum')}
-${wg_reduce.define_function(type, size, class_name + '_reduce_max', class_name + '_scratch_max', wg_reduce.op_max)}
+${wg_reduce.define_function(type, size, class_name + '_reduce_min', class_name + '_scratch_minmax', wg_reduce.op_min)}
+${wg_reduce.define_function(type, size, class_name + '_reduce_max', class_name + '_scratch_minmax', wg_reduce.op_max)}
 
 typedef union ${class_name}_scratch
 {
     ${class_name}_scratch_sum sum;
-    ${class_name}_scratch_max max;
+    ${class_name}_scratch_minmax minmax;
 } ${class_name}_scratch;
 
 typedef struct ${class_name}
@@ -95,10 +124,22 @@ DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
     return ${class_name}_reduce_sum(r, (${caller.thread_id('self')}), &self->scratch->sum);
 }
 
+DEVICE_FN ${type} ${class_name}_min(${class_name} *self, ${type} identity)
+{
+    ${type} s = ${serial_class}_min(&self->serial, identity);
+    return ${class_name}_reduce_min(s, (${caller.thread_id('self')}), &self->scratch->minmax);
+}
+
+DEVICE_FN ${type} ${class_name}_max(${class_name} *self, ${type} identity)
+{
+    ${type} s = ${serial_class}_max(&self->serial, identity);
+    return ${class_name}_reduce_max(s, (${caller.thread_id('self')}), &self->scratch->minmax);
+}
+
 DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 {
     ${type} s = ${serial_class}_max_below(&self->serial, limit);
-    return ${class_name}_reduce_max(s, (${caller.thread_id('self')}), &self->scratch->max);
+    return ${class_name}_reduce_max(s, (${caller.thread_id('self')}), &self->scratch->minmax);
 }
 </%def>
 
@@ -146,6 +187,28 @@ DEVICE_FN float ${prefix}find_rank_float(${ranker_class} *ranker, int rank, bool
     }
 % endif
     return result;
+}
+</%def>
+
+<%def name="find_min_float(ranker_class, prefix='')">
+/**
+ * Return the smallest value within the given ranker. The ranker must
+ * operate on finite floats (results are undefined on non-finite values).
+ */
+DEVICE_FN float ${prefix}find_min_float(${ranker_class} *ranker)
+{
+    return ${ranker_class}_min(ranker, FLT_MAX);
+}
+</%def>
+
+<%def name="find_max_float(ranker_class, prefix='')">
+/**
+ * Return the largest value within the given ranker. The ranker must
+ * operate on finite floats (results are undefined on non-finite values).
+ */
+DEVICE_FN float ${prefix}find_max_float(${ranker_class} *ranker)
+{
+    return ${ranker_class}_max(ranker, -FLT_MAX);
 }
 </%def>
 

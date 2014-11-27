@@ -43,27 +43,51 @@ def test_rank_serial(context, queue):
 def test_rank_parallel(context, queue):
     check_rank(context, queue, 'test_rank_parallel', _wgs)
 
-class TestMedianNonZero(object):
-    @device_test
-    def setup(self, context, queue):
-        self.size = 128  # Number of workitems
-        self.kernel = _program.get_kernel('test_median_non_zero')
+def run_float_func(context, queue, kernel_name, data, output_size):
+    """Common code for testing find_min_float, find_max_float, median_non_zero_float"""
+    size = 128  # Number of workitems
+    kernel = _program.get_kernel(kernel_name)
+    data = np.asarray(data, dtype=np.float32)
+    N = data.shape[0]
+    data_d = accel.DeviceArray(context, shape=data.shape, dtype=np.float32)
+    data_d.set(queue, data)
+    out_d = accel.DeviceArray(context, shape=(output_size,), dtype=np.float32)
+    queue.enqueue_kernel(
+            kernel,
+            [data_d.buffer, out_d.buffer, np.int32(N)],
+            global_size=(size,),
+            local_size=(size,))
+    out = out_d.empty_like()
+    out_d.get(queue, out)
+    return out
 
+class TestFindMinMaxFloat(object):
     def check_array(self, context, queue, data):
         data = np.asarray(data, dtype=np.float32)
-        N = data.shape[0]
-        expected = np.median(data[data > 0.0])
-        data_d = accel.DeviceArray(context, shape=data.shape, dtype=np.float32)
-        data_d.set(queue, data)
-        out_d = accel.DeviceArray(context, shape=(2,), dtype=np.float32)
-        queue.enqueue_kernel(
-                self.kernel,
-                [data_d.buffer, out_d.buffer, np.int32(N)],
-                global_size=(self.size,),
-                local_size=(self.size,))
-        out = out_d.empty_like()
-        out_d.get(queue, out)
+        expected = [np.min(data), np.max(data)]
+        out = run_float_func(context, queue, 'test_find_min_max_float', data, 2)
+        assert_equal(expected[0], out[0])
+        assert_equal(expected[1], out[1])
 
+    @device_test
+    def test_single(self, context, queue):
+        self.check_array(context, queue, [5.3])
+
+    @device_test
+    def test_ordered(self, context, queue):
+        data = np.sort(np.random.uniform(-10.0, 10.0, 1000))
+        self.check_array(context, queue, data)
+
+    @device_test
+    def test_random(self, context, queue):
+        data = np.random.uniform(-10.0, 10.0, 1000)
+        self.check_array(context, queue, data)
+
+class TestMedianNonZero(object):
+    def check_array(self, context, queue, data):
+        data = np.asarray(data, dtype=np.float32)
+        expected = np.median(data[data > 0.0])
+        out = run_float_func(context, queue, 'test_median_non_zero', data, 2)
         assert_equal(expected, out[0])
         assert_equal(expected, out[1])
 
