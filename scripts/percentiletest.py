@@ -24,12 +24,13 @@ def gpu_percentile(context, queue, data):
 
 start_event = queue.enqueue_marker()
 
-size = 128  # Number of workitems
+data=np.abs(np.random.randn(4000,5000)).astype(np.float32).astype(np.float64)
 
-_program = build(context, 'percentile.mako', {'size': size})
-kernel = _program.get_kernel('test_percentile5_float')
+size = 256  # Number of workitems
 
-data=np.abs(np.random.randn(4000,5000))
+_program = build(context, 'percentile.mako', {'size': size, 'vt': (data.shape[1]/size)+1})
+kernel = _program.get_kernel('percentile5_float')
+
 
 t0=time.time()
 out=gpu_percentile(context, queue, data)
