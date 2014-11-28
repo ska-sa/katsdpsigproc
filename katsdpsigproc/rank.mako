@@ -88,6 +88,24 @@ DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 }
 </%def>
 
+/* Specialisation of ranker_serial that provides the foreach function and
+ * struct body. It stores values directly inside the object (which the
+ * user must still populate). The number of values is fixed at compile time,
+ * so smaller arrays must be handled by padding with NaNs.
+ */
+<%def name="ranker_serial_store(class_name, type, size)">
+    <%self:ranker_serial class_name="${class_name}" type="${type}">
+        <%def name="foreach(self, start=0, stop=size)">
+            #pragma unroll
+            for (int i = ${start}; i < ${stop}; i++)
+            {
+                ${caller.body('(%s)->values[i]' % (self,))}
+            }
+        </%def>
+        float values[${size}];
+    </%self:ranker_serial>
+</%def>
+
 <%def name="ranker_parallel(class_name, serial_class, type, size)">
 /**
  * Provides the same interface as ranker_serial, but for

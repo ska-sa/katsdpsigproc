@@ -22,16 +22,7 @@
 <%namespace name="wg_reduce" file="/wg_reduce.mako"/>
 <%namespace name="rank" file="/rank.mako"/>
 
-<%rank:ranker_serial class_name="ranker_abs_serial" type="float">
-    <%def name="foreach(self, start=0, stop='VT')">
-        #pragma unroll
-        for (int i = ${start}; i < ${stop}; i++)
-        {
-            ${caller.body('(%s)->values[i]' % (self,))}
-        }
-    </%def>
-    float values[VT];
-</%rank:ranker_serial>
+<%rank:ranker_serial_store class_name="ranker_abs_serial" type="float" size="VT"/>
 
 DEVICE_FN void ranker_abs_serial_init(
     ranker_abs_serial *self,
