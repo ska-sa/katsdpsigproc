@@ -9,8 +9,9 @@
 
 <%def name="define_rankers(type)">
 <%rank:ranker_serial class_name="ranker_serial_${type}" type="${type}">
-    <%def name="foreach(self)">
-        for (int i = 0; i < ${self}->N; i++)
+    <%def name="foreach(self, start=0, stop=None)">
+        <% if stop is None: stop = '({0})->N'.format(self) %>
+        for (int i = ${start}; i < ${stop}; i++)
         {
             ${caller.body(self + '->values[i]')}
         }

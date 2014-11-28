@@ -23,9 +23,9 @@
 <%namespace name="rank" file="/rank.mako"/>
 
 <%rank:ranker_serial class_name="ranker_abs_serial" type="float">
-    <%def name="foreach(self)">
+    <%def name="foreach(self, start=0, stop='VT')">
         #pragma unroll
-        for (int i = 0; i < VT; i++)
+        for (int i = ${start}; i < ${stop}; i++)
         {
             ${caller.body('(%s)->values[i]' % (self,))}
         }
@@ -40,7 +40,7 @@ DEVICE_FN void ranker_abs_serial_init(
     int p = start;
     for (int i = 0; i < VT; i++)
     {
-        self->values[i] = (p < N) ? fabs(data[p]) : FLT_MAX;
+        self->values[i] = (p < N) ? fabs(data[p]) : NAN;
         p += step;
     }
 }

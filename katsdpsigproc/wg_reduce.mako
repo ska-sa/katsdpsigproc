@@ -1,6 +1,20 @@
-<%def name="op_plus(a, b)">${a} + ${b}</%def>
-<%def name="op_max(a, b)">max(${a}, ${b})</%def>
-<%def name="op_min(a, b)">min(${a}, ${b})</%def>
+<%def name="op_plus(a, b, type)">((${a}) + (${b}))</%def>
+<%def name="op_max(a, b, type)">max((${a}), (${b}))</%def>
+<%def name="op_min(a, b, type)">min((${a}), (${b}))</%def>
+<%def name="op_fmin(a, b, type)">
+% if type.startswith('float') or type.startswith('double'):
+fmin((${a}), (${b}))
+% else:
+min((${a}), (${b}))
+% endif
+</%def>
+<%def name="op_fmax(a, b, type)">
+% if type.startswith('float') or type.startswith('double'):
+fmax((${a}), (${b}))
+% else:
+max((${a}), (${b}))
+% endif
+</%def>
 
 <%def name="define_scratch(type, size, scratch_type)">
 typedef struct ${scratch_type}
@@ -40,10 +54,10 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
     {
         const int full_chunks = ${size / rake_width};
         for (int i = 1; i < full_chunks; i++)
-            value = ${op('value', 'scratch->data[idx + i * rake_width]')};
+            value = ${op('value', 'scratch->data[idx + i * rake_width]', type)};
 % if size % rake_width != 0:
         if (idx < ${size % rake_width})
-            value = ${op('value', 'scratch->data[idx + full_chunks * rake_width]')};
+            value = ${op('value', 'scratch->data[idx + full_chunks * rake_width]', type)};
 % endif
         scratch->data[idx] = value;
     }
@@ -57,7 +71,7 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
     // N = ${N}
     if (idx < ${N // 2})
     {
-        value = ${op('value', 'scratch->data[idx + %d]' % ((N + 1) // 2))};
+        value = ${op('value', 'scratch->data[idx + %d]' % ((N + 1) // 2), type)};
         scratch->data[idx] = value;
     }
     BARRIER();
