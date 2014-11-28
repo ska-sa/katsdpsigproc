@@ -8,7 +8,9 @@
 
 /* Defines a class that computes ranks and other convenient statistics.
  * The caller must provide a @a foreach def that generates an iteration
- * over all relevant values. The caller body is pasted into the class.
+ * over all relevant values, and takes optional @a start and @a stop
+ * arguments to control the range of iteration.
+ * The caller body is pasted into the class.
  */
 <%def name="ranker_serial(class_name, type)">
 typedef struct ${class_name}
@@ -27,7 +29,8 @@ DEVICE_FN int ${class_name}_zeros(${class_name} *self)
 }
 
 /**
- * Count the number of elements which strictly less than @a value.
+ * Count the number of elements which are strictly less than @a value
+ * (and are not NaN). The result is undefined if @a value is NaN.
  */
 DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
 {
@@ -39,36 +42,39 @@ DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
 }
 
 /**
- * Return the smallest value. The identity value must be at least as big as
- * any array element. The result is undefined if there are larger elements or
- * if there are any NaN values.
+ * Return the smallest non-NaN value, or NaN if there isn't one.
  */
-DEVICE_FN ${type} ${class_name}_min(${class_name} *self, ${type} identity)
+DEVICE_FN ${type} ${class_name}_fmin(${class_name} *self)
 {
-    ${type} ans = identity;
-    <%call expr="caller.foreach('self')" args="v">
-        ans = min(ans, ${v});
+    ${type} ans;
+    <%call expr="caller.foreach('self', start=0, stop=1)" args="v">
+        ans = ${v};
+    </%call>
+    <%call expr="caller.foreach('self', start=1)" args="v">
+        ans = ${wg_reduce.op_fmin('ans', v, type)};
     </%call>
     return ans;
 }
 
 /**
- * Return the smallest value. The identity value must be at least as small as
- * any array element. The result is undefined if there are smaller elements or
- * if there are any NaN values.
+ * Return the largest non-NaN value, or NaN if there isn't one.
  */
-DEVICE_FN ${type} ${class_name}_max(${class_name} *self, ${type} identity)
+DEVICE_FN ${type} ${class_name}_fmax(${class_name} *self)
 {
-    ${type} ans = identity;
-    <%call expr="caller.foreach('self')" args="v">
-        ans = max(ans, ${v});
+    ${type} ans;
+    <%call expr="caller.foreach('self', start=0, stop=1)" args="v">
+        ans = ${v};
+    </%call>
+    <%call expr="caller.foreach('self', start=1)" args="v">
+        ans = ${wg_reduce.op_fmax('ans', v, type)};
     </%call>
     return ans;
 }
 
 /**
- * Return the largest value that is strictly less than @a limit.
- * Returns 0 if there isn't one.
+ * Return the largest non-NaN value that is strictly less than @a limit.
+ * Returns 0 if there isn't one. The result is undefined if @a limit is
+ * NaN.
  */
 DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 {
@@ -93,8 +99,8 @@ DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 ${wg_reduce.define_scratch('int', size, class_name + '_scratch_sum')}
 ${wg_reduce.define_scratch(type, size, class_name + '_scratch_minmax')}
 ${wg_reduce.define_function('int', size, class_name + '_reduce_sum', class_name + '_scratch_sum')}
-${wg_reduce.define_function(type, size, class_name + '_reduce_min', class_name + '_scratch_minmax', wg_reduce.op_min)}
-${wg_reduce.define_function(type, size, class_name + '_reduce_max', class_name + '_scratch_minmax', wg_reduce.op_max)}
+${wg_reduce.define_function(type, size, class_name + '_reduce_fmin', class_name + '_scratch_minmax', wg_reduce.op_fmin)}
+${wg_reduce.define_function(type, size, class_name + '_reduce_fmax', class_name + '_scratch_minmax', wg_reduce.op_fmax)}
 
 typedef union ${class_name}_scratch
 {
@@ -124,22 +130,22 @@ DEVICE_FN int ${class_name}_rank(${class_name} *self, ${type} value)
     return ${class_name}_reduce_sum(r, (${caller.thread_id('self')}), &self->scratch->sum);
 }
 
-DEVICE_FN ${type} ${class_name}_min(${class_name} *self, ${type} identity)
+DEVICE_FN ${type} ${class_name}_fmin(${class_name} *self)
 {
-    ${type} s = ${serial_class}_min(&self->serial, identity);
-    return ${class_name}_reduce_min(s, (${caller.thread_id('self')}), &self->scratch->minmax);
+    ${type} s = ${serial_class}_fmin(&self->serial);
+    return ${class_name}_reduce_fmin(s, (${caller.thread_id('self')}), &self->scratch->minmax);
 }
 
-DEVICE_FN ${type} ${class_name}_max(${class_name} *self, ${type} identity)
+DEVICE_FN ${type} ${class_name}_fmax(${class_name} *self)
 {
-    ${type} s = ${serial_class}_max(&self->serial, identity);
-    return ${class_name}_reduce_max(s, (${caller.thread_id('self')}), &self->scratch->minmax);
+    ${type} s = ${serial_class}_fmax(&self->serial);
+    return ${class_name}_reduce_fmax(s, (${caller.thread_id('self')}), &self->scratch->minmax);
 }
 
 DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 {
     ${type} s = ${serial_class}_max_below(&self->serial, limit);
-    return ${class_name}_reduce_max(s, (${caller.thread_id('self')}), &self->scratch->minmax);
+    return ${class_name}_reduce_fmax(s, (${caller.thread_id('self')}), &self->scratch->minmax);
 }
 </%def>
 
@@ -192,23 +198,21 @@ DEVICE_FN float ${prefix}find_rank_float(${ranker_class} *ranker, int rank, bool
 
 <%def name="find_min_float(ranker_class, prefix='')">
 /**
- * Return the smallest value within the given ranker. The ranker must
- * operate on finite floats (results are undefined on non-finite values).
+ * Return the smallest non-NaN value within the given ranker.
  */
 DEVICE_FN float ${prefix}find_min_float(${ranker_class} *ranker)
 {
-    return ${ranker_class}_min(ranker, FLT_MAX);
+    return ${ranker_class}_fmin(ranker);
 }
 </%def>
 
 <%def name="find_max_float(ranker_class, prefix='')">
 /**
- * Return the largest value within the given ranker. The ranker must
- * operate on finite floats (results are undefined on non-finite values).
+ * Return the largest non-NaN value within the given ranker.
  */
 DEVICE_FN float ${prefix}find_max_float(${ranker_class} *ranker)
 {
-    return ${ranker_class}_max(ranker, -FLT_MAX);
+    return ${ranker_class}_fmax(ranker);
 }
 </%def>
 

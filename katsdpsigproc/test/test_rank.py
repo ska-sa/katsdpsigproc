@@ -64,7 +64,7 @@ def run_float_func(context, queue, kernel_name, data, output_size):
 class TestFindMinMaxFloat(object):
     def check_array(self, context, queue, data):
         data = np.asarray(data, dtype=np.float32)
-        expected = [np.min(data), np.max(data)]
+        expected = [np.nanmin(data), np.nanmax(data)]
         out = run_float_func(context, queue, 'test_find_min_max_float', data, 2)
         assert_equal(expected[0], out[0])
         assert_equal(expected[1], out[1])
@@ -77,6 +77,19 @@ class TestFindMinMaxFloat(object):
     def test_ordered(self, context, queue):
         data = np.sort(np.random.uniform(-10.0, 10.0, 1000))
         self.check_array(context, queue, data)
+
+    @device_test
+    def test_nan(self, context, queue):
+        self.check_array(context, queue, [-10.0, 5.5, np.nan, -20.0, np.nan])
+
+    @device_test
+    def test_all_nan(self, context, queue):
+        # Can't use check_array, because np.nanmin warns if all are NaN,
+        # and assert_equal doesn't handle NaN
+        data = np.array([np.nan, np.nan], dtype=np.float32)
+        out = run_float_func(context, queue, 'test_find_min_max_float', data, 2)
+        assert np.isnan(out[0])
+        assert np.isnan(out[1])
 
     @device_test
     def test_random(self, context, queue):

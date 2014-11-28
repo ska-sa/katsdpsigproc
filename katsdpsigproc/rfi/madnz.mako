@@ -50,8 +50,14 @@ DEVICE_FN float array_piece_get(const array_piece *self, int idx)
 }
 
 <%rank:ranker_serial class_name="ranker_abs_serial" type="float">
-    <%def name="foreach(self)">
-        for (int i = (${self})->piece.start; i < (${self})->piece.end; i++)
+    <%def name="foreach(self, start=0, stop=None)">
+        <%
+        if stop is None:
+            stop = '({0})->piece.end'.format(self)
+        else:
+            stop = '({0})->piece.start + ({1})'.format(self, stop)
+        %>
+        for (int i = (${self})->piece.start + (${start}); i < ${stop}; i++)
         {
             ${caller.body('fabs(array_piece_get(&(%s)->piece, i))' % (self,))}
         }
