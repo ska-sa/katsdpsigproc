@@ -53,7 +53,7 @@ class Percentile5Template(object):
                 raise RuntimeError('too many columns')
             fn = cls(context, max_columns, {
                 'size': size}).instantiate(queue, in_shape)
-            inp=fn.slots['src'].allocate(context)
+            inp = fn.slots['src'].allocate(context)
             fn.slots['dest'].allocate(context)
             inp.set(queue,host_data)
             return tune.make_measure(queue, fn)
