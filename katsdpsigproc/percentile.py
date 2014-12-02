@@ -97,7 +97,7 @@ class Percentile5(accel.Operation):
                     src.buffer, dest.buffer,
                     np.int32(src.padded_shape[1]), np.int32(dest.padded_shape[1]), np.int32(src.shape[1])
                 ],
-                global_size=(self.template.size, np.int32(src.shape[0])),
+                global_size=(self.template.size, src.shape[0]),
                 local_size=(self.template.size, 1))
 
     def parameters(self):
