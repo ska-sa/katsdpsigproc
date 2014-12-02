@@ -204,7 +204,7 @@ def stub_autotuner(test, fn, *args, **kwargs):
 
 def make_measure(queue, function):
     """Generates a measurement function that can be returned by the
-    function passed to :func:`autotune`. It calls `function
+    function passed to :func:`autotune`. It calls `function`
     (with no arguments) the appropriate number of times and returns
     the averaged elapsed time as measured by `queue`."""
     def measure(iters):

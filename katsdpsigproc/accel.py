@@ -912,8 +912,24 @@ class Operation(object):
                 slot.allocate(self.command_queue.context)
 
     def buffer(self, name):
-        """Retrieve the buffer bound to the slot named `name`. It will consult
-        both :ivar:`slots` and :ivar:`hidden_slots`."""
+        """Retrieve the buffer bound to a slot. It will consult
+        both :attr:`slots` and :attr:`hidden_slots`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the slot to access
+
+        Returns
+        -------
+        :class:`DeviceArray`
+            Buffer bound to slot `name`, or `None` if the slot exists but is unbound
+
+        Raises
+        ------
+        KeyError
+            If no slot with this name exists
+        """
         try:
             slot = self.slots[name]
         except KeyError:
@@ -944,7 +960,7 @@ class Operation(object):
 
 class OperationSequence(Operation):
     """Convenience class for setting up an operation that is built up of
-    from smaller named operations, with mappings of slots to share data.
+    smaller named operations, with mappings of slots to share data.
     Initially, each slot named *slot* in a child named *op* is remapped to a
     parent slot named *op*:*slot*. After this, each set provided in
     `compounds` is removed from the slots and combined into a single compound
@@ -962,7 +978,7 @@ class OperationSequence(Operation):
         Name, operation pairs to add. Calling the operation executes them in order
     compounds : mapping of `str` to sequence of `str`, optional
         Names for compound slots, mapped to the original slot names that are replaced
-    aliases : mapping of `str` to `str`, optional
+    aliases : mapping of `str` to sequence of `str`, optional
         Names for alias slots, mapped to the original slot names that are replaced
     """
     def __init__(self, command_queue, operations, compounds=None, aliases=None):
