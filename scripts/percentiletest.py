@@ -15,14 +15,13 @@ template = perc5.Percentile5Template(context, max_columns=5000)
 perc = template.instantiate(queue, data.shape)
 perc.ensure_all_bound()
 perc.buffer('src').set(queue,data)
+start_event = queue.enqueue_marker()
 perc()
-t0 = time.time()
+end_event = queue.enqueue_marker()
 out = perc.buffer('dest').get(queue)
-t1 = time.time()
+
+t0 = time.time()
 expected = np.percentile(data, [0, 100, 25, 75, 50], axis=1, interpolation='lower')
-t2 = time.time()
-print 'gpu:', t1-t0, 'cpu:', t2-t1
+t1 = time.time()
+print 'gpu:', end_event.time_since(start_event), 'cpu:', t1-t0
 np.testing.assert_equal(out, expected)
-
-
-
