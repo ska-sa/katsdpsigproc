@@ -281,12 +281,12 @@ class HostArray(np.ndarray):
         assert len(padded_shape) == len(shape)
         assert np.all(np.greater_equal(padded_shape, shape))
         if context is not None:
-            owner = context.allocate_pinned(padded_shape, dtype).view(HostArray)
+            owner = context.allocate_pinned(padded_shape, dtype)
         else:
-            owner = np.empty(padded_shape, dtype).view(HostArray)
+            owner = np.empty(padded_shape, dtype)
         index = tuple([slice(0, x) for x in shape])
-        obj = owner[index]
-        obj._accel_safe = True
+        obj = owner[index].view(HostArray)
+        obj._owner = owner
         obj.padded_shape = padded_shape
         return obj
 
@@ -296,18 +296,27 @@ class HostArray(np.ndarray):
         directly.
         """
         try:
-            return obj._accel_safe
+            return obj._owner is not None
         except AttributeError:
             return False
 
+    @classmethod
+    def padded_view(cls, obj):
+        """Retrieves the view of the full memory without padding. Returns
+        `None` if `cls.safe(obj)` is `False`."""
+        try:
+            return obj._owner
+        except AttributeError:
+            return None
+
     def __array_finalize__(self, obj):
-        if obj is None:
-            return
-        # View casting or created from a template: we cannot vouch for it.
-        # We can't unconditionally set the attribute, because the base class
-        # doesn't allow new attributes.
-        if isinstance(self, HostArray):
-            self._accel_safe = False
+        if obj is not None:
+            # View casting or created from a template: we cannot vouch for it.
+            self._owner = None
+            if isinstance(obj, HostArray):
+                self.padded_shape = obj.padded_shape
+            else:
+                self.padded_shape = None
 
 class DeviceArray(object):
     """A light-weight array-like wrapper around a device buffer, that
@@ -369,10 +378,7 @@ class DeviceArray(object):
         """Returns a contiguous view of a copyable array, for passing to
         PyCUDA or PyOpenCL functions (which require a contiguous view).
         """
-        if ary.base is None:
-            return ary
-        else:
-            return ary.base
+        return HostArray.padded_view(ary)
 
     def empty_like(self):
         """Return an array-like object that can be efficiently copied."""
