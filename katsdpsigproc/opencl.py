@@ -8,6 +8,80 @@ import pyopencl
 import pyopencl.array
 import numpy as np
 
+class _PinnedAMD(np.ndarray):
+    """Pinned memory abstraction for AMD GPUs. Copies to the device
+    are done by unmapping the buffer, enqueuing the copy, and remapping
+    the buffer. This is based on AMD's optimization guide.
+    """
+    def __new__(cls, context, queue, shape, dtype):
+        dtype = np.dtype(dtype)
+        n_bytes = np.product(shape) * dtype.itemsize
+        # Do not add READ or WRITE to the flags: doing so seems to cause AMD
+        # drivers to allocate GPU memory.
+        buffer = pyopencl.Buffer(
+                context,
+                pyopencl.mem_flags.ALLOC_HOST_PTR,
+                n_bytes)
+        array = pyopencl.enqueue_map_buffer(
+                queue,
+                buffer,
+                pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
+                0, shape, dtype)[0]
+        mapping = array.base
+        array = array.view(_PinnedAMD)
+        array._buffer = buffer
+        array._mapping = mapping
+        return array
+
+    def _write(self, queue, buffer, host):
+        pyopencl.enqueue_copy(queue, buffer, host)
+
+    def _read(self, queue, buffer, host):
+        pyopencl.enqueue_copy(queue, host, buffer)
+
+    def _enqueue_copy_buffer(self, queue, buffer, blocking, transfer):
+        if not hasattr(self, '_buffer'):
+            raise ValueError('cannot copy to/from a _PinnedAMD view')
+        self._mapping.release(queue)
+        transfer(queue, buffer, self._buffer)
+        # The shape and dtype don't matter here as long as we map the entire buffer,
+        # because we're going to throw away the array wrapper and just keep the
+        # MemoryMap object.
+        array = pyopencl.enqueue_map_buffer(
+                queue, self._buffer, pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
+                0, (self._buffer.size,), np.uint8, is_blocking=blocking)[0]
+        self._mapping = array.base
+
+    def enqueue_write_buffer(self, queue, buffer, blocking):
+        """Enqueue a copy from the host buffer to device memory. The host
+        memory must not be touched while the copy is in progress.
+
+        Parameters
+        ----------
+        queue : `pyopencl.CommandQueue`
+            Queue for the copy
+        buffer : `pyopencl.Buffer`
+            Target buffer
+        blocking : bool
+            If `True`, wait for the copy to complete before returning
+        """
+        self._enqueue_copy_buffer(queue, buffer, blocking, self._write)
+
+    def enqueue_read_buffer(self, queue, buffer, blocking):
+        """Enqueue a copy to the host buffer from device memory. The host
+        memory must not be touched while the copy is in progress.
+
+        Parameters
+        ----------
+        queue : `pyopencl.CommandQueue`
+            Queue for the copy
+        buffer : `pyopencl.Buffer`
+            Source buffer
+        blocking : bool
+            If `True`, wait for the copy to complete before returning
+        """
+        self._enqueue_copy_buffer(queue, buffer, blocking, self._read)
+
 class Program(object):
     """Abstraction of a program object"""
     def __init__(self, pyopencl_program):
@@ -189,17 +263,25 @@ class Context(object):
         dtype : numpy dtype
             Type for the data
         """
-        n_bytes = np.product(shape) * dtype.itemsize
-        buf = pyopencl.Buffer(
-                self._pyopencl_context,
-                pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
-                n_bytes)
-        ary = pyopencl.enqueue_map_buffer(
-                self._internal_queue,
-                buf,
-                pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
-                0, shape, dtype)[0]
-        return ary
+        device = self._pyopencl_context.devices[0]
+        if ((device.type & pyopencl.device_type.GPU)
+                and device.platform.name == 'AMD Accelerated Parallel Processing'):
+            return _PinnedAMD(self._pyopencl_context, self._internal_queue, shape, dtype)
+        elif device.platform.name == 'NVIDIA CUDA':
+            # Based on NVIDIA's recommendation: create a device buffer and
+            # leave it mapped permanently.
+            n_bytes = np.product(shape) * dtype.itemsize
+            buf = pyopencl.Buffer(
+                    self._pyopencl_context,
+                    pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
+                    n_bytes)
+            return pyopencl.enqueue_map_buffer(
+                    self._internal_queue,
+                    buf,
+                    pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
+                    0, shape, dtype)[0]
+        else:
+            return np.empty(shape, dtype)
 
     def create_command_queue(self, profile=False):
         """Create a new command queue associated with this context
@@ -256,7 +338,10 @@ class CommandQueue(object):
         blocking : boolean (optional)
             If true (default) the call blocks until the copy is complete
         """
-        buffer.get(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
+        if hasattr(data, 'enqueue_read_buffer'):
+            data.enqueue_read_buffer(self._pyopencl_command_queue, buffer.data, blocking)
+        else:
+            buffer.get(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
 
     def enqueue_write_buffer(self, buffer, data, blocking=True):
         """Copy data from the host to the device. Only whole-buffer copies are
@@ -273,7 +358,10 @@ class CommandQueue(object):
             If true (default), the call blocks until the source has been fully
             read (it has no necessarily reached the device).
         """
-        buffer.set(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
+        if hasattr(data, 'enqueue_write_buffer'):
+            data.enqueue_write_buffer(self._pyopencl_command_queue, buffer.data, blocking)
+        else:
+            buffer.set(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
 
     @classmethod
     def _raw_arg(cls, arg):
