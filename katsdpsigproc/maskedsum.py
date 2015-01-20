@@ -42,7 +42,7 @@ class MaskedSumTemplate(object):
         out_shape = (max_columns,)
         rs = np.random.RandomState(seed=1)
         host_data = rs.uniform(size=in_shape).astype(np.float32)
-        host_mask = np.ones((in_shape[0],1)).astype(np.float32)
+        host_mask = np.ones((in_shape[0],)).astype(np.float32)
         def generate(size):
             if max_columns > size*256:
                 raise RuntimeError('too many columns')
@@ -56,7 +56,7 @@ class MaskedSumTemplate(object):
             return tune.make_measure(queue, fn)
 
         return tune.autotune(generate,
-                size=[32])
+                size=[32,64,128,256,512,1024])
 
     def instantiate(self, command_queue, shape):
         return MaskedSum(self, command_queue, shape)
@@ -84,9 +84,9 @@ class MaskedSum(accel.Operation):
         super(MaskedSum, self).__init__(command_queue)
         self.template = template
         self.shape = shape
-        self.slots['src'] = accel.IOSlot(shape, np.float32)
-        self.slots['mask'] = accel.IOSlot((shape[0],1), np.float32)
-        self.slots['dest'] = accel.IOSlot((shape[1],1), np.float32)
+        self.slots['src'] = accel.IOSlot((shape[0], accel.Dimension(shape[1], template.size)), np.float32)
+        self.slots['mask'] = accel.IOSlot((shape[0],), np.float32)
+        self.slots['dest'] = accel.IOSlot((accel.Dimension(shape[1], template.size),), np.float32)
 
     def _run(self):
         src = self.buffer('src')
@@ -98,8 +98,8 @@ class MaskedSum(accel.Operation):
                     src.buffer, mask.buffer, dest.buffer,
                     np.int32(src.padded_shape[1]), np.int32(src.shape[0])
                 ],
-                global_size=(self.template.size, src.shape[1]),
-                local_size=(self.template.size, 1))
+                global_size=(accel.roundup(src.shape[1],self.template.size),),
+                local_size=(self.template.size, ))
 
     def parameters(self):
         return {

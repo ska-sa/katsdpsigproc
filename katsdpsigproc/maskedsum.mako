@@ -21,8 +21,7 @@ KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void maskedsum_float(
     GLOBAL float * RESTRICT out, int in_stride,
     int Nrows)
 {
-    int blockid = get_global_id(1);//block id of processing element 
-    int col = blockid*${size}+get_local_id(0);//thread id within processing element
+    int col = get_global_id(0);//block id of processing element
     int row,rowcoloffset;
     float value=0.0;
     for (row=0,rowcoloffset=col;row<Nrows;row++,rowcoloffset+=in_stride)

@@ -27,7 +27,7 @@ class TestMaskedSum(object):
         self.pad_dimension(fn.slots['src'].dimensions[0], 1)
         self.pad_dimension(fn.slots['src'].dimensions[1], 4)
         ary = np.random.randn(R, C).astype(np.float32)
-        msk = np.ones((R,1)).astype(np.float32)
+        msk = np.ones((R,)).astype(np.float32)
         src = fn.slots['src'].allocate(context)
         mask = fn.slots['mask'].allocate(context)
         dest = fn.slots['dest'].allocate(context)
@@ -35,7 +35,7 @@ class TestMaskedSum(object):
         mask.set_async(queue, msk)
         fn()
         out = dest.get(queue).reshape(-1)
-        expected=np.sum(ary*msk,axis=0).astype(np.float32).reshape(-1)
+        expected=np.sum(ary*msk.reshape(ary.shape[0],1),axis=0).astype(np.float32)
         np.testing.assert_equal(expected, out)
 
     @device_test
