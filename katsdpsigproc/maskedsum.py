@@ -39,11 +39,11 @@ class MaskedSumTemplate(object):
         self.kernel = program.get_kernel("maskedsum_float")
 
     @classmethod
-    @tune.autotuner(test={'size': 256})
+    @tune.autotuner(test={'size': 32})
     def autotune(cls, context, max_columns):
         queue = context.create_tuning_command_queue()
         in_shape = (4096, max_columns)
-        out_shape = (max_columns)
+        out_shape = (max_columns,)
         rs = np.random.RandomState(seed=1)
         host_data = rs.uniform(size=in_shape).astype(np.float32)
         host_mask = np.ones((in_shape[0],1)).astype(np.float32)
@@ -60,7 +60,7 @@ class MaskedSumTemplate(object):
             return tune.make_measure(queue, fn)
 
         return tune.autotune(generate,
-                size=[32, 64, 128, 256, 512, 1024])
+                size=[32])
 
     def instantiate(self, command_queue, shape):
         return MaskedSum(self, command_queue, shape)
