@@ -12,7 +12,7 @@ queue = context.create_command_queue(profile=True)
 data = np.abs(np.random.randn(4000, 5000)).astype(np.float32)
 mask=np.ones((4000,1)).astype(np.float32)
 
-template = msum.MaskedSumTemplate(context, max_columns=5000)
+template = msum.MaskedSumTemplate(context)
 msum = template.instantiate(queue, data.shape)
 msum.ensure_all_bound()
 msum.buffer('src').set(queue,data)

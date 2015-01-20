@@ -14,8 +14,6 @@ class MaskedSumTemplate(object):
     ----------
     context : :class:`cuda.Context` or :class:`opencl.Context`
         Context for which kernels will be compiled
-    max_columns : int
-        maximum number of columns
     tuning : dict, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
@@ -25,23 +23,21 @@ class MaskedSumTemplate(object):
 
     autotune_version = 0
 
-    def __init__(self, context, max_columns, tuning=None):
+    def __init__(self, context, tuning=None):
         self.context = context
-        self.max_columns=max_columns
         
         if tuning is None:
-            tuning = self.autotune(context, max_columns)
+            tuning = self.autotune(context)
         self.size = tuning['size']
-        self.vt =  accel.divup(max_columns, tuning['size'])
         program = accel.build(context, "maskedsum.mako", {
-                'size': self.size,
-                'vt': self.vt})
+                'size': self.size})
         self.kernel = program.get_kernel("maskedsum_float")
 
     @classmethod
     @tune.autotuner(test={'size': 32})
-    def autotune(cls, context, max_columns):
+    def autotune(cls, context):
         queue = context.create_tuning_command_queue()
+        max_columns=5000;
         in_shape = (4096, max_columns)
         out_shape = (max_columns,)
         rs = np.random.RandomState(seed=1)
@@ -50,7 +46,7 @@ class MaskedSumTemplate(object):
         def generate(size):
             if max_columns > size*256:
                 raise RuntimeError('too many columns')
-            fn = cls(context, max_columns, {
+            fn = cls(context, {
                 'size': size}).instantiate(queue, in_shape)
             inp = fn.slots['src'].allocate(context)
             msk = fn.slots['mask'].allocate(context)
@@ -86,8 +82,6 @@ class MaskedSum(accel.Operation):
     """
     def __init__(self, template, command_queue, shape):
         super(MaskedSum, self).__init__(command_queue)
-        if shape[1] > template.max_columns:
-            raise ValueError('columns exceeds max_columns')
         self.template = template
         self.shape = shape
         self.slots['src'] = accel.IOSlot(shape, np.float32)
@@ -102,13 +96,12 @@ class MaskedSum(accel.Operation):
                 self.template.kernel,
                 [
                     src.buffer, mask.buffer, dest.buffer,
-                    np.int32(src.padded_shape[1]), np.int32(dest.padded_shape[1]), np.int32(src.shape[0])
+                    np.int32(src.padded_shape[1]), np.int32(src.shape[0])
                 ],
                 global_size=(self.template.size, src.shape[1]),
                 local_size=(self.template.size, 1))
 
     def parameters(self):
         return {
-            'max_columns': self.template.max_columns,
             'shape': self.slots['src'].shape
         }

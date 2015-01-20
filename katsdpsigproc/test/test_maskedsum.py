@@ -21,7 +21,7 @@ class TestMaskedSum(object):
 
     @device_test
     def check_maskedsum(self, R, C, context, queue):
-        template = maskedsum.MaskedSumTemplate(context, max_columns=5000)
+        template = maskedsum.MaskedSumTemplate(context)
         fn = template.instantiate(queue, (R, C))
         # Force some padded, to check that stride calculation works
         self.pad_dimension(fn.slots['src'].dimensions[0], 1)
@@ -42,4 +42,4 @@ class TestMaskedSum(object):
     @force_autotune
     def test_autotune(self, context, queue):
         """Check that the autotuner runs successfully"""
-        maskedsum.MaskedSumTemplate(context, max_columns=5000)
+        maskedsum.MaskedSumTemplate(context)
