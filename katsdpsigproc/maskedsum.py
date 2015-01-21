@@ -37,15 +37,13 @@ class MaskedSumTemplate(object):
     @tune.autotuner(test={'size': 32})
     def autotune(cls, context):
         queue = context.create_tuning_command_queue()
-        max_columns=5000;
-        in_shape = (4096, max_columns)
-        out_shape = (max_columns,)
+        columns = 5000
+        in_shape = (4096, columns)
+        out_shape = (columns,)
         rs = np.random.RandomState(seed=1)
         host_data = rs.uniform(size=in_shape).astype(np.float32)
         host_mask = np.ones((in_shape[0],)).astype(np.float32)
         def generate(size):
-            if max_columns > size*256:
-                raise RuntimeError('too many columns')
             fn = cls(context, {
                 'size': size}).instantiate(queue, in_shape)
             inp = fn.slots['src'].allocate(context)
@@ -63,7 +61,6 @@ class MaskedSumTemplate(object):
 
 class MaskedSum(accel.Operation):
     """Concrete instance of :class:`MaskedSumTemplate`.
-    WARNING: assumes all values are positive.
 
     .. rubric:: Slots
 
