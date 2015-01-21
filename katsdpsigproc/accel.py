@@ -124,6 +124,16 @@ def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None):
             **render_kws)
     return context.compile(source, extra_flags)
 
+def all_devices():
+    """Return a list of all discovered devices"""
+    devices = []
+    if have_cuda:
+        pycuda.driver.init()
+        devices.extend(cuda.Device.get_devices())
+    if have_opencl:
+        devices.extend(opencl.Device.get_devices())
+    return devices
+
 def create_some_context(interactive=True):
     """Create a single-device context, selecting a device automatically. This
     is similar to `pyopencl.create_some_context`. A number of environment
