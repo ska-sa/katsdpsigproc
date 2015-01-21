@@ -673,14 +673,6 @@ class IOSlot(IOSlotBase):
         :class:`Dimension` with no further requirements.
     dtype : numpy dtype
         Type of the data elements
-    min_padded_round : tuple of int, optional
-        The `min_padded_shape` will be computed by rounding `shape` up to a
-        multiple of this.
-    min_padded_shape : tuple of int, optional
-        Minimum size of the padded allocation, overriding `min_padded_round`.
-    alignment : tuple of int, optional
-        Padded size is required to be a multiple of this in each dimension.
-        These values must be powers of 2.
     """
 
     @classmethod
