@@ -28,7 +28,7 @@ class Percentile5Template(object):
         - size: number of workitems per workgroup
     """
 
-    autotune_version = 4
+    autotune_version = 5
 
     def __init__(self, context, max_columns, amplitudes=True, tuning=None):
         self.context = context
