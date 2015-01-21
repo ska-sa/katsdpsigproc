@@ -7,11 +7,11 @@ from .. import percentile
 
 class TestPercentile5(object):
     def test_percentile(self):
-        yield self.check_percentile5, 4096, 1
-        yield self.check_percentile5, 4096, 4029
-        yield self.check_percentile5, 4096, 4030
-        yield self.check_percentile5, 4096, 4031
-        yield self.check_percentile5, 4096, 4032
+        yield self.check_percentile5, 4096, 1, False
+        yield self.check_percentile5, 4096, 4029, True
+        yield self.check_percentile5, 4096, 4030, False
+        yield self.check_percentile5, 4096, 4031, False
+        yield self.check_percentile5, 4096, 4032, True
 
     @classmethod
     def pad_dimension(cls, dim, extra):
@@ -20,22 +20,30 @@ class TestPercentile5(object):
         newdim.link(dim)
 
     @device_test
-    def check_percentile5(self, R, C, context, queue):
-        template = percentile.Percentile5Template(context, max_columns=5000)
+    def check_percentile5(self, R, C, amplitudes, context, queue):
+        template = percentile.Percentile5Template(context, max_columns=5000, amplitudes=amplitudes)
         fn = template.instantiate(queue, (R, C))
         # Force some padded, to check that stride calculation works
         self.pad_dimension(fn.slots['src'].dimensions[0], 1)
         self.pad_dimension(fn.slots['src'].dimensions[1], 4)
         self.pad_dimension(fn.slots['dest'].dimensions[0], 2)
         self.pad_dimension(fn.slots['dest'].dimensions[1], 3)
-        ary = np.abs(np.random.randn(R, C)).astype(np.float32) #note positive numbers required
+        rs = np.random.RandomState(seed=1)
+        if amplitudes:
+            ary = np.abs(rs.randn(R, C)).astype(np.float32) #note positive numbers required
+        else:
+            ary = (rs.randn(R, C) + 1j * rs.randn(R, C)).astype(np.complex64)
         src = fn.slots['src'].allocate(context)
         dest = fn.slots['dest'].allocate(context)
         src.set_async(queue, ary)
         fn()
         out = dest.get(queue)
-        expected=np.percentile(ary,[0,100,25,75,50],axis=1,interpolation='lower').astype(dtype=np.float32)
-        np.testing.assert_equal(expected, out)
+        expected=np.percentile(np.abs(ary),[0,100,25,75,50],axis=1,interpolation='lower').astype(dtype=np.float32)
+        # When amplitudes are being computed, we won't get a bit-exact match
+        if amplitudes:
+            np.testing.assert_equal(expected, out)
+        else:
+            np.testing.assert_allclose(expected, out, 1e-6)
 
     @device_test
     @force_autotune

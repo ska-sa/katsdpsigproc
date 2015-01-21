@@ -10,17 +10,45 @@
 
 <%def name="define_rankers(type)">
 
+% if amplitudes:
+<% in_type = type %>
+DEVICE_FN ${type} amplitude(${in_type} value)
+{
+    return value; // it is already an amplitude
+}
+
+DEVICE_FN ${type} fix_amplitude(${type} value)
+{
+    return value; // it is already an amplitude
+}
+
+% else:
+
+<% in_type = type + '2' %>
+/// Compute the amplitude (actually squared amplitude, for efficiency)
+DEVICE_FN ${type} amplitude(${in_type} value)
+{
+    return fma(value.x, value.x, value.y * value.y);
+}
+
+/// Turns a value computed by amplitude() into a real amplitude
+DEVICE_FN ${type} fix_amplitude(${type} value)
+{
+    return sqrt(value);
+}
+
+% endif
 
 <%rank:ranker_serial_store class_name="ranker_serial_${type}" type="${type}" size="VT"/>
 
 DEVICE_FN void ranker_serial_${type}_init(
     ranker_serial_${type} *self,
-    GLOBAL const ${type} *data, int start, int step, int N)
+    GLOBAL const ${in_type} *data, int start, int step, int N)
 {
     int p = start;
     for (int i = 0; i < VT; i++)
     {
-        self->values[i] = (p < N) ? data[p] : NAN;
+        self->values[i] = (p < N) ? amplitude(data[p]) : NAN;
         p += step;
     }
 }
@@ -33,7 +61,7 @@ DEVICE_FN void ranker_serial_${type}_init(
 
 DEVICE_FN void ranker_parallel_${type}_init(
     ranker_parallel_${type} *self,
-    GLOBAL const ${type} * RESTRICT data, int start, int step, int N,
+    GLOBAL const ${in_type} * RESTRICT data, int start, int step, int N,
     LOCAL ranker_parallel_${type}_scratch *scratch)
 {
     ranker_serial_${type}_init(&self->serial, data, start, step, N);
@@ -47,6 +75,12 @@ DEVICE_FN void ranker_parallel_${type}_init(
 <%rank:find_max_float ranker_class="ranker_parallel_float"/>
 
 <%rank:find_rank_float ranker_class="ranker_parallel_float" uniform="True"/>
+
+% if amplitudes:
+<% in_type = 'float' %>
+% else:
+<% in_type = 'float2' %>
+% endif
 
 /**
  * Computes the [0,100,25,75,50] percentiles of the two dimensional array. 
@@ -62,7 +96,7 @@ DEVICE_FN void ranker_parallel_${type}_init(
  * Only a single workgroup is used.
  */
 KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void percentile5_float(
-    GLOBAL const float * RESTRICT in,
+    GLOBAL const ${in_type} * RESTRICT in,
     GLOBAL float * RESTRICT out, int in_stride, int out_stride,
     int Ncols)
 {
@@ -71,19 +105,17 @@ KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void percentile5_float(
     int lid = get_local_id(0);//thread id within processing element
     int row = get_global_id(1);//block id of processing element 
     ranker_parallel_float_init(&ranker, in + row * in_stride, get_local_id(0), ${size}, Ncols, &scratch);
-        
-    float perc0 = find_min_float(&ranker);
-    float perc1 = find_max_float(&ranker);
-    float perc2 = find_rank_float(&ranker, (Ncols-1)/4, false);
-    float perc3 = find_rank_float(&ranker, ((Ncols-1)*3)/4, false);
-    float perc4 = find_rank_float(&ranker, (Ncols-1)/2, false);
-    
+
+    float perc[5];
+    perc[0] = find_min_float(&ranker);
+    perc[1] = find_max_float(&ranker);
+    perc[2] = find_rank_float(&ranker, (Ncols-1)/4, false);
+    perc[3] = find_rank_float(&ranker, ((Ncols-1)*3)/4, false);
+    perc[4] = find_rank_float(&ranker, (Ncols-1)/2, false);
+
     if (lid == 0)
     {
-        out[row] = perc0;
-        out[row+out_stride] = perc1;
-        out[row+2*out_stride] = perc2;
-        out[row+3*out_stride] = perc3;
-        out[row+4*out_stride] = perc4;
+        for (int i = 0; i < 5; i++)
+            out[row + i * out_stride] = fix_amplitude(perc[i]);
     }
 }
