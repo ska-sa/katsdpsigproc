@@ -35,7 +35,7 @@ class TestMaskedSum(object):
         mask.set_async(queue, msk)
         fn()
         out = dest.get(queue).reshape(-1)
-        expected=np.sum(ary*msk.reshape(ary.shape[0],1),axis=0).astype(np.float32)
+        expected = np.sum(ary*msk.reshape(ary.shape[0],1),axis=0).astype(np.float32)
         np.testing.assert_equal(expected, out)
 
     @device_test
