@@ -16,7 +16,7 @@
  * 'in_stride' indexes row1col0 to account for padding
  * 'out' is of shape (ncols of input)
  */
-KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void maskedsum_float(
+KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void maskedsum_float2(
     GLOBAL const float2 * RESTRICT in, GLOBAL const float * RESTRICT in_mask,
     GLOBAL float2 * RESTRICT out, int in_stride,
     int Nrows)

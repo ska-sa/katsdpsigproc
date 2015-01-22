@@ -31,7 +31,7 @@ class MaskedSumTemplate(object):
         self.size = tuning['size']
         program = accel.build(context, "maskedsum.mako", {
                 'size': self.size})
-        self.kernel = program.get_kernel("maskedsum_float")
+        self.kernel = program.get_kernel("maskedsum_float2")
 
     @classmethod
     @tune.autotuner(test={'size': 256})
