@@ -20,8 +20,8 @@ class TestPercentile5(object):
         newdim.link(dim)
 
     @device_test
-    def check_percentile5(self, R, C, amplitudes, context, queue):
-        template = percentile.Percentile5Template(context, max_columns=5000, amplitudes=amplitudes)
+    def check_percentile5(self, R, C, is_amplitude, context, queue):
+        template = percentile.Percentile5Template(context, max_columns=5000, is_amplitude=is_amplitude)
         fn = template.instantiate(queue, (R, C))
         # Force some padded, to check that stride calculation works
         self.pad_dimension(fn.slots['src'].dimensions[0], 1)
@@ -29,7 +29,7 @@ class TestPercentile5(object):
         self.pad_dimension(fn.slots['dest'].dimensions[0], 2)
         self.pad_dimension(fn.slots['dest'].dimensions[1], 3)
         rs = np.random.RandomState(seed=1)
-        if amplitudes:
+        if is_amplitude:
             ary = np.abs(rs.randn(R, C)).astype(np.float32) #note positive numbers required
         else:
             ary = (rs.randn(R, C) + 1j * rs.randn(R, C)).astype(np.complex64)
@@ -40,7 +40,7 @@ class TestPercentile5(object):
         out = dest.get(queue)
         expected=np.percentile(np.abs(ary),[0,100,25,75,50],axis=1,interpolation='lower').astype(dtype=np.float32)
         # When amplitudes are being computed, we won't get a bit-exact match
-        if amplitudes:
+        if is_amplitude:
             np.testing.assert_equal(expected, out)
         else:
             np.testing.assert_allclose(expected, out, 1e-6)
