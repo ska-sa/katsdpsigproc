@@ -44,7 +44,7 @@ class BackgroundMedianFilterDeviceTemplate(object):
         Context for which kernels will be compiled
     width : int
         The kernel width (must be odd)
-    amplitudes : boolean
+    is_amplitude : boolean
         If `True`, the inputs are amplitudes rather than complex visibilities
     tuning : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
@@ -55,41 +55,41 @@ class BackgroundMedianFilterDeviceTemplate(object):
     """
 
     host_class = host.BackgroundMedianFilterHost
-    autotune_version = 1
+    autotune_version = 2
 
-    def __init__(self, context, width, amplitudes=False, tuning=None):
+    def __init__(self, context, width, is_amplitude=False, tuning=None):
         if tuning is None:
-            tuning = self.autotune(context, width, amplitudes)
+            tuning = self.autotune(context, width, is_amplitude)
         self.context = context
         self.width = width
-        self.amplitudes = amplitudes
+        self.is_amplitude = is_amplitude
         self.wgs = tuning['wgs']
         self.csplit = tuning['csplit']
         program = accel.build(context, 'rfi/background_median_filter.mako',
-                {'width': width, 'wgs': self.wgs, 'amplitudes': amplitudes})
+                {'width': width, 'wgs': self.wgs, 'is_amplitude': is_amplitude})
         self.kernel = program.get_kernel('background_median_filter')
 
     @classmethod
     @tune.autotuner(test={'wgs': 128, 'csplit': 4})
-    def autotune(cls, context, width, amplitudes):
+    def autotune(cls, context, width, is_amplitude):
         queue = context.create_tuning_command_queue()
         # Note: baselines must be a multiple of any tested workgroup size
         channels = 4096
         baselines = 8192
         shape = (channels, baselines)
-        vis_type = np.float32 if amplitudes else np.complex64
+        vis_type = np.float32 if is_amplitude else np.complex64
         vis = DeviceArray(context, shape, vis_type)
         deviations = DeviceArray(context, shape, np.float32)
         # Initialize with Gaussian random values
         rs = np.random.RandomState(seed=1)
-        if amplitudes:
+        if is_amplitude:
             vis_host = rs.rayleigh(size=shape).astype(np.float32)
         else:
             vis_host = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(
                     np.complex64)
         vis.set(queue, vis_host)
         def generate(**tuning):
-            fn = cls(context, width, amplitudes, tuning).instantiate(queue, channels, baselines)
+            fn = cls(context, width, is_amplitude, tuning).instantiate(queue, channels, baselines)
             fn.bind(vis=vis, deviations=deviations)
             return tune.make_measure(queue, fn)
         return tune.autotune(generate, wgs=[32, 64, 128, 256, 512], csplit=[1, 2, 4, 8, 16])
@@ -104,7 +104,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
     .. rubric:: Slots
 
     **vis** : channels × baselines, float32 or complex64
-        Input visibilities, or their amplitudes if `template.amplitudes` is true
+        Input visibilities, or their amplitudes if `template.is_amplitude` is true
     **deviations** : channels × baselines, float32
         Output deviations from the background
 
@@ -122,7 +122,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
         self.template = template
         self.channels = channels
         self.baselines = baselines
-        vis_type = np.float32 if template.amplitudes else np.complex64
+        vis_type = np.float32 if template.is_amplitude else np.complex64
         dims = (
                 channels,
                 accel.Dimension(baselines, self.template.wgs))
