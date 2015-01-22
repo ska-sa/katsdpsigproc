@@ -110,7 +110,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
 
     Parameters
     ----------
-    template : :class:`BackgroundMedianFilterDevice`
+    template : :class:`BackgroundMedianFilterDeviceTemplate`
         Operation template
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command queue for the operation
