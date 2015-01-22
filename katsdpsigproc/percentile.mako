@@ -83,9 +83,10 @@ DEVICE_FN void ranker_parallel_${type}_init(
 % endif
 
 /**
- * Computes the [0,100,25,75,50] percentiles of the two dimensional array. 
+ * Computes the [0,100,25,75,50] percentiles of the two dimensional array.
  * The lower index element is chosen, and no interpolation is performed.
- * Percentiles are calculated along the columns axis, independently per row.
+ * Percentiles are calculated along the columns axis, independently per row,
+ * in columns [first_col, first_col + n_cols).
  * Warning: assumes 'in' contains positive numbers only.
  * The shape of 'in' is simplistically (nrows,ncols) however padding is allowed, 
  * therefore the true shape is (number of rows, 'in_stride') but only data up to number of columns is considered.
@@ -98,20 +99,21 @@ DEVICE_FN void ranker_parallel_${type}_init(
 KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void percentile5_float(
     GLOBAL const ${in_type} * RESTRICT in,
     GLOBAL float * RESTRICT out, int in_stride, int out_stride,
-    int Ncols)
+    int first_col, int n_cols)
 {
     LOCAL_DECL ranker_parallel_float_scratch scratch;
     ranker_parallel_float ranker;
     int lid = get_local_id(0);//thread id within processing element
-    int row = get_global_id(1);//block id of processing element 
-    ranker_parallel_float_init(&ranker, in + row * in_stride, get_local_id(0), ${size}, Ncols, &scratch);
+    int row = get_global_id(1);//block id of processing element
+    ranker_parallel_float_init(&ranker, in + row * in_stride + first_col,
+        get_local_id(0), ${size}, n_cols, &scratch);
 
     float perc[5];
     perc[0] = find_min_float(&ranker);
     perc[1] = find_max_float(&ranker);
-    perc[2] = find_rank_float(&ranker, (Ncols-1)/4, false);
-    perc[3] = find_rank_float(&ranker, ((Ncols-1)*3)/4, false);
-    perc[4] = find_rank_float(&ranker, (Ncols-1)/2, false);
+    perc[2] = find_rank_float(&ranker, (n_cols-1)/4, false);
+    perc[3] = find_rank_float(&ranker, ((n_cols-1)*3)/4, false);
+    perc[4] = find_rank_float(&ranker, (n_cols-1)/2, false);
 
     if (lid == 0)
     {
