@@ -16,15 +16,20 @@
  * 'in_stride' indexes row1col0 to account for padding
  * 'out' is of shape (ncols of input)
  */
-KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void maskedsum_float(
-    GLOBAL const float * RESTRICT in, GLOBAL const float * RESTRICT in_mask,
-    GLOBAL float * RESTRICT out, int in_stride,
+KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void maskedsum_float2(
+    GLOBAL const float2 * RESTRICT in, GLOBAL const float * RESTRICT in_mask,
+    GLOBAL float2 * RESTRICT out, int in_stride,
     int Nrows)
 {
     int col = get_global_id(0);//block id of processing element
     int row,rowcoloffset;
-    float value=0.0;
+    float2 value;
+    value.x=0.0;
+    value.y=0.0;
     for (row=0,rowcoloffset=col;row<Nrows;row++,rowcoloffset+=in_stride)
-        value = fma(in_mask[row], in[rowcoloffset], value); //value+=in_mask[row]*in[rowcoloffset];
+    {
+        value.x = fma(in_mask[row], in[rowcoloffset].x, value.x);
+        value.y = fma(in_mask[row], in[rowcoloffset].y, value.y);
+    }
     out[col]=value;
 }
