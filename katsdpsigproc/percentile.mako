@@ -10,7 +10,7 @@
 
 <%def name="define_rankers(type)">
 
-% if amplitudes:
+% if is_amplitude:
 <% in_type = type %>
 DEVICE_FN ${type} amplitude(${in_type} value)
 {
@@ -76,7 +76,7 @@ DEVICE_FN void ranker_parallel_${type}_init(
 
 <%rank:find_rank_float ranker_class="ranker_parallel_float" uniform="True"/>
 
-% if amplitudes:
+% if is_amplitude:
 <% in_type = 'float' %>
 % else:
 <% in_type = 'float2' %>

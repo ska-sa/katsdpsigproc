@@ -18,7 +18,7 @@ class Percentile5Template(object):
         Context for which kernels will be compiled
     max_columns : int
         Maximum number of columns
-    amplitudes : bool
+    is_amplitude : bool
         If true, the inputs are scalar amplitudes; if false, they are complex
         numbers and the answers are computed on the absolute values
     tuning : dict, optional
@@ -28,38 +28,38 @@ class Percentile5Template(object):
         - size: number of workitems per workgroup
     """
 
-    autotune_version = 5
+    autotune_version = 6
 
-    def __init__(self, context, max_columns, amplitudes=True, tuning=None):
+    def __init__(self, context, max_columns, is_amplitude=True, tuning=None):
         self.context = context
         self.max_columns = max_columns
-        self.amplitudes = amplitudes
+        self.is_amplitude = is_amplitude
 
         if tuning is None:
-            tuning = self.autotune(context, max_columns, amplitudes)
+            tuning = self.autotune(context, max_columns, is_amplitude)
         self.size = tuning['size']
         self.vt =  accel.divup(max_columns, tuning['size'])
         program = accel.build(context, "percentile.mako", {
                 'size': self.size,
                 'vt': self.vt,
-                'amplitudes': self.amplitudes})
+                'is_amplitude': self.is_amplitude})
         self.kernel = program.get_kernel("percentile5_float")
 
     @classmethod
     @tune.autotuner(test={'size': 256})
-    def autotune(cls, context, max_columns, amplitudes):
+    def autotune(cls, context, max_columns, is_amplitude):
         queue = context.create_tuning_command_queue()
         in_shape = (4096, max_columns)
         out_shape = (5, 4096)
         rs = np.random.RandomState(seed=1)
-        if amplitudes:
+        if is_amplitude:
             host_data = rs.uniform(size=in_shape).astype(np.float32)
         else:
             host_data = (rs.standard_normal(in_shape) + 1j * rs.standard_normal(in_shape)).astype(np.complex64)
         def generate(size):
             if max_columns > size*256:
                 raise RuntimeError('too many columns')
-            fn = cls(context, max_columns, amplitudes, {
+            fn = cls(context, max_columns, is_amplitude, {
                 'size': size}).instantiate(queue, in_shape)
             inp = fn.slots['src'].allocate(context)
             fn.slots['dest'].allocate(context)
@@ -74,7 +74,7 @@ class Percentile5Template(object):
 
 class Percentile5(accel.Operation):
     """Concrete instance of :class:`PercentileTemplate`.
-    WARNING: assumes all values are positive when `template.amplitudes` is `True`.
+    WARNING: assumes all values are positive when `template.is_amplitude` is `True`.
 
     .. rubric:: Slots
 
@@ -92,7 +92,7 @@ class Percentile5(accel.Operation):
             raise ValueError('columns exceeds max_columns')
         self.template = template
         self.shape = shape
-        src_type = np.float32 if self.template.amplitudes else np.complex64
+        src_type = np.float32 if self.template.is_amplitude else np.complex64
         self.slots['src'] = accel.IOSlot(shape, src_type)
         self.slots['dest'] = accel.IOSlot((5,shape[0]), np.float32)
 
@@ -111,6 +111,6 @@ class Percentile5(accel.Operation):
     def parameters(self):
         return {
             'max_columns': self.template.max_columns,
-            'amplitudes': self.template.amplitudes,
+            'is_amplitude': self.template.is_amplitude,
             'shape': self.slots['src'].shape
         }

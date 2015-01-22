@@ -20,7 +20,7 @@
 
 #define WIDTH ${width}
 
-% if amplitudes:
+% if is_amplitude:
 
 typedef float in_type;
 DEVICE_FN float amplitude(in_type v)
