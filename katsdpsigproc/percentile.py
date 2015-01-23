@@ -28,7 +28,7 @@ class Percentile5Template(object):
         - size: number of workitems per workgroup
     """
 
-    autotune_version = 6
+    autotune_version = 7
 
     def __init__(self, context, max_columns, is_amplitude=True, tuning=None):
         self.context = context
@@ -69,8 +69,8 @@ class Percentile5Template(object):
         return tune.autotune(generate,
                 size=[32, 64, 128, 256, 512, 1024])
 
-    def instantiate(self, command_queue, shape):
-        return Percentile5(self, command_queue, shape)
+    def instantiate(self, command_queue, shape, column_range=None):
+        return Percentile5(self, command_queue, shape, column_range)
 
 class Percentile5(accel.Operation):
     """Concrete instance of :class:`PercentileTemplate`.
@@ -85,13 +85,30 @@ class Percentile5(accel.Operation):
     **dest**
         Output type float32
         Shape is (5, number of rows of input)
+
+    Parameters
+    ----------
+    template : :class:`Percentile5Template`
+        Operation template
+    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        Command queue for the operation
+    shape : 2-element tuple of int
+        Shape of the source data
+    column_range: 2-element tuple of int, optional
+        Half-open interval of columns that will be processed. If not specified, all columns are
+        processed.
     """
-    def __init__(self, template, command_queue, shape):
+    def __init__(self, template, command_queue, shape, column_range=None):
         super(Percentile5, self).__init__(command_queue)
-        if shape[1] > template.max_columns:
+        if column_range is None:
+            column_range = (0, shape[1])
+        if column_range[1] <= column_range[0]:
+            raise ValueError('column range is empty')
+        if column_range[1] - column_range[0] > template.max_columns:
             raise ValueError('columns exceeds max_columns')
         self.template = template
         self.shape = shape
+        self.column_range = column_range
         src_type = np.float32 if self.template.is_amplitude else np.complex64
         self.slots['src'] = accel.IOSlot(shape, src_type)
         self.slots['dest'] = accel.IOSlot((5,shape[0]), np.float32)
@@ -103,7 +120,10 @@ class Percentile5(accel.Operation):
                 self.template.kernel,
                 [
                     src.buffer, dest.buffer,
-                    np.int32(src.padded_shape[1]), np.int32(dest.padded_shape[1]), np.int32(src.shape[1])
+                    np.int32(src.padded_shape[1]),
+                    np.int32(dest.padded_shape[1]),
+                    np.int32(self.column_range[0]),
+                    np.int32(self.column_range[1] - self.column_range[0])
                 ],
                 global_size=(self.template.size, src.shape[0]),
                 local_size=(self.template.size, 1))
@@ -112,5 +132,6 @@ class Percentile5(accel.Operation):
         return {
             'max_columns': self.template.max_columns,
             'is_amplitude': self.template.is_amplitude,
-            'shape': self.slots['src'].shape
+            'shape': self.slots['src'].shape,
+            'column_range': self.column_range
         }
