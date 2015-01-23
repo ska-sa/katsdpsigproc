@@ -104,6 +104,8 @@ class Percentile5(accel.Operation):
             column_range = (0, shape[1])
         if column_range[1] <= column_range[0]:
             raise ValueError('column range is empty')
+        if column_range[0] < 0 or column_range[1] > shape[1]:
+            raise IndexError('column range is out of range')
         if column_range[1] - column_range[0] > template.max_columns:
             raise ValueError('columns exceeds max_columns')
         self.template = template
