@@ -94,9 +94,9 @@ DEVICE_FN void ranker_parallel_${type}_init(
  * 'in_stride' indexes row1col0 to account for padding
  * 'out' is of shape (5, nrows of input)
  *
- * Only a single workgroup is used.
+ * Each workgroup processes one or more complete rows.
  */
-KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void percentile5_float(
+KERNEL REQD_WORK_GROUP_SIZE(${size}, ${rows}, 1) void percentile5_float(
     GLOBAL const ${in_type} * RESTRICT in,
     GLOBAL float * RESTRICT out, int in_stride, int out_stride,
     int first_col, int n_cols)
