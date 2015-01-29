@@ -96,7 +96,7 @@ DEVICE_FN void ranker_parallel_${type}_init(
  *
  * Each workgroup processes one or more complete rows.
  */
-KERNEL REQD_WORK_GROUP_SIZE(${size}, ${rows}, 1) void percentile5_float(
+KERNEL REQD_WORK_GROUP_SIZE(${size}, ${wgsy}, 1) void percentile5_float(
     GLOBAL const ${in_type} * RESTRICT in,
     GLOBAL float * RESTRICT out, int in_stride, int out_stride,
     int first_col, int n_cols)
