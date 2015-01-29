@@ -59,8 +59,8 @@ class Percentile5Template(object):
         else:
             host_data = (rs.standard_normal(in_shape) + 1j * rs.standard_normal(in_shape)).astype(np.complex64)
         def generate(size, wgsy):
-            if size * wgsy > 1024:
-                raise RuntimeError('work group size is unnecessarily large')
+            if size * wgsy < 32 or size * wgsy > 1024:
+                raise RuntimeError('work group size is unnecessarily large or small, skipping')
             if max_columns > size*256:
                 raise RuntimeError('too many columns')
             fn = cls(context, max_columns, is_amplitude, {
@@ -71,8 +71,8 @@ class Percentile5Template(object):
             return tune.make_measure(queue, fn)
 
         return tune.autotune(generate,
-                size=[32, 64, 128, 256, 512, 1024],
-                wgsy=[1, 2, 4, 8, 16])
+                size=[8, 16, 32, 64, 128, 256, 512, 1024],
+                wgsy=[1, 2, 4, 8, 16, 32])
 
     def instantiate(self, command_queue, shape, column_range=None):
         return Percentile5(self, command_queue, shape, column_range)
