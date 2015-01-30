@@ -1,7 +1,12 @@
 /**
  * @file
  *
- * Device-wide reduction operation, built on top of wg_reduce.mako.
+ * Device-wide reduction operation, built on top of wg_reduce.mako. Each
+ * workgroup is 2D, and each row of the workgroup handles one row of data.
+ * The elements in the row are partitioned amongst the workitems (in a strided
+ * manner), and the workitem reduces its assigned elements. These partial
+ * reductions are then passed to @ref wg_reduce.mako for a work-group local
+ * reduction to obtain a final reduced value.
  *
  * Parameters:
  * - type: data type
