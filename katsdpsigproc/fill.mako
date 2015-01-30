@@ -1,4 +1,6 @@
 /**
+ * @file
+ *
  * Fill an array with a constant value. This is similar to clEnqueueFillBuffer,
  * but it uses a kernel so that it works on OpenCL 1.1 and on CUDA.
  */
