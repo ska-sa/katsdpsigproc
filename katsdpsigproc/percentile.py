@@ -28,7 +28,7 @@ class Percentile5Template(object):
         - size: number of workitems per workgroup
     """
 
-    autotune_version = 7
+    autotune_version = 8
 
     def __init__(self, context, max_columns, is_amplitude=True, tuning=None):
         self.context = context
@@ -38,15 +38,17 @@ class Percentile5Template(object):
         if tuning is None:
             tuning = self.autotune(context, max_columns, is_amplitude)
         self.size = tuning['size']
-        self.vt =  accel.divup(max_columns, tuning['size'])
+        self.wgsy = tuning['wgsy']
+        self.vt = accel.divup(max_columns, tuning['size'])
         program = accel.build(context, "percentile.mako", {
                 'size': self.size,
+                'wgsy': self.wgsy,
                 'vt': self.vt,
                 'is_amplitude': self.is_amplitude})
         self.kernel = program.get_kernel("percentile5_float")
 
     @classmethod
-    @tune.autotuner(test={'size': 256})
+    @tune.autotuner(test={'size': 64, 'wgsy': 4})
     def autotune(cls, context, max_columns, is_amplitude):
         queue = context.create_tuning_command_queue()
         in_shape = (4096, max_columns)
@@ -56,18 +58,21 @@ class Percentile5Template(object):
             host_data = rs.uniform(size=in_shape).astype(np.float32)
         else:
             host_data = (rs.standard_normal(in_shape) + 1j * rs.standard_normal(in_shape)).astype(np.complex64)
-        def generate(size):
+        def generate(size, wgsy):
+            if size * wgsy < 32 or size * wgsy > 1024:
+                raise RuntimeError('work group size is unnecessarily large or small, skipping')
             if max_columns > size*256:
                 raise RuntimeError('too many columns')
             fn = cls(context, max_columns, is_amplitude, {
-                'size': size}).instantiate(queue, in_shape)
+                'size': size, 'wgsy': wgsy}).instantiate(queue, in_shape)
             inp = fn.slots['src'].allocate(context)
             fn.slots['dest'].allocate(context)
             inp.set(queue,host_data)
             return tune.make_measure(queue, fn)
 
         return tune.autotune(generate,
-                size=[32, 64, 128, 256, 512, 1024])
+                size=[8, 16, 32, 64, 128, 256, 512, 1024],
+                wgsy=[1, 2, 4, 8, 16, 32])
 
     def instantiate(self, command_queue, shape, column_range=None):
         return Percentile5(self, command_queue, shape, column_range)
@@ -112,12 +117,15 @@ class Percentile5(accel.Operation):
         self.shape = shape
         self.column_range = column_range
         src_type = np.float32 if self.template.is_amplitude else np.complex64
-        self.slots['src'] = accel.IOSlot(shape, src_type)
-        self.slots['dest'] = accel.IOSlot((5,shape[0]), np.float32)
+        row_dim = accel.Dimension(shape[0], self.template.wgsy)
+        col_dim = accel.Dimension(shape[1])
+        self.slots['src'] = accel.IOSlot((row_dim, col_dim), src_type)
+        self.slots['dest'] = accel.IOSlot((5,row_dim), np.float32)
 
     def _run(self):
         src = self.buffer('src')
         dest = self.buffer('dest')
+        rows_padded = accel.roundup(src.shape[0], self.template.wgsy)
         self.command_queue.enqueue_kernel(
                 self.template.kernel,
                 [
@@ -127,8 +135,8 @@ class Percentile5(accel.Operation):
                     np.int32(self.column_range[0]),
                     np.int32(self.column_range[1] - self.column_range[0])
                 ],
-                global_size=(self.template.size, src.shape[0]),
-                local_size=(self.template.size, 1))
+                global_size=(self.template.size, rows_padded),
+                local_size=(self.template.size, self.template.wgsy))
 
     def parameters(self):
         return {

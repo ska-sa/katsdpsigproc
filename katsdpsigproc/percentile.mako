@@ -94,19 +94,20 @@ DEVICE_FN void ranker_parallel_${type}_init(
  * 'in_stride' indexes row1col0 to account for padding
  * 'out' is of shape (5, nrows of input)
  *
- * Only a single workgroup is used.
+ * Each workgroup processes one or more complete rows.
  */
-KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void percentile5_float(
+KERNEL REQD_WORK_GROUP_SIZE(${size}, ${wgsy}, 1) void percentile5_float(
     GLOBAL const ${in_type} * RESTRICT in,
     GLOBAL float * RESTRICT out, int in_stride, int out_stride,
     int first_col, int n_cols)
 {
-    LOCAL_DECL ranker_parallel_float_scratch scratch;
+    LOCAL_DECL ranker_parallel_float_scratch scratch[${wgsy}];
     ranker_parallel_float ranker;
     int lid = get_local_id(0);//thread id within processing element
-    int row = get_global_id(1);//block id of processing element
+    int ly = get_local_id(1); //row within the set of rows handled by one workgroup
+    int row = get_global_id(1);//row within the input and output arrays
     ranker_parallel_float_init(&ranker, in + row * in_stride + first_col,
-        get_local_id(0), ${size}, n_cols, &scratch);
+        get_local_id(0), ${size}, n_cols, &scratch[ly]);
 
     float perc[5];
     perc[0] = find_min_float(&ranker);

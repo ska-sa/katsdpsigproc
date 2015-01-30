@@ -8,10 +8,10 @@ from .. import percentile
 class TestPercentile5(object):
     def test_percentile(self):
         yield self.check_percentile5, 4096, 1, False, None
-        yield self.check_percentile5, 4096, 4029, True, (0, 4009)
-        yield self.check_percentile5, 4096, 4030, False, (100, 4030)
-        yield self.check_percentile5, 2345, 6031, False, (123, 4001)
-        yield self.check_percentile5, 4096, 4032, True, None
+        yield self.check_percentile5, 4095, 4029, True, (0, 4009)
+        yield self.check_percentile5, 4094, 4030, False, (100, 4030)
+        yield self.check_percentile5, 2343, 6031, False, (123, 4001)
+        yield self.check_percentile5, 4092, 4032, True, None
 
     @classmethod
     def pad_dimension(cls, dim, extra):
