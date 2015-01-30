@@ -31,6 +31,9 @@ import os
 import os.path
 import numpy as np
 import time
+import logging
+
+_logger = logging.getLogger(__name__)
 
 def adapt_value(value):
     """Converts `value` to a type that can be used in sqlite3. This is
@@ -95,6 +98,7 @@ def _query(conn, tablename, keys):
             return ans
     except sqlite3.Error:
         # This could happen if the table does not exist yet
+        _logger.debug("Query '%s' failed", query, exc_info=True)
         pass
     return None
 
@@ -156,9 +160,12 @@ def autotuner_impl(test, fn, *args, **kwargs):
         ans = _query(conn, tablename, keys)
         if ans is None:
             # Nothing found in the database, so we need to tune now
+            _logger.info('Performing autotuning for %s with key %s', classname, keys)
             ans = fn(*args, **kwargs)
             values = dict([('value_' + key, value) for (key, value) in ans.iteritems()])
             _save(conn, tablename, keys, values)
+        else:
+            _logger.debug('Autotuning cache hit for %s with key %s', classname, keys)
     finally:
         _close_db(conn)
     return ans
@@ -246,8 +253,8 @@ def autotune(generate, time_limit=0.1, **kwargs):
     best_score = None
     had_exception = False
     for i in opts:
+        keywords = dict(zip(kwargs.keys(), i))
         try:
-            keywords = dict(zip(kwargs.keys(), i))
             measure = generate(**keywords)
             # Do a warmup pass
             measure(1)
@@ -259,11 +266,13 @@ def autotune(generate, time_limit=0.1, **kwargs):
             # Guess how many iterations we can do in the allotted time
             iters = max(3, int(time_limit / elapsed))
             score = measure(iters)
+            _logger.debug("Configuration %s scored %f in %d iterations", keywords, score, iters)
             if best_score is None or score < best_score:
                 best = keywords
                 best_score = score
-        except Exception:
+        except Exception, e:
             had_exception = True
+            _logger.debug("Caught exception while testing configuration %s", keywords, exc_info=True)
     if best is None:
         if had_exception:
             raise
