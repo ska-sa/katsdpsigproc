@@ -88,10 +88,10 @@ def main():
                 context, args.width)
         noise_est = katsdpsigproc.rfi.device.NoiseEstMADTDeviceTemplate(
                 context, 10240)
-        threshold = katsdpsigproc.rfi.device.ThresholdSumDeviceTemplate(
-                context, args.sigmas)
+        threshold = katsdpsigproc.rfi.device.ThresholdSumDeviceTemplate(context)
         template = katsdpsigproc.rfi.device.FlaggerDeviceTemplate(background, noise_est, threshold)
-        flagger = template.instantiate(command_queue, data.shape[0], data.shape[1])
+        flagger = template.instantiate(command_queue, data.shape[0], data.shape[1],
+                threshold_args={'n_sigma': args.sigmas})
         flagger.ensure_all_bound()
 
         data_device = flagger.buffer('vis')

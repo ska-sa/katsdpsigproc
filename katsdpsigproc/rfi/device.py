@@ -387,9 +387,11 @@ class NoiseEstMADTDevice(accel.Operation):
 
 class ThresholdHostFromDevice(object):
     """Wraps a device-side thresholder template to present the host interface"""
-    def __init__(self, template, command_queue):
+    def __init__(self, template, command_queue, *args, **kwargs):
         self.template = template
         self.command_queue = command_queue
+        self.args = args
+        self.kwargs = kwargs
 
     def __call__(self, deviations, noise):
         (channels, baselines) = deviations.shape
@@ -397,7 +399,7 @@ class ThresholdHostFromDevice(object):
         if transposed:
             deviations = deviations.T
 
-        fn = self.template.instantiate(self.command_queue, channels, baselines)
+        fn = self.template.instantiate(self.command_queue, channels, baselines, *self.args, **self.kwargs)
         # Allocate memory and copy data
         fn.ensure_all_bound()
         fn.buffer('deviations').set(self.command_queue, deviations)
@@ -422,8 +424,6 @@ class ThresholdSimpleDeviceTemplate(object):
     ----------
     context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
         Context for which kernels will be compiled
-    n_sigma : float
-        Number of (estimated) standard deviations for the threshold
     transposed : boolean
         Whether inputs and outputs are transposed
     flag_value : int
@@ -438,11 +438,10 @@ class ThresholdSimpleDeviceTemplate(object):
 
     host_class = host.ThresholdSimpleHost
 
-    def __init__(self, context, n_sigma, transposed, flag_value=1, tuning=None):
+    def __init__(self, context, transposed, flag_value=1, tuning=None):
         if tuning is None:
             tuning = self.autotune(context)
         self.context = context
-        self.n_sigma = n_sigma
         self.transposed = transposed
         self.wgsx = tuning['wgsx']
         self.wgsy = tuning['wgsy']
@@ -464,9 +463,9 @@ class ThresholdSimpleDeviceTemplate(object):
         # TODO: do real autotuning
         return {'wgsx': 32, 'wgsy': 4}
 
-    def instantiate(self, command_queue, channels, baselines):
+    def instantiate(self, command_queue, channels, baselines, n_sigma):
         """Create an instance. See :class:`ThresholdSimpleDevice`."""
-        return ThresholdSimpleDevice(self, command_queue, channels, baselines)
+        return ThresholdSimpleDevice(self, command_queue, channels, baselines, n_sigma)
 
 class ThresholdSimpleDevice(accel.Operation):
     """Concrete instance of :class:`ThresholdSimpleDeviceTemplate`.
@@ -486,13 +485,16 @@ class ThresholdSimpleDevice(accel.Operation):
         Operation template
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command-queue in which work will be enqueued
+    n_sigma : float
+        Number of (estimated) standard deviations for the threshold
     channels, baselines : int
         Shape of the visibility array
     """
 
-    def __init__(self, template, command_queue, channels, baselines):
+    def __init__(self, template, command_queue, channels, baselines, n_sigma):
         super(ThresholdSimpleDevice, self).__init__(command_queue)
         self.template = template
+        self.n_sigma = n_sigma
         self.channels = channels
         self.baselines = baselines
         self.transposed = template.transposed
@@ -519,14 +521,14 @@ class ThresholdSimpleDevice(accel.Operation):
                 [
                     deviations.buffer, noise.buffer, flags.buffer,
                     np.int32(stride),
-                    np.float32(self.template.n_sigma)
+                    np.float32(self.n_sigma)
                 ],
                 global_size=(global_x, global_y),
                 local_size=(self.template.wgsx, self.template.wgsy))
 
     def parameters(self):
         return {
-            'n_sigma': self.template.n_sigma,
+            'n_sigma': self.n_sigma,
             'flag_value': self.template.flag_value,
             'transposed': self.transposed,
             'channels': self.channels,
@@ -542,12 +544,8 @@ class ThresholdSumDeviceTemplate(object):
     ----------
     context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
         Context for which kernels will be compiled
-    n_sigma : float
-        Number of (estimated) standard deviations for the threshold
     n_windows : int
         Number of window sizes to use
-    threshold_falloff : float
-        Controls rate at which thresholds decrease (ρ in Offringa 2010)
     flag_value : int
         Number stored in returned value to indicate RFI
     tuning : mapping, optional
@@ -561,8 +559,7 @@ class ThresholdSumDeviceTemplate(object):
     host_class = host.ThresholdSumHost
     transposed = True
 
-    def __init__(self, context, n_sigma, n_windows=4, threshold_falloff=1.2,
-            flag_value=1, tuning=None):
+    def __init__(self, context, n_windows=4, flag_value=1, tuning=None):
         if tuning is None:
             tuning = self.autotune(context, n_windows)
         wgs = tuning['wgs']
@@ -572,7 +569,6 @@ class ThresholdSumDeviceTemplate(object):
         assert self.chunk > 0
         self.context = context
         self.n_windows = n_windows
-        self.n_sigma = [np.float32(n_sigma * pow(threshold_falloff, -i)) for i in range(n_windows)]
         self.wgs = wgs
         self.vt = vt
         self.flag_value = flag_value
@@ -597,17 +593,17 @@ class ThresholdSumDeviceTemplate(object):
         noise.set(queue, rs.uniform(high=0.1, size=noise.shape).astype(np.float32))
         flags = DeviceArray(context, shape, dtype=np.uint8)
         def generate(**tuning):
-            template = cls(context, 11.0, n_windows=n_windows, tuning=tuning)
-            fn = template.instantiate(queue, channels, baselines)
+            template = cls(context, n_windows=n_windows, tuning=tuning)
+            fn = template.instantiate(queue, channels, baselines, 11.0)
             fn.bind(deviations=deviations, noise=noise, flags=flags)
             return tune.make_measure(queue, fn)
         return tune.autotune(generate,
                 wgs=[32, 64, 128, 256, 512],
                 vt=[1, 2, 3, 4, 8, 16])
 
-    def instantiate(self, command_queue, channels, baselines):
+    def instantiate(self, command_queue, channels, baselines, n_sigma, threshold_falloff=1.2):
         """Create an instance. See :class:`ThresholdSumDevice`."""
-        return ThresholdSumDevice(self, command_queue, channels, baselines)
+        return ThresholdSumDevice(self, command_queue, channels, baselines, n_sigma, threshold_falloff)
 
 class ThresholdSumDevice(accel.Operation):
     """Concrete instance of :class:`ThresholdSumDeviceTemplate`.
@@ -627,17 +623,22 @@ class ThresholdSumDevice(accel.Operation):
         Operation template
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command-queue in which work will be enqueued
+    n_sigma : float
+        Number of (estimated) standard deviations for the threshold
+    threshold_falloff : float
+        Controls rate at which thresholds decrease (ρ in Offringa 2010)
     channels, baselines : int
         Shape of the visibility array
     """
     host_class = host.ThresholdSumHost
     transposed = True
 
-    def __init__(self, template, command_queue, channels, baselines):
+    def __init__(self, template, command_queue, channels, baselines, n_sigma, threshold_falloff):
         super(ThresholdSumDevice, self).__init__(command_queue)
         self.template = template
         self.channels = channels
         self.baselines = baselines
+        self.n_sigma = [np.float32(n_sigma * pow(threshold_falloff, -i)) for i in range(template.n_windows)]
         # For channels we must construct the Dimension here rather than in
         # the IOSlot constructor, so that the deviations and flags share
         # the same object and hence have the same stride.
@@ -654,7 +655,7 @@ class ThresholdSumDevice(accel.Operation):
         blocks = accel.divup(self.channels, self.template.chunk)
         args = [deviations.buffer, noise.buffer, flags.buffer,
                 np.int32(self.channels), np.int32(deviations.padded_shape[1])]
-        args.extend(self.template.n_sigma)
+        args.extend(self.n_sigma)
         self.command_queue.enqueue_kernel(
                 self.template.kernel, args,
                 global_size=(blocks * self.template.wgs, self.baselines),
@@ -662,9 +663,7 @@ class ThresholdSumDevice(accel.Operation):
 
     def parameters(self):
         return {
-            'n_sigma': self.template.n_sigma,
-            'n_windows': self.template.n_windows,
-            'threshold_falloff': self.template.threshold_falloff,
+            'n_sigma': self.n_sigma,
             'flag_value': self.template.flag_value,
             'channels': self.channels,
             'baselines': self.baselines
@@ -700,9 +699,10 @@ class FlaggerDeviceTemplate(object):
         else:
             self.transpose_flags = None
 
-    def instantiate(self, command_queue, channels, baselines):
+    def instantiate(self, command_queue, channels, baselines, background_args={}, noise_est_args={}, threshold_args={}):
         """Create an instance. See :class:`FlaggerDevice`."""
-        return FlaggerDevice(self, command_queue, channels, baselines)
+        return FlaggerDevice(self, command_queue, channels, baselines,
+                background_args, noise_est_args, threshold_args)
 
 class FlaggerDevice(accel.OperationSequence):
     """Concrete instance of :class:`FlaggerDeviceTemplate`.
@@ -733,14 +733,21 @@ class FlaggerDevice(accel.OperationSequence):
         Command queue for the operation
     channels, baselines : int
         Shape of the visibilities array
+    background_args : dict, optional
+        Extra keyword arguments to pass to the background instantiation
+    noise_est_args : dict, optional
+        Extra keyword arguments to pass to the noise estimation instantiation
+    threshold_args : dict, optional
+        Extra keyword arguments to pass to the threshold instantiation
     """
-    def __init__(self, template, command_queue, channels, baselines):
+    def __init__(self, template, command_queue, channels, baselines,
+            background_args, noise_est_args, threshold_args):
         self.template = template
         self.channels = channels
         self.baselines = baselines
-        self.background = self.template.background.instantiate(command_queue, channels, baselines)
-        self.noise_est = self.template.noise_est.instantiate(command_queue, channels, baselines)
-        self.threshold = self.template.threshold.instantiate(command_queue, channels, baselines)
+        self.background = self.template.background.instantiate(command_queue, channels, baselines, **background_args)
+        self.noise_est = self.template.noise_est.instantiate(command_queue, channels, baselines, **noise_est_args)
+        self.threshold = self.template.threshold.instantiate(command_queue, channels, baselines, **threshold_args)
 
         noise_est_suffix = '_t' if self.noise_est.transposed else ''
         threshold_suffix = '_t' if self.threshold.transposed else ''
