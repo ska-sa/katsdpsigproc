@@ -741,7 +741,7 @@ class FlaggerDevice(accel.OperationSequence):
         Extra keyword arguments to pass to the threshold instantiation
     """
     def __init__(self, template, command_queue, channels, baselines,
-            background_args, noise_est_args, threshold_args):
+            background_args={}, noise_est_args={}, threshold_args={}):
         self.template = template
         self.channels = channels
         self.baselines = baselines
