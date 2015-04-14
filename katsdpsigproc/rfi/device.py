@@ -796,9 +796,9 @@ class FlaggerHostFromDevice(object):
         self.template = template
         self.command_queue = command_queue
 
-    def __call__(self, vis):
+    def __call__(self, vis, background_args={}, noise_est_args={}, threshold_args={}):
         (channels, baselines) = vis.shape
-        fn = self.template.instantiate(self.command_queue, channels, baselines)
+        fn = self.template.instantiate(self.command_queue, channels, baselines, background_args, noise_est_args, threshold_args)
         fn.ensure_all_bound()
         fn.buffer('vis').set(self.command_queue, vis)
         fn()

@@ -96,7 +96,6 @@ DEVICE_FN void median_filter_slide(median_filter *self, float new_sample)
     {
         self->samples[j] = self->samples[j + 1];
         int cmp = (new_sample < self->samples[j]);
-        // TODO: only need to compare new_sample and samples[j] once
         self->rank[j] = self->rank[j + 1] + cmp - (old_sample <= self->samples[j]);
         new_rank -= cmp;
     }
