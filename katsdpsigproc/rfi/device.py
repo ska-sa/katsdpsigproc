@@ -791,14 +791,25 @@ class FlaggerHostFromDevice(object):
         Operation template
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command queue for the operation
+    background_args : dict, optional
+        Extra keyword arguments to pass to the background instantiation
+    noise_est_args : dict, optional
+        Extra keyword arguments to pass to the noise estimation instantiation
+    threshold_args : dict, optional
+        Extra keyword arguments to pass to the threshold instantiation
     """
-    def __init__(self, template, command_queue):
+    def __init__(self, template, command_queue, background_args={}, noise_est_args={}, threshold_args={}):
         self.template = template
         self.command_queue = command_queue
+        self.background_args = dict(background_args)
+        self.noise_est_args = dict(noise_est_args)
+        self.threshold_args = dict(threshold_args)
 
     def __call__(self, vis):
         (channels, baselines) = vis.shape
-        fn = self.template.instantiate(self.command_queue, channels, baselines)
+        fn = self.template.instantiate(
+                self.command_queue, channels, baselines,
+                self.background_args, self.noise_est_args, self.threshold_args)
         fn.ensure_all_bound()
         fn.buffer('vis').set(self.command_queue, vis)
         fn()
