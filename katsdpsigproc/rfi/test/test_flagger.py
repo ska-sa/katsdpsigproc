@@ -38,10 +38,10 @@ def check_flagger_device(transpose_noise_est, transpose_threshold, context, queu
     else:
         noise_est = device.NoiseEstMADDeviceTemplate(context, tuning={'wgsx': 8, 'wgsy': 8})
     threshold = device.ThresholdSimpleDeviceTemplate(context,
-            11.0, transpose_threshold, tuning={'wgsx': 8, 'wgsy': 8})
+            transpose_threshold, tuning={'wgsx': 8, 'wgsy': 8})
     flagger_device = device.FlaggerDeviceTemplate(background, noise_est, threshold)
     flagger = device.FlaggerHostFromDevice(flagger_device, queue)
-    flags = flagger(_vis)
+    flags = flagger(_vis, threshold_args=dict(n_sigma=11.0))
     np.testing.assert_equal(_spikes, flags)
 
 @device_test
