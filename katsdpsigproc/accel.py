@@ -471,10 +471,46 @@ class SVMArray(HostArray, DeviceArray):
         obj.context = context
         return obj
 
+    def __init__(self, *args, **kwargs):
+        # Suppress DeviceArray's constructor, since we did everything in __new__
+        pass
+
     @property
     def buffer(self):
         return self._owner
 
+    def _copyable(self, ary):
+        """Whether `ary` can be copied to/from this array directly"""
+        return (ary.dtype == self.dtype and
+                ary.shape == self.shape)
+
+    def set(self, command_queue, ary):
+        """Synchronous copy from `ary` to self. For SVMArray, this
+        is a CPU copy."""
+        self[:] = ary
+
+    def get(self, command_queue, ary=None):
+        """Synchronous copy from self to `ary`. If `ary` is None,
+        or if it is not suitable as a target, the copy is to a newly
+        allocated :class:`HostArray`. The actual target is returned.
+        For SVMArray, this is a CPU copy.
+        """
+        if ary is None or not self._copyable(ary):
+            return self.copy()
+        else:
+            ary[:] = self
+            return ary
+
+    def set_async(self, command_queue, ary):
+        """Asynchronous copy from `ary` to self. This is implemented
+        synchronously for SVMArray, but exists for compatibility."""
+        self.set(command_queue, ary)
+
+    def get_async(self, command_queue, ary=None):
+        """Asynchronous copy from self to `ary` (see `get`). This
+        is implemented synchronously for SVMArray, but exists for
+        compatibility."""
+        return self.get(command_queue, ary)
 
 class DeviceAllocator(object):
     """Allocates DeviceArray objects from a context"""
