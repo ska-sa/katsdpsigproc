@@ -8,6 +8,7 @@ import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
 import pycuda.characterize
+import numpy as np
 
 NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
 
@@ -86,6 +87,22 @@ class Device(object):
         num_devices = pycuda.driver.Device.count()
         return [Device(pycuda.driver.Device(i)) for i in range(num_devices)]
 
+class _RawManaged(object):
+    """Wraps a PyCUDA managed allocation into an opaque object.
+
+    The managed memory API is different to the device memory API, in that one
+    cannot allocate a raw pointer. Thus, "raw" allocations are wrapped in this
+    class so that they are not accidentally used as numpy arrays.
+    """
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+
+    def get_array(self, shape, dtype):
+        """Returns a view of (a prefix of) the memory, with the given shape and
+        type."""
+        size = int(np.product(shape)) * np.dtype(dtype).itemsize
+        return self._wrapped[:size].view(dtype).reshape(shape)
+
 class Context(object):
     def __init__(self, pycuda_context):
         self._pycuda_context = pycuda_context
@@ -112,6 +129,19 @@ class Context(object):
     def allocate_pinned(self, shape, dtype):
         with self:
             return pycuda.driver.pagelocked_empty(shape, dtype)
+
+    def allocate_svm_raw(self, n_bytes):
+        with self:
+            return _RawManaged(pycuda.driver.managed_empty(
+                    (n_bytes,), np.uint8, mem_flags=pycuda.driver.mem_attach_flags.GLOBAL))
+
+    def allocate_svm(self, shape, dtype, raw=None):
+        with self:
+            if raw is None:
+                return pycuda.driver.managed_empty(
+                        shape, dtype, mem_flags=pycuda.driver.mem_attach_flags.GLOBAL)
+            else:
+                return raw.get_array(shape, dtype)
 
     def create_command_queue(self, profile=False):
         return CommandQueue(self, profile=profile)

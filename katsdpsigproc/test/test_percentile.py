@@ -33,8 +33,8 @@ class TestPercentile5(object):
             ary = np.abs(rs.randn(R, C)).astype(np.float32) #note positive numbers required
         else:
             ary = (rs.randn(R, C) + 1j * rs.randn(R, C)).astype(np.complex64)
-        src = fn.slots['src'].allocate(context)
-        dest = fn.slots['dest'].allocate(context)
+        src = fn.slots['src'].allocate(fn.allocator)
+        dest = fn.slots['dest'].allocate(fn.allocator)
         src.set_async(queue, ary)
         fn()
         out = dest.get(queue)

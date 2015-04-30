@@ -325,8 +325,8 @@ class NoiseEstMADTDeviceTemplate(object):
             if max_channels > 256 * tuning['wgsx']:
                 raise ValueError('wgsx is too small')
             fn = cls(context, max_channels, tuning).instantiate(queue, max_channels, baselines)
-            fn.slots['noise'].allocate(context)
-            deviations = fn.slots['deviations'].allocate(context)
+            fn.slots['noise'].allocate(fn.allocator)
+            deviations = fn.slots['deviations'].allocate(fn.allocator)
             deviations.set(queue, host_deviations)
             return tune.make_measure(queue, fn)
         return tune.autotune(generate, wgsx=[32, 64, 128, 256, 512, 1024])

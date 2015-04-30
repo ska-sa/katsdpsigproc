@@ -28,9 +28,9 @@ class TestMaskedSum(object):
         self.pad_dimension(fn.slots['src'].dimensions[1], 4)
         ary = np.random.randn(R, C, 2).astype(np.float32).view(dtype=np.complex64)[...,0]
         msk = np.ones((R,)).astype(np.float32)
-        src = fn.slots['src'].allocate(context)
-        mask = fn.slots['mask'].allocate(context)
-        dest = fn.slots['dest'].allocate(context)
+        src = fn.slots['src'].allocate(fn.allocator)
+        mask = fn.slots['mask'].allocate(fn.allocator)
+        dest = fn.slots['dest'].allocate(fn.allocator)
         src.set_async(queue, ary)
         mask.set_async(queue, msk)
         fn()

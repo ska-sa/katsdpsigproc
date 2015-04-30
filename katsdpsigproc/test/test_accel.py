@@ -273,12 +273,12 @@ class TestIOSlot(object):
         DeviceArray.return_value = ary
         # Run the system under test
         slot = accel.IOSlot(dims, dtype)
-        ret = slot.allocate(mock.sentinel.context)
+        ret = slot.allocate(accel.DeviceAllocator(mock.sentinel.context))
         # Validation
         assert_equal(ary, ret)
         assert_equal(ary, slot.buffer)
         DeviceArray.assert_called_once_with(
-                mock.sentinel.context, shape, dtype, padded_shape, raw=None)
+                mock.sentinel.context, shape, dtype, padded_shape, None)
         # Check that the inner dimension had a type hint set
         assert dims[1].alignment_hint == accel.Dimension.ALIGN_BYTES
 
@@ -299,11 +299,11 @@ class TestIOSlot(object):
         DeviceArray.return_value = ary
         # Run the system under test
         slot = accel.IOSlot(shape, dtype)
-        slot.allocate(mock.sentinel.context, raw)
+        slot.allocate(accel.DeviceAllocator(mock.sentinel.context), raw)
         # Validation
         assert_equal(ary, slot.buffer)
         DeviceArray.assert_called_once_with(
-                mock.sentinel.context, shape, dtype, shape, raw=raw)
+                mock.sentinel.context, shape, dtype, shape, raw)
 
     def test_validate_shape(self):
         """IOSlot.validate must check that the shape matches"""
@@ -471,7 +471,7 @@ class TestAliasIOSlot(object):
         context.allocate_raw = mock.Mock(return_value=raw)
         # Run the test
         slot = accel.AliasIOSlot([self.slot1, self.slot2])
-        ret = slot.allocate(context)
+        ret = slot.allocate(accel.DeviceAllocator(context))
         # Validation
         context.allocate_raw.assert_called_once_with(120)
         assert ret is raw
