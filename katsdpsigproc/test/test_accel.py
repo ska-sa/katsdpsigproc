@@ -9,7 +9,7 @@ from .test_tune import assert_raises
 from nose.plugins.skip import SkipTest
 import mock
 from .. import accel, tune
-from ..accel import HostArray, DeviceArray, LinenoLexer
+from ..accel import HostArray, DeviceArray, SVMArray, LinenoLexer
 if accel.have_cuda:
     import pycuda
 if accel.have_opencl:
@@ -66,30 +66,34 @@ class TestLinenoLexer(object):
         out = Template(source, lexer_cls=LinenoLexer).render()
         assert_equal("#line 1 \nline 1\n#line 2 \nline 2\n#line 3 \nline 3\n", out)
 
-class TestArray(object):
+class TestHostArray(object):
+    cls = HostArray
+
+    def allocate(self, shape, dtype, padded_shape):
+        return self.cls(shape, dtype, padded_shape)
+
     def setup(self):
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
-        self.constructed = HostArray(
-                shape=self.shape,
-                dtype=np.int32,
-                padded_shape=self.padded_shape)
-        self.view = np.zeros(self.padded_shape)[2:4, 3:5].view(HostArray)
+        self.constructed = self.allocate(self.shape, np.int32, self.padded_shape)
+        self.view = np.zeros(self.padded_shape)[2:4, 3:5].view(self.cls)
         self.sliced = self.constructed[2:4, 3:5]
 
     def test_safe(self):
-        assert HostArray.safe(self.constructed)
-        assert not HostArray.safe(self.view)
-        assert not HostArray.safe(self.sliced)
-        assert not HostArray.safe(np.zeros(self.shape))
+        assert self.cls.safe(self.constructed)
+        assert not self.cls.safe(self.view)
+        assert not self.cls.safe(self.sliced)
+        assert not self.cls.safe(np.zeros(self.shape))
 
 class TestDeviceArray(object):
+    cls = DeviceArray
+
     @device_test
     def setup(self, context, queue):
         self.shape = (17, 13)
         self.padded_shape = (32, 16)
         self.strides = (64, 4)
-        self.array = DeviceArray(
+        self.array = self.cls(
                 context=context,
                 shape=self.shape,
                 dtype=np.int32,
@@ -112,8 +116,9 @@ class TestDeviceArray(object):
         self.array.set(queue, ary)
         # Read back results, check that it matches
         buf = np.zeros(self.padded_shape, dtype=np.int32)
-        if hasattr(self.array.buffer, 'gpudata'):
-            # It's CUDA
+        if isinstance(self.array, SVMArray):
+            buf[:] = self.array.buffer
+        elif context.device.is_cuda:
             with context:
                 pycuda.driver.memcpy_dtoh(buf, self.array.buffer.gpudata)
         else:
@@ -126,10 +131,13 @@ class TestDeviceArray(object):
         buf = self.array.get(queue)
         np.testing.assert_equal(ary, buf)
 
+    def _allocate_raw(self, context, n_bytes):
+        return context.allocate_raw(n_bytes)
+
     @device_test
     def test_raw(self, context, queue):
-        raw = context.allocate_raw(2048)
-        ary = DeviceArray(
+        raw = self._allocate_raw(context, 2048)
+        ary = self.cls(
                 context=context,
                 shape=self.shape,
                 dtype=np.int32,
@@ -138,11 +146,40 @@ class TestDeviceArray(object):
         actual_raw = None
         try:
             # CUDA
-            actual_raw = ary.buffer.gpudata
+            if isinstance(ary, SVMArray):
+                actual_raw = ary.base.base
+                raw = raw._wrapped
+            else:
+                actual_raw = ary.buffer.gpudata
         except AttributeError:
             # OpenCL
             actual_raw = ary.buffer.data
         assert actual_raw is raw
+
+class TestHostSVMArray(TestHostArray):
+    """Tests SVMArray using the HostArray tests"""
+    cls = SVMArray
+
+    def allocate(self, shape, dtype, padded_shape):
+        return self.cls(self.context, shape, dtype, padded_shape)
+
+    @device_test
+    def setup(self, context, queue):
+        self.context = context
+        super(TestHostSVMArray, self).setup()
+
+class TestDeviceSVMArray(TestDeviceArray):
+    """Tests SVMArray using the DeviceArray tests"""
+    cls = SVMArray
+
+    def _allocate_raw(self, context, n_bytes):
+        return context.allocate_svm_raw(n_bytes)
+
+    @device_test
+    def setup(self, context, queue):
+        if not context.device.is_cuda:
+            raise SkipTest('SVM is only supported on CUDA')
+        super(TestDeviceSVMArray, self).setup()
 
 class TestDimension(object):
     """Tests for :class:`katsdpsigproc.accel.Dimension`"""
