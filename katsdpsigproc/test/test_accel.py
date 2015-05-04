@@ -42,7 +42,17 @@ def device_test(test):
         with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.stub_autotuner):
             args += (_test_context, _test_command_queue)
             return test(*args, **kwargs)
+    return wrapper
 
+def cuda_test(test):
+    """Decorator that causes a test to be skipped if the device is not a CUDA
+    device. Put this *after* :meth:`device_test`."""
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        global _test_context
+        if not _test_context.device.is_cuda:
+            raise SkipTest('Device is not a CUDA device')
+        return test(*args, **kwargs)
     return wrapper
 
 @decorator
@@ -54,6 +64,7 @@ def force_autotune(test, *args, **kw):
 
 # Prevent nose from treating it as a test
 device_test.__test__ = False
+cuda_test.__test__ = False
 
 class TestLinenoLexer(object):
     def test_escape_filename(self):
@@ -64,7 +75,7 @@ class TestLinenoLexer(object):
     def test_render(self):
         source = "line 1\nline 2\nline 3"
         out = Template(source, lexer_cls=LinenoLexer).render()
-        assert_equal("#line 1 \nline 1\n#line 2 \nline 2\n#line 3 \nline 3\n", out)
+        assert_equal("""#line 1 "<string>"\nline 1\n#line 2 "<string>"\nline 2\n#line 3 "<string>"\nline 3\n""", out)
 
 class TestHostArray(object):
     cls = HostArray
@@ -156,7 +167,7 @@ class TestDeviceArray(object):
             actual_raw = ary.buffer.data
         assert actual_raw is raw
 
-class TestHostSVMArray(TestHostArray):
+class TestSVMArrayHost(TestHostArray):
     """Tests SVMArray using the HostArray tests"""
     cls = SVMArray
 
@@ -164,22 +175,41 @@ class TestHostSVMArray(TestHostArray):
         return self.cls(self.context, shape, dtype, padded_shape)
 
     @device_test
+    @cuda_test
     def setup(self, context, queue):
         self.context = context
-        super(TestHostSVMArray, self).setup()
+        super(TestSVMArrayHost, self).setup()
 
-class TestDeviceSVMArray(TestDeviceArray):
-    """Tests SVMArray using the DeviceArray tests"""
+class TestSVMArray(TestDeviceArray):
+    """Tests SVMArray using the DeviceArray tests, plus some new ones"""
     cls = SVMArray
 
     def _allocate_raw(self, context, n_bytes):
         return context.allocate_svm_raw(n_bytes)
 
     @device_test
+    @cuda_test
     def setup(self, context, queue):
-        if not context.device.is_cuda:
-            raise SkipTest('SVM is only supported on CUDA')
-        super(TestDeviceSVMArray, self).setup()
+        super(TestSVMArray, self).setup()
+
+    @device_test
+    @cuda_test
+    def test_coherence(self, context, queue):
+        """Check that runtime correct transfers data between the host and
+        device views."""
+        source = """\
+            <%include file="/port.mako"/>
+            KERNEL void triple(unsigned int *data)
+            {
+                data[get_global_id(0)] *= 3;
+            }"""
+        program = accel.build(context, None, source=source)
+        kernel = program.get_kernel("triple")
+        ary = SVMArray(context, (123,), np.uint32, (128,))
+        ary[:] = np.arange(123, dtype=np.uint32)
+        queue.enqueue_kernel(kernel, [ary.buffer], (128,), (64,))
+        queue.finish()
+        np.testing.assert_equal(np.arange(369, step=3, dtype=np.uint32), ary)
 
 class TestDimension(object):
     """Tests for :class:`katsdpsigproc.accel.Dimension`"""

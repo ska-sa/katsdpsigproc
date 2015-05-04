@@ -17,6 +17,7 @@ have_opencl : boolean
 from __future__ import division
 import numpy as np
 import mako.lexer
+from mako.template import Template
 from mako.lookup import TemplateLookup
 try:
     from collections import OrderedDict
@@ -71,7 +72,7 @@ class LinenoLexer(mako.lexer.Lexer):
         if self.filename is not None:
             escaped_filename = self._escape_filename(self.filename)
         else:
-            escaped_filename = ''
+            escaped_filename = self._escape_filename('<string>')
         lines = source.split('\n')
         # If the last line is \n-terminated, it will cause an empty
         # final string in lines
@@ -90,7 +91,7 @@ def _make_lookup(extra_dirs):
 # Cached for convenience
 _lookup = _make_lookup([])
 
-def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None):
+def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None, source=None):
     """Build a source module from a mako template.
 
     Parameters
@@ -105,6 +106,8 @@ def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None):
         Extra directories to search for source code
     extra_flags : list, optional
         Flags to pass to the compiler
+    source : str, optional
+        If specified, provides the source, overriding `name`
 
     Returns
     -------
@@ -119,10 +122,14 @@ def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None):
         lookup = _lookup
     else:
         lookup = _make_lookup(extra_dirs)
-    source = lookup.get_template(name).render(
+    if source is not None:
+        template = Template(source, lookup=lookup, lexer_cls=LinenoLexer)
+    else:
+        template = lookup.get_template(name)
+    rendered_source = template.render(
             simd_group_size=context.device.simd_group_size,
             **render_kws)
-    return context.compile(source, extra_flags)
+    return context.compile(rendered_source, extra_flags)
 
 def all_devices():
     """Return a list of all discovered devices"""
