@@ -536,7 +536,7 @@ class SVMAllocator(object):
     def __init__(self, context):
         self.context = context
 
-    def allocate(shape, dtype, padded_shape=None, raw=None):
+    def allocate(self, shape, dtype, padded_shape=None, raw=None):
         return SVMArray(self.context, shape, dtype, padded_shape, raw)
 
     def allocate_raw(n_bytes):
