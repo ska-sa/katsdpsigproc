@@ -252,6 +252,10 @@ class TestDimension(object):
         dim = accel.Dimension(20, alignment=4, exact=True)
         assert dim.valid(20)
         assert not dim.valid(24)
+        dim = accel.Dimension(20, min_padded_size=23, exact=True)
+        assert dim.valid(23)
+        assert not dim.valid(24)
+        assert not dim.valid(20)
 
     @classmethod
     def assert_dimensions_equal(cls, dim1, dim2):
