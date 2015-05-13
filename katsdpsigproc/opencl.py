@@ -283,6 +283,12 @@ class Context(object):
         else:
             return np.empty(shape, dtype)
 
+    def allocate_svm_raw(self, n_bytes):
+        raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
+
+    def allocate_svm(self, shape, dtype, raw=None):
+        raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
+
     def create_command_queue(self, profile=False):
         """Create a new command queue associated with this context
 

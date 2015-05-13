@@ -46,9 +46,9 @@ class MaskedSumTemplate(object):
         def generate(size):
             fn = cls(context, {
                 'size': size}).instantiate(queue, in_shape)
-            inp = fn.slots['src'].allocate(context)
-            msk = fn.slots['mask'].allocate(context)
-            fn.slots['dest'].allocate(context)
+            inp = fn.slots['src'].allocate(fn.allocator)
+            msk = fn.slots['mask'].allocate(fn.allocator)
+            fn.slots['dest'].allocate(fn.allocator)
             inp.set(queue,host_data)
             msk.set(queue,host_mask)
             return tune.make_measure(queue, fn)

@@ -17,6 +17,7 @@ have_opencl : boolean
 from __future__ import division
 import numpy as np
 import mako.lexer
+from mako.template import Template
 from mako.lookup import TemplateLookup
 try:
     from collections import OrderedDict
@@ -71,7 +72,7 @@ class LinenoLexer(mako.lexer.Lexer):
         if self.filename is not None:
             escaped_filename = self._escape_filename(self.filename)
         else:
-            escaped_filename = ''
+            escaped_filename = self._escape_filename('<string>')
         lines = source.split('\n')
         # If the last line is \n-terminated, it will cause an empty
         # final string in lines
@@ -90,7 +91,7 @@ def _make_lookup(extra_dirs):
 # Cached for convenience
 _lookup = _make_lookup([])
 
-def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None):
+def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None, source=None):
     """Build a source module from a mako template.
 
     Parameters
@@ -105,6 +106,8 @@ def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None):
         Extra directories to search for source code
     extra_flags : list, optional
         Flags to pass to the compiler
+    source : str, optional
+        If specified, provides the source, overriding `name`
 
     Returns
     -------
@@ -119,10 +122,14 @@ def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None):
         lookup = _lookup
     else:
         lookup = _make_lookup(extra_dirs)
-    source = lookup.get_template(name).render(
+    if source is not None:
+        template = Template(source, lookup=lookup, lexer_cls=LinenoLexer)
+    else:
+        template = lookup.get_template(name)
+    rendered_source = template.render(
             simd_group_size=context.device.simd_group_size,
             **render_kws)
-    return context.compile(source, extra_flags)
+    return context.compile(rendered_source, extra_flags)
 
 def all_devices():
     """Return a list of all discovered devices"""
@@ -348,7 +355,7 @@ class DeviceArray(object):
         Data type
     padded_shape : tuple, optional
         Shape for memory allocation (defaults to `shape`)
-    raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
+    raw : low-level allocation from `allocate_raw` method of an allocator
         If specified, provides the backing memory
     """
 
@@ -433,6 +440,108 @@ class DeviceArray(object):
         command_queue.enqueue_read_buffer(
                 self.buffer, self._contiguous(ary), blocking=False)
         return ary
+
+
+class SVMArray(HostArray, DeviceArray):
+    """An array that uses shared virtual memory (aka managed memory) to be
+    accessible from both the host and the device. It should not be used as
+    a source or target for copies to the device, since it already resides on
+    the device.
+
+    Due to limitations in PyOpenCL, this is currently only available for CUDA,
+    and CUDA's restrictions on managed memory apply. Only the base array (not
+    views) can be passed to kernels.
+
+    Parameters
+    ----------
+    context : :class:`cuda.Context` or :class:`opencl.Context`
+        Context in which to allocate the memory
+    shape : tuple
+        Shape for the array
+    dtype : numpy dtype
+        Data type for the array
+    padded_shape : tuple, optional
+        Total size of memory allocation (defaults to `shape`)
+    raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
+        If specified, provides the backing memory
+    """
+    def __new__(cls, context, shape, dtype, padded_shape=None, raw=None):
+        if padded_shape is None:
+            padded_shape = shape
+        assert len(padded_shape) == len(shape)
+        assert np.all(np.greater_equal(padded_shape, shape))
+        owner = context.allocate_svm(padded_shape, dtype, raw=raw)
+        index = tuple([slice(0, x) for x in shape])
+        obj = owner[index].view(SVMArray)
+        obj._owner = owner
+        obj.padded_shape = padded_shape
+        obj.context = context
+        return obj
+
+    def __init__(self, *args, **kwargs):
+        # Suppress DeviceArray's constructor, since we did everything in __new__
+        pass
+
+    @property
+    def buffer(self):
+        return self._owner
+
+    def _copyable(self, ary):
+        """Whether `ary` can be copied to/from this array directly"""
+        return (ary.dtype == self.dtype and
+                ary.shape == self.shape)
+
+    def set(self, command_queue, ary):
+        """Synchronous copy from `ary` to self. For SVMArray, this
+        is a CPU copy."""
+        self[:] = ary
+
+    def get(self, command_queue, ary=None):
+        """Synchronous copy from self to `ary`. If `ary` is None,
+        or if it is not suitable as a target, the copy is to a newly
+        allocated :class:`HostArray`. The actual target is returned.
+        For SVMArray, this is a CPU copy.
+        """
+        if ary is None or not self._copyable(ary):
+            return self.copy()
+        else:
+            ary[:] = self
+            return ary
+
+    def set_async(self, command_queue, ary):
+        """Asynchronous copy from `ary` to self. This is implemented
+        synchronously for SVMArray, but exists for compatibility."""
+        self.set(command_queue, ary)
+
+    def get_async(self, command_queue, ary=None):
+        """Asynchronous copy from self to `ary` (see `get`). This
+        is implemented synchronously for SVMArray, but exists for
+        compatibility."""
+        return self.get(command_queue, ary)
+
+class DeviceAllocator(object):
+    """Allocates DeviceArray objects from a context"""
+    def __init__(self, context):
+        self.context = context
+
+    def allocate(self, shape, dtype, padded_shape=None, raw=None):
+        return DeviceArray(self.context, shape, dtype, padded_shape, raw)
+
+    def allocate_raw(self, n_bytes):
+        return self.context.allocate_raw(n_bytes)
+
+
+class SVMAllocator(object):
+    """Allocates SVMArray objects from a context"""
+    def __init__(self, context):
+        self.context = context
+
+    def allocate(self, shape, dtype, padded_shape=None, raw=None):
+        return SVMArray(self.context, shape, dtype, padded_shape, raw)
+
+    def allocate_raw(n_bytes):
+        return self.context.allocate_raw(n_bytes)
+
 
 class Dimension(object):
     """A single dimension of an :class:`IOSlot`, representing padding and
@@ -647,17 +756,17 @@ class IOSlotBase(object):
         root slot."""
         raise NotImplementedError('abstract base class')
 
-    def allocate(self, context, raw=None):
+    def allocate(self, allocator, raw=None):
         """Allocate and immediately bind a buffer satisfying the requirements.
 
-        .. warning:: When `raw` is provided, there is no check that the storage is large enough
+        .. warning:: When `raw` is provided, there is no check that the storage is large enough.
 
         Parameters
         ----------
-        context : :class:`katsdpsigproc.cuda.Context` or :class:`katsdpsigproc.opencl.Context`
-            Context in which to allocate the memory
+        allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`
+            Memory allocator from which to obtain the memory
         raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
-            Backing storage for the :class:`DeviceArray`
+            Backing storage for the allocation
 
         Raises
         ------
@@ -665,7 +774,7 @@ class IOSlotBase(object):
             If this is not a root slot
         """
         self.check_root()
-        return self._allocate(context, raw)
+        return self._allocate(allocator, raw)
 
 class IOSlot(IOSlotBase):
     """An input/output slot with type and shape information. It contains a
@@ -767,8 +876,8 @@ class IOSlot(IOSlotBase):
     def required_bytes(self):
         return np.product(self.required_padded_shape()) * self.dtype.itemsize
 
-    def _allocate(self, context, raw=None):
-        buffer = DeviceArray(context, self.shape, self.dtype, self.required_padded_shape(), raw=raw)
+    def _allocate(self, allocator, raw=None):
+        buffer = allocator.allocate(self.shape, self.dtype, self.required_padded_shape(), raw=raw)
         self._bind(buffer)
         return buffer
 
@@ -856,11 +965,11 @@ class AliasIOSlot(IOSlotBase):
     def required_bytes(self):
         return max([child.required_bytes() for child in self.children])
 
-    def _allocate(self, context, raw=None):
+    def _allocate(self, allocator, raw=None):
         if raw is None:
-            raw = context.allocate_raw(self.required_bytes())
+            raw = allocator.allocate_raw(self.required_bytes())
         for child in self.children:
-            child._allocate(context, raw)
+            child._allocate(allocator, raw)
         self.raw = raw
         return raw
 
@@ -887,6 +996,7 @@ class Operation(object):
     ----------
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command queue for the operation
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`
 
     Attributes
     ----------
@@ -900,11 +1010,17 @@ class Operation(object):
     is_root : boolean
         True if this operation is not part of an :class:`OperationSequence`.
     """
-    def __init__(self, command_queue):
+    def __init__(self, command_queue, allocator=None):
+        if allocator is None:
+            allocator = DeviceAllocator(command_queue.context)
+        elif allocator.context is not None:
+            if allocator.context is not command_queue.context:
+                raise ValueError('command_queue and allocator have different contexts')
         self.slots = {}
         self.hidden_slots = {}
         self.command_queue = command_queue
         self.is_root = True
+        self.allocator = allocator
 
     def bind(self, **kwargs):
         """Bind buffers to slots by keyword. Each keyword argument name
@@ -917,7 +1033,7 @@ class Operation(object):
         """Make sure that all slots have a buffer bound, allocating if necessary"""
         for slot in self.slots.itervalues():
             if not slot.is_bound():
-                slot.allocate(self.command_queue.context)
+                slot.allocate(self.allocator)
 
     def buffer(self, name):
         """Retrieve the buffer bound to a slot. It will consult

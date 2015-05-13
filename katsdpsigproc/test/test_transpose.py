@@ -29,8 +29,8 @@ class TestTranspose(object):
         self.pad_dimension(fn.slots['dest'].dimensions[1], 3)
 
         ary = np.random.randn(R, C).astype(np.float32)
-        src = fn.slots['src'].allocate(context)
-        dest = fn.slots['dest'].allocate(context)
+        src = fn.slots['src'].allocate(fn.allocator)
+        dest = fn.slots['dest'].allocate(fn.allocator)
         src.set_async(queue, ary)
         fn()
         out = dest.get(queue)

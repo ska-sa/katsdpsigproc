@@ -15,6 +15,20 @@
 #define RESTRICT restrict
 #define REQD_WORK_GROUP_SIZE(x, y, z) __attribute__((reqd_work_group_size(x, y, z)))
 
+% for type in ['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'long', 'ulong', 'float']:
+
+DEVICE_FN ${type}2 make_${type}2(${type} x, ${type} y)
+{
+    return (${type}2) (x, y);
+}
+
+DEVICE_FN ${type}4 make_${type}4(${type} x, ${type} y, ${type} z, ${type} w)
+{
+    return (${type}4) (x, y, z, w);
+}
+
+% endfor
+
 #else
 
 #include <math.h>
