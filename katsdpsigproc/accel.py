@@ -141,7 +141,7 @@ def all_devices():
         devices.extend(opencl.Device.get_devices())
     return devices
 
-def create_some_context(interactive=True):
+def create_some_context(interactive=True, device_filter=None):
     """Create a single-device context, selecting a device automatically. This
     is similar to `pyopencl.create_some_context`. A number of environment
     variables can be set to limit the choice to a single device:
@@ -160,6 +160,9 @@ def create_some_context(interactive=True):
         choices, it will prompt the user. Otherwise, it will choose the first
         available device, favouring CUDA over OpenCL, then GPU over
         accelerators over other OpenCL devices.
+    device_filter : callable, optional
+        If specified, each device in turn is passed to it, and it must return
+        True to keep the device as a candidate or False to reject it.
 
     Raises
     ------
@@ -226,6 +229,9 @@ def create_some_context(interactive=True):
         cuda_devices = cuda.Device.get_devices()
     if have_opencl:
         opencl_devices = opencl.Device.get_devices_by_platform()
+    if device_filter is not None:
+        cuda_devices = filter(device_filter, cuda_devices)
+        opencl_devices = [filter(device_filter, platform) for platform in opencl_devices]
 
     try:
         if cuda_id is not None:
