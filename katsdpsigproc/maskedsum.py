@@ -25,7 +25,7 @@ class MaskedSumTemplate(object):
 
     def __init__(self, context, tuning=None):
         self.context = context
-        
+
         if tuning is None:
             tuning = self.autotune(context)
         self.size = tuning['size']
@@ -56,8 +56,8 @@ class MaskedSumTemplate(object):
         return tune.autotune(generate,
                 size=[32,64,128,256,512,1024])
 
-    def instantiate(self, command_queue, shape):
-        return MaskedSum(self, command_queue, shape)
+    def instantiate(self, *args, **kwargs):
+        return MaskedSum(self, *args, **kwargs)
 
 class MaskedSum(accel.Operation):
     """Concrete instance of :class:`MaskedSumTemplate`.
@@ -75,10 +75,9 @@ class MaskedSum(accel.Operation):
     **dest**
         Output type complex64
         Shape is (number of columns of input)
-        
     """
-    def __init__(self, template, command_queue, shape):
-        super(MaskedSum, self).__init__(command_queue)
+    def __init__(self, template, command_queue, shape, allocator=None):
+        super(MaskedSum, self).__init__(command_queue, allocator)
         self.template = template
         self.shape = shape
         self.slots['src'] = accel.IOSlot((shape[0], accel.Dimension(shape[1], template.size)), np.complex64)

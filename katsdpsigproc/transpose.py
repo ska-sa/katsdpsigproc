@@ -66,8 +66,8 @@ class TransposeTemplate(object):
                 vtx=[1, 2, 3, 4],
                 vty=[1, 2, 3, 4])
 
-    def instantiate(self, command_queue, shape):
-        return Transpose(self, command_queue, shape)
+    def instantiate(self, *args, **kwargs):
+        return Transpose(self, *args, **kwargs)
 
 class Transpose(accel.Operation):
     """Concrete instance of :class:`TransposeTemplate`.
@@ -80,8 +80,8 @@ class Transpose(accel.Operation):
     **dest**
         Output
     """
-    def __init__(self, template, command_queue, shape):
-        super(Transpose, self).__init__(command_queue)
+    def __init__(self, template, command_queue, shape, allocator=None):
+        super(Transpose, self).__init__(command_queue, allocator)
         self.template = template
         self.shape = shape
         self.slots['src'] = accel.IOSlot(shape, template.dtype)
