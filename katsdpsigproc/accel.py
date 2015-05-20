@@ -988,6 +988,7 @@ class Operation(object):
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command queue for the operation
     allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`
+        Allocator used to allocate unbound slots
 
     Attributes
     ----------
@@ -1095,9 +1096,11 @@ class OperationSequence(Operation):
         Names for compound slots, mapped to the original slot names that are replaced
     aliases : mapping of `str` to sequence of `str`, optional
         Names for alias slots, mapped to the original slot names that are replaced
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`
+        Allocator used to allocate unbound slots
     """
-    def __init__(self, command_queue, operations, compounds=None, aliases=None):
-        super(OperationSequence, self).__init__(command_queue)
+    def __init__(self, command_queue, operations, compounds=None, aliases=None, allocator=None):
+        super(OperationSequence, self).__init__(command_queue, allocator)
         self.operations = OrderedDict(operations)
         for (name, operation) in operations:
             if operation.command_queue is not command_queue:
