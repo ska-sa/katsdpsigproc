@@ -12,4 +12,3 @@ elif [ "$label" = "opencl" ]; then
     export PYOPENCL_CTX=0:0
 fi
 nosetests --with-coverage --cover-package=katsdpsigproc --cover-html
-make -C doc html
