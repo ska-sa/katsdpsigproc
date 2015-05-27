@@ -3,6 +3,7 @@ scipy
 decorator
 mako
 appdirs
+nose
 unittest2
 mock
 sphinx
