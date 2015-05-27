@@ -11,4 +11,4 @@ elif [ "$label" = "opencl" ]; then
     pip install pyopencl
     export PYOPENCL_CTX=0:0
 fi
-nosetests --with-coverage --cover-package=katsdpsigproc --cover-html
+nosetests --with-coverage --cover-package=katsdpsigproc --cover-xml
