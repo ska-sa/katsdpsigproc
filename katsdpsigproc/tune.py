@@ -268,10 +268,9 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
             if not batch:
                 break
             batch_keywords = [dict(zip(kwargs.keys(), opt)) for opt in batch]
-            futures = {thread_pool.submit(generate, **keywords): keywords
-                       for keywords in batch_keywords}
-            for future in concurrent.futures.as_completed(futures):
-                keywords = futures[future]
+            futures = [thread_pool.submit(generate, **keywords) for keywords in batch_keywords]
+            concurrent.futures.wait(futures)
+            for keywords, future in zip(batch_keywords, futures):
                 try:
                     measure = future.result()
                     # Do a warmup pass
