@@ -3,6 +3,7 @@ scipy
 decorator
 mako
 appdirs
+futures
 nose
 unittest2
 mock
