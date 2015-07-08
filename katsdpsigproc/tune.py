@@ -39,9 +39,9 @@ def adapt_value(value):
     """Converts `value` to a type that can be used in sqlite3. This is
     not done through the sqlite3 adapter interface, because that is global
     rather than per-connection. This also only applies to lookup keys,
-    not results, because it is not a symmetric relationship
+    not results, because it is not a symmetric relationship.
     """
-    if isinstance(value, type):
+    if isinstance(value, type) or isinstance(value, np.dtype):
         return repr(value)
     return value
 
