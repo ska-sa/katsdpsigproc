@@ -3,8 +3,8 @@ scipy
 decorator
 mako
 appdirs
+nose
 unittest2
-nose-ignore-docstring
 mock
 sphinx
 numpydoc
