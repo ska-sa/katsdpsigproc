@@ -7,19 +7,24 @@ builtin_reduce = reduce
 from .. import reduce
 
 class Fixture(object):
-    def __init__(self, context, rs, size, allow_shuffle):
+    def __init__(self, context, rs, size, allow_shuffle, broadcast):
         rows = 256 // size
         self.data = rs.randint(0, 1000, size=(rows, size)).astype(np.int32)
-        self.program = build(context, 'test/test_reduce.mako',
-            {'size': size, 'allow_shuffle': allow_shuffle, 'rows': rows})
+        self.broadcast = broadcast
+        self.program = build(context, 'test/test_reduce.mako', {
+            'size': size,
+            'allow_shuffle': allow_shuffle,
+            'broadcast': broadcast,
+            'rows': rows})
 
 @device_test
 def setup(context, queue):
     global _fixtures
     rs = np.random.RandomState(seed=1)  # Fixed seed to make test repeatable
-    _fixtures = [Fixture(context, rs, size, allow_shuffle)
+    _fixtures = [Fixture(context, rs, size, allow_shuffle, broadcast)
                  for size in [1, 4, 12, 16, 32, 87, 97, 256]
-                 for allow_shuffle in [True, False]]
+                 for allow_shuffle in [True, False]
+                 for broadcast in [True, False]]
 
 def check_reduce(context, queue, kernel_name, op):
     for fixture in _fixtures:
@@ -33,7 +38,10 @@ def check_reduce(context, queue, kernel_name, op):
                 kernel, [data_d.buffer, out_d.buffer], local_size=dims, global_size=dims)
         out = out_d.get(queue)
         expected = op.reduce(data, axis=1, keepdims=True)
-        expected = np.repeat(expected, data.shape[1], axis=1)
+        if fixture.broadcast:
+            expected = np.repeat(expected, data.shape[1], axis=1)
+        else:
+            out = out[:, 0:1]
         np.testing.assert_array_equal(expected, out)
 
 @device_test

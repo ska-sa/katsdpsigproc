@@ -6,8 +6,8 @@
 <%namespace name="wg_reduce" file="/wg_reduce.mako"/>
 
 <%wg_reduce:define_scratch type="int" size="${size}" scratch_type="scratch_t" allow_shuffle="${allow_shuffle}"/>
-<%wg_reduce:define_function type="int" size="${size}" function="reduce_add" scratch_type="scratch_t" allow_shuffle="${allow_shuffle}"/>
-<%wg_reduce:define_function type="int" size="${size}" function="reduce_max" scratch_type="scratch_t" op="${wg_reduce.op_max}" allow_shuffle="${allow_shuffle}"/>
+<%wg_reduce:define_function type="int" size="${size}" function="reduce_add" scratch_type="scratch_t" allow_shuffle="${allow_shuffle}" broadcast="${broadcast}"/>
+<%wg_reduce:define_function type="int" size="${size}" function="reduce_max" scratch_type="scratch_t" op="${wg_reduce.op_max}" allow_shuffle="${allow_shuffle}" broadcast="${broadcast}"/>
 
 <%def name="test_function(function)">
 KERNEL void test_${function}(GLOBAL const int *in, GLOBAL int *out)

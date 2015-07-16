@@ -16,14 +16,43 @@ max((${a}), (${b}))
 % endif
 </%def>
 
+<%def name="shuffle_wrapper(type)">
+    union
+    {
+        ${type} v;
+        int a[sizeof(${type}) / sizeof(int)];
+    } transfer;
+    transfer.v = value;
+    for (int j = 0; j < sizeof(${type}) / sizeof(int); j++)
+    {
+        transfer.a[j] = ${caller.body('transfer.a[j]')};
+    }
+    return transfer.v;
+</%def>
+
 ## Defines the data structure for a reduction operation. See below for the
 ## meaning of allow_shuffle.
 <%def name="define_scratch(type, size, scratch_type, allow_shuffle=False)">
-<% small_shuffle = allow_shuffle and (size & (size - 1)) == 0 and size <= simd_group_size %>
+<%
+use_shuffle = int(allow_shuffle and (size & (size - 1)) == 0)
+small_shuffle = int(use_shuffle and size <= simd_group_size)
+%>
 typedef struct ${scratch_type}
 {
-#if !SHUFFLE_AVAILABLE || ${int(not small_shuffle)}
+#if !(SHUFFLE_AVAILABLE && ${small_shuffle})
     ${type} data[${size}];
+#endif
+
+#if SHUFFLE_AVAILABLE && ${use_shuffle}
+    static __device__ ${type} shfl_down(${type} value, int delta, int size)
+    {
+<%self:shuffle_wrapper type="${type}" args="arg">__shfl_down(${arg}, delta, size)</%self:shuffle_wrapper>
+    }
+
+    static __device__ ${type} shfl(${type} value, int lane, int size)
+    {
+<%self:shuffle_wrapper type="${type}" args="arg">__shfl(${arg}, lane, size)</%self:shuffle_wrapper>
+    }
 #endif
 } ${scratch_type};
 </%def>
@@ -50,8 +79,9 @@ typedef struct ${scratch_type}
  * @param rake_width   Number of work-items that perform serial up-sweep.
  *                     Defaults to the SIMD group size.
  * @param allow_shuffle See above.
+ * @param broadcast    If False, only the thread with idx 0 has a defined result.
  */
-<%def name="define_function(type, size, function, scratch_type, op=None, rake_width=None, allow_shuffle=False)">
+<%def name="define_function(type, size, function, scratch_type, op=None, rake_width=None, allow_shuffle=False, broadcast=True)">
 <%
 if op is None:
     op = op_plus
@@ -63,6 +93,12 @@ rake_width = min(rake_width, size)
 use_shuffle = int(allow_shuffle and (size & (size - 1)) == 0)
 %>
 
+## This is horrifically confusing because it is handling 8 cases:
+## - either size <= rake_width or size > rake_width
+## - either the rake reduction is done using shuffles or using scratch
+## - broadcast is True or False
+## It's easiest to understand by picking one of the options at a time and
+## following the logic for that case.
 DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scratch)
 {
 % if size > rake_width:
@@ -92,63 +128,61 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
         // first_rake test. Otherwise, it has to be outside to allow barriers
         // to be in uniform control flow.
 #if SHUFFLE_AVAILABLE && ${use_shuffle}
-        union
-        {
-            ${type} v;
-            int a[sizeof(${type}) / sizeof(int)];
-        } transfer;
         for (int i = ${rake_width} / 2; i >= 1; i /= 2)
         {
-            transfer.v = value;
-            for (int j = 0; j < sizeof(${type}) / sizeof(int); j++)
-                transfer.a[j] = __shfl_down(transfer.a[j], i, ${size});
-            value = ${op('value', 'transfer.v', type)};
+            ${type} other = ${scratch_type}::shfl_down(value, i, ${size});
+            value = ${op('value', 'other', type)};
         }
 #else
         scratch->data[idx] = value;
 #endif
     }
 
-    // Rake reduction when shuffle is not available
 #if !(SHUFFLE_AVAILABLE && ${use_shuffle})
-    BARRIER();
+    /* Rake reduction when shuffle is not available. At this point,
+     * scratch->data[0..rake_width-1] is populated with partial reductions,
+     * but there has been no barrier since they were written.
+     */
 <% N = rake_width %>
 % while N > 1:
     // N = ${N}
+    BARRIER();
     if (idx < ${N // 2})
     {
         value = ${op('value', 'scratch->data[idx + %d]' % ((N + 1) // 2), type)};
         scratch->data[idx] = value;
     }
-    BARRIER();
 <% N = (N + 1) // 2 %>
 % endwhile
 #endif
 
-    // Broadcast result
-    // TODO: allow user to specify that only idx==0 needs the result
+    /* At this point value in idx==0 contains the final reduction. If not using
+     * shuffles, then it is also stored in scratch->data[0], but a barrier is
+     * required before it can be accessed by other workitems.
+     */
+
+% if broadcast:
 #if SHUFFLE_AVAILABLE && ${use_shuffle} && ${int(size <= rake_width)}
     // Can reach all threads just using shuffle
-    union
-    {
-        ${type} v;
-        int a[sizeof(${type}) / sizeof(int)];
-    } transfer;
-    transfer.v = value;
-    for (int j = 0; j < sizeof(${type}) / sizeof(int); j++)
-        transfer.a[j] = __shfl(transfer.a[j], 0, ${size});
-    return transfer.v;
+    value = ${scratch_type}::shfl(value, 0, ${size});
 #else
 # if SHUFFLE_AVAILABLE && ${use_shuffle}
-    // In the non-shuffle path, this has already happened in the loop
     if (idx == 0)
         scratch->data[0] = value;
-    BARRIER();
 # endif
-    value = scratch->data[0];
-    // This barrier is needed because the scratch might get reused immediately
     BARRIER();
-    return value;
+    value = scratch->data[0];
 #endif
+% endif
+
+    /* For any case except shuffles with size == rake_width (which is done entirely
+     * without local memory), we have accessed scratch since the last barrier.
+     * The caller might immediately re-use scratch for something else, so we
+     * need a final barrier.
+     */
+#if !(SHUFFLE_AVAILABLE && ${use_shuffle}) || ${int(size > rake_width)}
+    BARRIER();
+#endif
+    return value;
 }
 </%def>
