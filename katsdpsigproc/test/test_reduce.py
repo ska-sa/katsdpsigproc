@@ -2,21 +2,24 @@
 
 import numpy as np
 from .test_accel import device_test, force_autotune
-from nose.tools import assert_equal
 from ..accel import DeviceArray, build
 builtin_reduce = reduce
 from .. import reduce
 
 class Fixture(object):
-    def __init__(self, context, rs, size):
-        self.data = rs.randint(0, 1000, size=size).astype(np.int32)
-        self.program = build(context, 'test/test_reduce.mako', {'size': size})
+    def __init__(self, context, rs, size, allow_shuffle):
+        rows = 256 // size
+        self.data = rs.randint(0, 1000, size=(rows, size)).astype(np.int32)
+        self.program = build(context, 'test/test_reduce.mako',
+            {'size': size, 'allow_shuffle': allow_shuffle, 'rows': rows})
 
 @device_test
 def setup(context, queue):
     global _fixtures
     rs = np.random.RandomState(seed=1)  # Fixed seed to make test repeatable
-    _fixtures = [Fixture(context, rs, size) for size in (12, 97, 256)]
+    _fixtures = [Fixture(context, rs, size, allow_shuffle)
+                 for size in [1, 4, 12, 16, 32, 87, 97, 256]
+                 for allow_shuffle in [True, False]]
 
 def check_reduce(context, queue, kernel_name, op):
     for fixture in _fixtures:
@@ -24,20 +27,22 @@ def check_reduce(context, queue, kernel_name, op):
         kernel = fixture.program.get_kernel(kernel_name)
         data_d = DeviceArray(context=context, shape=data.shape, dtype=data.dtype)
         data_d.set(queue, data)
-        out_d = DeviceArray(context=context, shape=(1,), dtype=data.dtype)
+        out_d = DeviceArray(context=context, shape=data.shape, dtype=data.dtype)
+        dims = tuple(reversed(data.shape))
         queue.enqueue_kernel(
-                kernel, [data_d.buffer, out_d.buffer], local_size=data.shape, global_size=data.shape)
-        out = out_d.get(queue)[0]
-        expected = builtin_reduce(op, data)
-        assert_equal(expected, out)
+                kernel, [data_d.buffer, out_d.buffer], local_size=dims, global_size=dims)
+        out = out_d.get(queue)
+        expected = op.reduce(data, axis=1, keepdims=True)
+        expected = np.repeat(expected, data.shape[1], axis=1)
+        np.testing.assert_array_equal(expected, out)
 
 @device_test
 def test_reduce_add(context, queue):
-    check_reduce(context, queue, 'test_reduce_add', lambda x, y: x + y)
+    check_reduce(context, queue, 'test_reduce_add', np.add)
 
 @device_test
 def test_reduce_max(context, queue):
-    check_reduce(context, queue, 'test_reduce_max', max)
+    check_reduce(context, queue, 'test_reduce_max', np.maximum)
 
 class TestHReduce(object):
     """Tests for :class:`katsdpsigproc.reduce.HReduce`"""
