@@ -22,7 +22,7 @@ def setup(context, queue):
     global _fixtures
     rs = np.random.RandomState(seed=1)  # Fixed seed to make test repeatable
     _fixtures = [Fixture(context, rs, size, allow_shuffle, broadcast)
-                 for size in [1, 4, 12, 16, 32, 87, 97, 256]
+                 for size in [1, 4, 12, 16, 32, 87, 97, 160, 256]
                  for allow_shuffle in [True, False]
                  for broadcast in [True, False]]
 

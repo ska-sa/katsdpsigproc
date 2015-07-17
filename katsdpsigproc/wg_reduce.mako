@@ -20,7 +20,7 @@ max((${a}), (${b}))
 ## meaning of allow_shuffle.
 <%def name="define_scratch(type, size, scratch_type, allow_shuffle=False)">
 <%
-use_shuffle = int(allow_shuffle and (size & (size - 1)) == 0)
+use_shuffle = int(allow_shuffle and ((size & (size - 1)) == 0 or size % simd_group_size == 0))
 small_shuffle = int(use_shuffle and size <= simd_group_size)
 %>
 typedef struct ${scratch_type}
@@ -81,7 +81,7 @@ if rake_width is not None and allow_shuffle:
 if rake_width is None:
     rake_width = simd_group_size
 rake_width = min(rake_width, size)
-use_shuffle = int(allow_shuffle and (size & (size - 1)) == 0)
+use_shuffle = int(allow_shuffle and ((size & (size - 1)) == 0 or size % simd_group_size == 0))
 %>
 
 ## This is horrifically confusing because it is handling 8 cases:
@@ -121,7 +121,7 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
 #if SHUFFLE_AVAILABLE && ${use_shuffle}
         for (int i = ${rake_width} / 2; i >= 1; i /= 2)
         {
-            ${type} other = ${scratch_type}::shfl_xor(value, i, ${size});
+            ${type} other = ${scratch_type}::shfl_xor(value, i, ${rake_width});
             value = ${op('value', 'other', type)};
         }
 #else
