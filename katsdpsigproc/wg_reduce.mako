@@ -16,20 +16,6 @@ max((${a}), (${b}))
 % endif
 </%def>
 
-<%def name="shuffle_wrapper(type)">
-    union
-    {
-        ${type} v;
-        int a[sizeof(${type}) / sizeof(int)];
-    } transfer;
-    transfer.v = value;
-    for (int j = 0; j < sizeof(${type}) / sizeof(int); j++)
-    {
-        transfer.a[j] = ${caller.body('transfer.a[j]')};
-    }
-    return transfer.v;
-</%def>
-
 ## Defines the data structure for a reduction operation. See below for the
 ## meaning of allow_shuffle.
 <%def name="define_scratch(type, size, scratch_type, allow_shuffle=False)">
@@ -44,14 +30,19 @@ typedef struct ${scratch_type}
 #endif
 
 #if SHUFFLE_AVAILABLE && ${use_shuffle}
-    static __device__ ${type} shfl_down(${type} value, int delta, int size)
+    static __device__ ${type} shfl_xor(${type} value, int laneMask, int size)
     {
-<%self:shuffle_wrapper type="${type}" args="arg">__shfl_down(${arg}, delta, size)</%self:shuffle_wrapper>
-    }
-
-    static __device__ ${type} shfl(${type} value, int lane, int size)
-    {
-<%self:shuffle_wrapper type="${type}" args="arg">__shfl(${arg}, lane, size)</%self:shuffle_wrapper>
+        union
+        {
+            ${type} v;
+            int a[sizeof(${type}) / sizeof(int)];
+        } transfer;
+        transfer.v = value;
+        for (int j = 0; j < sizeof(${type}) / sizeof(int); j++)
+        {
+            transfer.a[j] = __shfl_xor(value, laneMask, size);
+        }
+        return transfer.v;
     }
 #endif
 } ${scratch_type};
@@ -130,7 +121,7 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
 #if SHUFFLE_AVAILABLE && ${use_shuffle}
         for (int i = ${rake_width} / 2; i >= 1; i /= 2)
         {
-            ${type} other = ${scratch_type}::shfl_down(value, i, ${size});
+            ${type} other = ${scratch_type}::shfl_xor(value, i, ${size});
             value = ${op('value', 'other', type)};
         }
 #else
@@ -162,10 +153,7 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
      */
 
 % if broadcast:
-#if SHUFFLE_AVAILABLE && ${use_shuffle} && ${int(size <= rake_width)}
-    // Can reach all threads just using shuffle
-    value = ${scratch_type}::shfl(value, 0, ${size});
-#else
+#if !(SHUFFLE_AVAILABLE && ${use_shuffle} && ${int(size <= rake_width)})
 # if SHUFFLE_AVAILABLE && ${use_shuffle}
     if (idx == 0)
         scratch->data[0] = value;
