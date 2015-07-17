@@ -40,7 +40,7 @@ typedef struct ${scratch_type}
         transfer.v = value;
         for (int j = 0; j < sizeof(${type}) / sizeof(int); j++)
         {
-            transfer.a[j] = __shfl_xor(value, laneMask, size);
+            transfer.a[j] = __shfl_xor(transfer.a[j], laneMask, size);
         }
         return transfer.v;
     }
