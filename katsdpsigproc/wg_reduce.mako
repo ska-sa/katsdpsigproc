@@ -150,27 +150,29 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
     /* At this point value in idx==0 contains the final reduction. If not using
      * shuffles, then it is also stored in scratch->data[0], but a barrier is
      * required before it can be accessed by other workitems.
+     *
+     * If using shuffles and size <= rake_width, we are done, because the
+     * shuffles make the result available in all lanes of the warp.
      */
 
-% if broadcast:
 #if !(SHUFFLE_AVAILABLE && ${use_shuffle} && ${int(size <= rake_width)})
+
+% if broadcast:
 # if SHUFFLE_AVAILABLE && ${use_shuffle}
     if (idx == 0)
         scratch->data[0] = value;
 # endif
     BARRIER();
     value = scratch->data[0];
-#endif
-% endif
-
-    /* For any case except shuffles with size == rake_width (which is done entirely
-     * without local memory), we have accessed scratch since the last barrier.
-     * The caller might immediately re-use scratch for something else, so we
-     * need a final barrier.
+% endif  ## broadcast
+    /* We have accessed scratch since the last barrier. The caller might
+     * immediately re-use scratch for something else, so we need a final
+     * barrier.
      */
-#if !(SHUFFLE_AVAILABLE && ${use_shuffle}) || ${int(size > rake_width)}
     BARRIER();
-#endif
+
+#endif  // !(SHUFFLE_AVAILABLE && ${use_shuffle} && ${int(size <= rake_width)})
+
     return value;
 }
 </%def>
