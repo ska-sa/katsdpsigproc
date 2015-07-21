@@ -32,6 +32,8 @@ import os.path
 import numpy as np
 import time
 import logging
+import multiprocessing
+import concurrent.futures
 
 _logger = logging.getLogger(__name__)
 
@@ -221,7 +223,7 @@ def make_measure(queue, function):
         return queue.stop_tuning() / iters
     return measure
 
-def autotune(generate, time_limit=0.1, **kwargs):
+def autotune(generate, time_limit=0.1, threads=None, **kwargs):
     """Run a number of tuning experiments and find the optimal combination
     of parameters.
 
@@ -241,6 +243,9 @@ def autotune(generate, time_limit=0.1, **kwargs):
         function that creates a scoring function
     time_limit : float
         amount of time to spend testing each configuration (excluding setup time)
+    threads : int, optional
+        number of parallel calls to `generate` to make at a time (defaults to
+        CPU count)
 
     Raises
     ------
@@ -252,27 +257,39 @@ def autotune(generate, time_limit=0.1, **kwargs):
     best = None
     best_score = None
     had_exception = False
-    for i in opts:
-        keywords = dict(zip(kwargs.keys(), i))
+    if threads is None:
         try:
-            measure = generate(**keywords)
-            # Do a warmup pass
-            measure(1)
-            # Do an initial timing pass
-            start = time.time()
-            measure(1)
-            # Take a max to prevent divide-by-zero in very fast cases
-            elapsed = max(time.time() - start, 1e-4)
-            # Guess how many iterations we can do in the allotted time
-            iters = max(3, int(time_limit / elapsed))
-            score = measure(iters)
-            _logger.debug("Configuration %s scored %f in %d iterations", keywords, score, iters)
-            if best_score is None or score < best_score:
-                best = keywords
-                best_score = score
-        except Exception, e:
-            had_exception = True
-            _logger.debug("Caught exception while testing configuration %s", keywords, exc_info=True)
+            threads = multiprocessing.cpu_count()
+        except NotImplementedError:
+            threads = 1
+    with concurrent.futures.ThreadPoolExecutor(threads) as thread_pool:
+        while True:
+            batch = list(itertools.islice(opts, threads))
+            if not batch:
+                break
+            batch_keywords = [dict(zip(kwargs.keys(), opt)) for opt in batch]
+            futures = [thread_pool.submit(generate, **keywords) for keywords in batch_keywords]
+            concurrent.futures.wait(futures)
+            for keywords, future in zip(batch_keywords, futures):
+                try:
+                    measure = future.result()
+                    # Do a warmup pass
+                    measure(1)
+                    # Do an initial timing pass
+                    start = time.time()
+                    measure(1)
+                    # Take a max to prevent divide-by-zero in very fast cases
+                    elapsed = max(time.time() - start, 1e-4)
+                    # Guess how many iterations we can do in the allotted time
+                    iters = max(3, int(time_limit / elapsed))
+                    score = measure(iters)
+                    _logger.debug("Configuration %s scored %f in %d iterations", keywords, score, iters)
+                    if best_score is None or score < best_score:
+                        best = keywords
+                        best_score = score
+                except Exception, e:
+                    had_exception = True
+                    _logger.debug("Caught exception while testing configuration %s", keywords, exc_info=True)
     if best is None:
         if had_exception:
             raise
