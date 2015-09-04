@@ -167,22 +167,19 @@ class CommandQueue(object):
 
     def enqueue_read_buffer(self, buffer, data, blocking=True):
         with self.context:
+            # CUDA doesn't support synchronous transfers sequenced in a stream
+            # (PyCUDA simply doesn't pass on the stream argument), so use an
+            # async transfer and then block if necessary.
+            buffer.get(data, async=True, stream=self._pycuda_stream)
             if blocking:
-                # TODO: PyCUDA doesn't take a stream argument here!
-                buffer.get(data)
-            else:
-                # The order of arguments in PyCUDA 2014.1 doesn't match the
-                # documentation (https://github.com/inducer/pycuda/issues/58).
-                # Rather than guessing which will get fixed, pass by keyword.
-                buffer.get_async(ary=data, stream=self._pycuda_stream)
+                self._pycuda_stream.synchronize()
 
     def enqueue_write_buffer(self, buffer, data, blocking=True):
         with self.context:
+            # See comment in enqueue_read_buffer
+            buffer.set(data, async=True, stream=self._pycuda_stream)
             if blocking:
-                # TODO: PyCUDA doesn't take a stream argument here!
-                buffer.set(data)
-            else:
-                buffer.set_async(data, stream=self._pycuda_stream)
+                self._pycuda_stream.synchronize()
 
     def enqueue_kernel(self, kernel, args, global_size, local_size):
         assert len(global_size) == len(local_size)
