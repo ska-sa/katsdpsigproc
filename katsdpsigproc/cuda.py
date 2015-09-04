@@ -202,6 +202,16 @@ class CommandQueue(object):
             event.record(self._pycuda_stream)
         return Event(event)
 
+    def enqueue_wait_for_events(self, events):
+        with self.context:
+            for event in events:
+                self._pycuda_stream.wait_for_event(event._pycuda_event)
+
+    def flush(self):
+        with self.context:
+            # This anecdotally flushes, but isn't tested
+            self._pycuda_stream.is_done()
+
     def finish(self):
         with self.context:
             self._pycuda_stream.synchronize()

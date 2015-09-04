@@ -417,6 +417,17 @@ class CommandQueue(object):
         """Create an event at this point in the command queue"""
         return Event(pyopencl.enqueue_marker(self._pyopencl_command_queue))
 
+    def enqueue_wait_for_event(self, events):
+        """Enqueue a barrier to wait for all events in `events`."""
+        # OpenCL has some odd semantics for an empty wait list, hence the check
+        if events:
+            pyopencl.enqueue_barrier(self._pyopencl_command_queue,
+                [x._pyopencl_event for x in events])
+
+    def flush(self):
+        """Start enqueued work running, but do not wait for it to complete"""
+        self._pyopencl_command_queue.flush()
+
     def finish(self):
         """Block until all enqueued work has completed"""
         self._pyopencl_command_queue.finish()
