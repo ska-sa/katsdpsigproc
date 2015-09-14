@@ -1080,7 +1080,7 @@ class Operation(object):
         """
         self.bind(**kwargs)
         self.ensure_all_bound()
-        self._run()
+        return self._run()
 
 class OperationSequence(Operation):
     """Convenience class for setting up an operation that is built up of
