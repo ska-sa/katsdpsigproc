@@ -14,7 +14,7 @@ setup(
         "numpy", "scipy", "decorator", "mako", "appdirs", "futures"
     ],
     extras_require = {
-        "CUDA": ["pycuda"],
+        "CUDA": ["pycuda>=2015.1.3"],
         "OpenCL": ["pyopencl"]
     },
     zip_safe = False
