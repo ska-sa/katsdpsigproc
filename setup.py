@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from setuptools import setup, find_packages
 
-tests_require = ['nose', 'mock']
+tests_require = ['nose', 'mock', 'unittest2']
 
 setup(
     name = "katsdpsigproc",
