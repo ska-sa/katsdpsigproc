@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from setuptools import setup, find_packages
 
+tests_require = ['nose', 'mock']
+
 setup(
     name = "katsdpsigproc",
     version = "trunk",
@@ -15,7 +17,10 @@ setup(
     ],
     extras_require = {
         "CUDA": ["pycuda>=2015.1.3"],
-        "OpenCL": ["pyopencl"]
+        "OpenCL": ["pyopencl"],
+        "tests": tests_require,
+        "doc": ["sphinx>=1.3"]
     },
+    tests_require = tests_require,
     zip_safe = False
 )

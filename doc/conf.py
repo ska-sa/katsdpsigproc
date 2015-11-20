@@ -32,7 +32,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
-    'numpydoc'
+    'sphinx.ext.napoleon'
 ]
 
 # Prevents thousands of "toctree contains reference to nonexisting document" warnings

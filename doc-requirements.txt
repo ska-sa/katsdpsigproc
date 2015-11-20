@@ -1,0 +1,11 @@
+alabaster
+babel
+docutils
+jinja2
+markupsafe
+pygments
+pytz
+six
+snowballstemmer
+sphinx-rtd-theme
+sphinx
