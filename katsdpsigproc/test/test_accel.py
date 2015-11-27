@@ -41,7 +41,11 @@ def device_test(test):
             raise SkipTest('CUDA/OpenCL not found')
         with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.stub_autotuner):
             args += (_test_context, _test_command_queue)
-            return test(*args, **kwargs)
+            # Make the context current (for CUDA contexts). Ideally the test
+            # should not depend on this, but PyCUDA leaks memory if objects
+            # are deleted without the context current.
+            with _test_context:
+                return test(*args, **kwargs)
     return wrapper
 
 def cuda_test(test):
