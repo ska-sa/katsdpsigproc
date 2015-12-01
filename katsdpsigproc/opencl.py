@@ -303,6 +303,12 @@ class Context(object):
         """Create a new command queue for doing autotuning"""
         return TuningCommandQueue(self)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
 
 class CommandQueue(object):
     """Abstraction of a command queue. If no existing command queue is passed
