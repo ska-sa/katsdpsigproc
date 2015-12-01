@@ -215,6 +215,31 @@ class TestSVMArray(TestDeviceArray):
         queue.finish()
         np.testing.assert_equal(np.arange(369, step=3, dtype=np.uint32), ary)
 
+class TestSVMAllocator(object):
+    @device_test
+    @cuda_test
+    def test_allocate(self, context, queue):
+        allocator = accel.SVMAllocator(context)
+        ary = allocator.allocate((12, 34), np.int32, (13, 35))
+        assert isinstance(ary, accel.SVMArray)
+        assert_equal((12, 34), ary.shape)
+        assert_equal(np.int32, ary.dtype)
+        assert_equal((13, 35), ary.padded_shape)
+        ary.fill(1)  # Just to make sure it doesn't crash
+
+    @device_test
+    @cuda_test
+    def test_allocate_raw(self, context, queue):
+        allocator = accel.SVMAllocator(context)
+        raw = allocator.allocate_raw(13 * 35 * 4)
+        ary = allocator.allocate((12, 34), np.int32, (13, 35), raw=raw)
+        assert isinstance(ary, accel.SVMArray)
+        assert_equal((12, 34), ary.shape)
+        assert_equal(np.int32, ary.dtype)
+        assert_equal((13, 35), ary.padded_shape)
+        ary.fill(1)  # Just to make sure it doesn't crash
+
+
 class TestDimension(object):
     """Tests for :class:`katsdpsigproc.accel.Dimension`"""
     def test_is_power2(self):
