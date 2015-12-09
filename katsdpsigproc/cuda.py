@@ -183,7 +183,6 @@ class CommandQueue(object):
 
     def enqueue_zero_buffer(self, buffer):
         with self.context:
-            print(buffer.gpudata, buffer.mem_size)
             pycuda.driver.memset_d8(buffer.gpudata, 0, buffer.mem_size * buffer.dtype.itemsize)
 
     def enqueue_kernel(self, kernel, args, global_size, local_size):
