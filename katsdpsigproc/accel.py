@@ -529,10 +529,6 @@ class SVMArray(HostArray, DeviceArray):
         compatibility."""
         return self.get(command_queue, ary)
 
-    def zero(self, command_queue):
-        """Memset with zeros (asynchronously). For SVMArray, this is done on
-        the host."""
-        self.fill(0)
 
 class DeviceAllocator(object):
     """Allocates DeviceArray objects from a context"""
