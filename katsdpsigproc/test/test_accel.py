@@ -146,6 +146,16 @@ class TestDeviceArray(object):
         buf = self.array.get(queue)
         np.testing.assert_equal(ary, buf)
 
+    @device_test
+    def test_zero(self, context, queue):
+        ary = np.random.randint(0x12345678, 0x23456789, self.shape).astype(np.int32)
+        self.array.set(queue, ary)
+        before = self.array.get(queue)
+        self.array.zero(queue)
+        after = self.array.get(queue)
+        np.testing.assert_equal(ary, before)
+        assert_equal(0, np.max(after))
+
     def _allocate_raw(self, context, n_bytes):
         return context.allocate_raw(n_bytes)
 

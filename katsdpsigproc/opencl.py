@@ -362,7 +362,7 @@ class CommandQueue(object):
 
         Parameters
         ----------
-        buffer : `pyopencl.array.Array`
+        buffer : :class:`pyopencl.array.Array`
             Target
         data : array-like
             Source
@@ -374,6 +374,16 @@ class CommandQueue(object):
             data.enqueue_write_buffer(self._pyopencl_command_queue, buffer.data, blocking)
         else:
             buffer.set(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
+
+    def enqueue_zero_buffer(self, buffer):
+        """Fill a buffer with zero bytes.
+
+        Parameters
+        ----------
+        buffer : :class:`pyopencl.array.Array`
+        """
+        pyopencl.enqueue_fill_buffer(self._pyopencl_command_queue, buffer.data,
+                                     np.uint8(0), 0, buffer.data.get_info(pyopencl.mem_info.SIZE))
 
     @classmethod
     def _raw_arg(cls, arg):

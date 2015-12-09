@@ -9,6 +9,9 @@ class FillTemplate(object):
     Fills a device array with a constant value. The pad elements are also
     filled with this value.
 
+    .. note::
+        To fill with zeros, use :meth:`katsdpsigproc.DeviceArray.zero`
+
     Parameters
     ----------
     context : :class:`cuda.Context` or :class:`opencl.Context`

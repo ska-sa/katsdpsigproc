@@ -447,6 +447,10 @@ class DeviceArray(object):
                 self.buffer, self._contiguous(ary), blocking=False)
         return ary
 
+    def zero(self, command_queue):
+        """Memset with zeros (asynchronously)"""
+        command_queue.enqueue_zero_buffer(self.buffer)
+
 
 class SVMArray(HostArray, DeviceArray):
     """An array that uses shared virtual memory (aka managed memory) to be
@@ -524,6 +528,11 @@ class SVMArray(HostArray, DeviceArray):
         is implemented synchronously for SVMArray, but exists for
         compatibility."""
         return self.get(command_queue, ary)
+
+    def zero(self, command_queue):
+        """Memset with zeros (asynchronously). For SVMArray, this is done on
+        the host."""
+        self.fill(0)
 
 class DeviceAllocator(object):
     """Allocates DeviceArray objects from a context"""

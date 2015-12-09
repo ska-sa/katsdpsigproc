@@ -181,6 +181,11 @@ class CommandQueue(object):
             if blocking:
                 self._pycuda_stream.synchronize()
 
+    def enqueue_zero_buffer(self, buffer):
+        with self.context:
+            print(buffer.gpudata, buffer.mem_size)
+            pycuda.driver.memset_d8(buffer.gpudata, 0, buffer.mem_size * buffer.dtype.itemsize)
+
     def enqueue_kernel(self, kernel, args, global_size, local_size):
         assert len(global_size) == len(local_size)
         block = [1, 1, 1]
