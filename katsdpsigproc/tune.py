@@ -234,6 +234,12 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
     exception, it is suppressed. Returns a dictionary with the best combination
     of values.
 
+    Instead of a callable, the generate function may return `None` to skip a
+    configuration that it knows will be unsuitable. Throwing an exception has
+    essentially the same effect (and is used in code written before returning
+    `None` was allowed), but returning `None` is preferred since an exception
+    just clutters the log.
+
     The scoring function should not do a warmup pass: that is handled by this
     function.
 
@@ -273,6 +279,8 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
             for keywords, future in zip(batch_keywords, futures):
                 try:
                     measure = future.result()
+                    if measure is None:
+                        continue
                     # Do a warmup pass
                     measure(1)
                     # Do an initial timing pass
