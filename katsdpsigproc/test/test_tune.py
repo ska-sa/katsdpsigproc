@@ -4,6 +4,7 @@ from nose.tools import assert_equal
 import unittest2 as unittest
 import mock
 import sqlite3
+import threading
 from .. import tune
 
 # nose.tools uses unittest rather than unittest2 for assertRaises, which
@@ -19,12 +20,15 @@ assert_raises = _dummy.assertRaises
 
 def test_autotune_basic():
     received = []
+    received_lock = threading.Lock()
     def generate(a, b):
-        received.append((a, b))
+        with received_lock:
+            received.append((a, b))
         return lambda iters: a * b
 
     best = tune.autotune(generate, time_limit=0.001, a=[1, 2], b=[7, 3])
-    assert_equal([(1, 7), (1, 3), (2, 7), (2, 3)], received)
+    # Autotuning is parallel, so we can't assert anything about the order
+    assert_equal([(1, 3), (1, 7), (2, 3), (2, 7)], sorted(received))
     assert_equal({'a': 1, 'b': 3}, best)
 
 def test_autotune_empty():

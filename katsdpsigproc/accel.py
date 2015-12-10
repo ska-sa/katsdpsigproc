@@ -539,8 +539,8 @@ class SVMAllocator(object):
     def allocate(self, shape, dtype, padded_shape=None, raw=None):
         return SVMArray(self.context, shape, dtype, padded_shape, raw)
 
-    def allocate_raw(n_bytes):
-        return self.context.allocate_raw(n_bytes)
+    def allocate_raw(self, n_bytes):
+        return self.context.allocate_svm_raw(n_bytes)
 
 
 class Dimension(object):
@@ -1071,7 +1071,7 @@ class Operation(object):
         """
         self.bind(**kwargs)
         self.ensure_all_bound()
-        self._run()
+        return self._run()
 
 class OperationSequence(Operation):
     """Convenience class for setting up an operation that is built up of
