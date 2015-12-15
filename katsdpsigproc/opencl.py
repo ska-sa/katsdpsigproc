@@ -189,10 +189,20 @@ class Device(object):
         return pyopencl.characterize.get_simd_group_size(self._pyopencl_device, 4)
 
     @classmethod
+    def _get_platforms(cls):
+        """Return all platforms"""
+        try:
+            return pyopencl.get_platforms()
+        except pyopencl.LogicError:
+            # OpenCL considers it an error if there are no platforms
+            # available.
+            return []
+
+    @classmethod
     def get_devices(cls):
         """Return a list of all devices on all platforms"""
         ans = []
-        for platform in pyopencl.get_platforms():
+        for platform in cls._get_platforms():
             for device in platform.get_devices():
                 ans.append(Device(device))
         return ans
@@ -201,7 +211,7 @@ class Device(object):
     def get_devices_by_platform(cls):
         """Return a list of all devices, with a sub-list per platform."""
         ans = []
-        for platform in pyopencl.get_platforms():
+        for platform in cls._get_platforms():
             ans.append([Device(device) for device in platform.get_devices()])
         return ans
 
