@@ -385,6 +385,39 @@ class CommandQueue(object):
         else:
             buffer.set(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
 
+    def enqueue_copy_buffer_rect(
+            self, src_buffer, dest_buffer, src_origin, dest_origin,
+            shape, src_strides, dest_strides):
+        """Copy a subregion of one buffer to another. This is a low-level
+        interface that ignores the shape, strides etc of the buffers, and
+        treats them as byte arrays. It also only supports 3 or fewer
+        dimensions. Use
+        :py:meth:`~katsdpsigproc.accel.DeviceArray.copy_region` for a
+        high-level interface.
+
+        Parameters
+        ----------
+        src_buffer,dest_buffer : :class:`pyopencl.array.Array`
+            Source and destination buffers
+        src_origin,dest_origin : int
+            Offsets for the start of the copy, in bytes
+        shape : sequence of int
+            Shape of the region to copy (1-3 elements). The first dimension is
+            a byte count.
+        src_strides,dest_strides : sequence of int
+            Strides for the source and destination memory layout, with the same
+            length as `shape`. The first element of each must be 1, and each
+            element must be a factor of the next element.
+        """
+        assert src_strides[0] == 1
+        assert dest_strides[0] == 1
+        pyopencl.enqueue_copy(
+            self._pyopencl_command_queue,
+            src=src_buffer.data, dest=dest_buffer.data,
+            src_origin=(src_origin,), dst_origin=(dest_origin,),
+            region=shape,
+            src_pitches=src_strides[1:], dst_pitches=dest_strides[1:])
+
     def enqueue_zero_buffer(self, buffer):
         """Fill a buffer with zero bytes.
 

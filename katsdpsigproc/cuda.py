@@ -181,6 +181,47 @@ class CommandQueue(object):
             if blocking:
                 self._pycuda_stream.synchronize()
 
+    @staticmethod
+    def _get_device_pointer(buffer):
+        """Retrieves the device pointer from either a GPUArray or a managed
+        memory allocation.
+        """
+        if isinstance(buffer, pycuda.gpuarray.GPUArray):
+            return int(buffer.gpudata)
+        else:
+            return buffer.base.get_device_pointer()
+
+    def enqueue_copy_buffer_rect(
+            self, src_buffer, dest_buffer, src_origin, dest_origin,
+            shape, src_strides, dest_strides):
+        assert src_strides[0] == 1
+        assert dest_strides[0] == 1
+        assert len(shape) > 0 and len(shape) <= 3
+        if len(shape) == 1:
+            pycuda.driver.memcpy_dtod_async(
+                    self._get_device_pointer(dest_buffer) + dest_origin,
+                    self._get_device_pointer(src_buffer) + src_origin,
+                    shape[0],
+                    self._pycuda_stream)
+        else:
+            if len(shape) == 3:
+                copy = pycuda.driver.Memcpy3D()
+            else:
+                copy = pycuda.driver.Memcpy2D()
+            copy.src_pitch = src_strides[1]
+            copy.set_src_device(self._get_device_pointer(src_buffer) + src_origin)
+            copy.dst_pitch = dest_strides[1]
+            copy.set_dst_device(self._get_device_pointer(dest_buffer) + dest_origin)
+            copy.width_in_bytes = shape[0]
+            copy.height = shape[1]
+            if len(shape) >= 3:
+                assert src_strides[2] % src_strides[1] == 0
+                assert dest_strides[2] % dest_strides[1] == 0
+                copy.src_height = src_strides[2] // src_strides[1]
+                copy.dst_height = dest_strides[2] // dest_strides[1]
+                copy.depth = shape[2]
+            copy(self._pycuda_stream)
+
     def enqueue_zero_buffer(self, buffer):
         with self.context:
             if isinstance(buffer, pycuda.gpuarray.GPUArray):
