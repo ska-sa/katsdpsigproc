@@ -307,8 +307,11 @@ class HostArray(np.ndarray):
             owner = context.allocate_pinned(padded_shape, dtype)
         else:
             owner = np.empty(padded_shape, dtype)
-        index = tuple([slice(0, x) for x in shape])
-        obj = owner[index].view(HostArray)
+        if shape:
+            index = tuple([slice(0, x) for x in shape])
+            obj = owner[index].view(HostArray)
+        else:
+            obj = owner.view(HostArray)
         obj._owner = owner
         obj.padded_shape = padded_shape
         return obj
@@ -481,8 +484,11 @@ class SVMArray(HostArray, DeviceArray):
         assert len(padded_shape) == len(shape)
         assert np.all(np.greater_equal(padded_shape, shape))
         owner = context.allocate_svm(padded_shape, dtype, raw=raw)
-        index = tuple([slice(0, x) for x in shape])
-        obj = owner[index].view(SVMArray)
+        if shape:
+            index = tuple([slice(0, x) for x in shape])
+            obj = owner[index].view(SVMArray)
+        else:
+            obj = owner.view(SVMArray)
         obj._owner = owner
         obj.padded_shape = padded_shape
         obj.context = context
@@ -504,7 +510,7 @@ class SVMArray(HostArray, DeviceArray):
     def set(self, command_queue, ary):
         """Synchronous copy from `ary` to self. For SVMArray, this
         is a CPU copy."""
-        self[:] = ary
+        self[...] = ary
 
     def get(self, command_queue, ary=None):
         """Synchronous copy from self to `ary`. If `ary` is None,

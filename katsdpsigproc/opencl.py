@@ -280,7 +280,7 @@ class Context(object):
         elif device.platform.name == 'NVIDIA CUDA':
             # Based on NVIDIA's recommendation: create a device buffer and
             # leave it mapped permanently.
-            n_bytes = np.product(shape) * dtype.itemsize
+            n_bytes = int(np.product(shape)) * dtype.itemsize
             buf = pyopencl.Buffer(
                     self._pyopencl_context,
                     pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
