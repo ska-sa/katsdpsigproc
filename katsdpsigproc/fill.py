@@ -9,6 +9,9 @@ class FillTemplate(object):
     Fills a device array with a constant value. The pad elements are also
     filled with this value.
 
+    .. note::
+        To fill with zeros, use :meth:`katsdpsigproc.DeviceArray.zero`
+
     Parameters
     ----------
     context : :class:`cuda.Context` or :class:`opencl.Context`
@@ -49,8 +52,8 @@ class FillTemplate(object):
 
         return tune.autotune(generate, wgs=[64, 128, 256, 512])
 
-    def instantiate(self, command_queue, shape):
-        return Fill(self, command_queue, shape)
+    def instantiate(self, *args, **kwargs):
+        return Fill(self, *args, **kwargs)
 
 class Fill(accel.Operation):
     """Concrete instance of :class:`FillTemplate`.
@@ -68,10 +71,12 @@ class Fill(accel.Operation):
         Command queue for the operation
     shape : tuple of int
         Shape for the data slot
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+        Allocator used to allocate unbound slots
     """
 
-    def __init__(self, template, command_queue, shape):
-        super(Fill, self).__init__(command_queue)
+    def __init__(self, template, command_queue, shape, allocator=None):
+        super(Fill, self).__init__(command_queue, allocator)
         self.template = template
         self.shape = shape
         self.slots['data'] = accel.IOSlot(shape, self.template.dtype)

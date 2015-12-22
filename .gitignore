@@ -1,3 +1,7 @@
 katsdpsigproc.egg-info
 dist
 build
+.coverage
+cover
+coverage.xml
+nosetests.xml

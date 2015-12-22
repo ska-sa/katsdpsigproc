@@ -67,8 +67,8 @@ class HReduceTemplate(object):
                 wgsx=[32, 64, 128],
                 wgsy=[1, 2, 4, 8, 16])
 
-    def instantiate(self, command_queue, shape, column_range=None):
-        return HReduce(self, command_queue, shape, column_range)
+    def instantiate(self, *args, **kwargs):
+        return HReduce(self, *args, **kwargs)
 
 class HReduce(accel.Operation):
     """
@@ -93,8 +93,10 @@ class HReduce(accel.Operation):
         Shape for the source slot
     column_range : 2-tuple of int, optional
         Half-open range of columns to reduce (defaults to the entire array)
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+        Allocator used to allocate unbound slots
     """
-    def __init__(self, template, command_queue, shape, column_range):
+    def __init__(self, template, command_queue, shape, column_range=None, allocator=None):
         if len(shape) != 2:
             raise ValueError('shape must be 2-dimensional')
         if column_range is None:
@@ -104,7 +106,7 @@ class HReduce(accel.Operation):
         if column_range[0] >= column_range[1]:
             raise ValueError('column range is empty')
 
-        super(HReduce, self).__init__(command_queue)
+        super(HReduce, self).__init__(command_queue, allocator)
         self.template = template
         self.column_range = column_range
         self.slots['src'] = accel.IOSlot(

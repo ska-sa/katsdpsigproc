@@ -94,9 +94,9 @@ class BackgroundMedianFilterDeviceTemplate(object):
             return tune.make_measure(queue, fn)
         return tune.autotune(generate, wgs=[32, 64, 128, 256, 512], csplit=[1, 2, 4, 8, 16])
 
-    def instantiate(self, command_queue, channels, baselines):
+    def instantiate(self, *args, **kwargs):
         """Create an instance. See :class:`BackgroundMedianFilterDevice`."""
-        return BackgroundMedianFilterDevice(self, command_queue, channels, baselines)
+        return BackgroundMedianFilterDevice(self, *args, **kwargs)
 
 class BackgroundMedianFilterDevice(accel.Operation):
     """Concrete instance of :class:`BackgroundMedianFilterDeviceTemplate`.
@@ -116,9 +116,11 @@ class BackgroundMedianFilterDevice(accel.Operation):
         Command queue for the operation
     channels, baselines : int
         Shape of the visibilities array
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+        Allocator used to allocate unbound slots
     """
-    def __init__(self, template, command_queue, channels, baselines):
-        super(BackgroundMedianFilterDevice, self).__init__(command_queue)
+    def __init__(self, template, command_queue, channels, baselines, allocator=None):
+        super(BackgroundMedianFilterDevice, self).__init__(command_queue, allocator)
         self.template = template
         self.channels = channels
         self.baselines = baselines
@@ -213,9 +215,9 @@ class NoiseEstMADDeviceTemplate(object):
         # TODO: do real autotuning
         return {'wgsx': 32, 'wgsy': 8}
 
-    def instantiate(self, command_queue, channels, baselines):
+    def instantiate(self, *args, **kwargs):
         """Create an instance. See :class:`NoiseEstMADDevice`."""
-        return NoiseEstMADDevice(self, command_queue, channels, baselines)
+        return NoiseEstMADDevice(self, *args, **kwargs)
 
 class NoiseEstMADDevice(accel.Operation):
     """Concrete instantiation of :class:`NoiseEstMADDeviceTemplate`.
@@ -235,12 +237,14 @@ class NoiseEstMADDevice(accel.Operation):
         Command-queue in which work will be enqueued
     channels, baselines : int
         Shape of the visibility array
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+        Allocator used to allocate unbound slots
     """
 
     transposed = False
 
-    def __init__(self, template, command_queue, channels, baselines):
-        super(NoiseEstMADDevice, self).__init__(command_queue)
+    def __init__(self, template, command_queue, channels, baselines, allocator=None):
+        super(NoiseEstMADDevice, self).__init__(command_queue, allocator)
         self.template = template
         self.channels = channels
         self.baselines = baselines
@@ -331,9 +335,9 @@ class NoiseEstMADTDeviceTemplate(object):
             return tune.make_measure(queue, fn)
         return tune.autotune(generate, wgsx=[32, 64, 128, 256, 512, 1024])
 
-    def instantiate(self, command_queue, channels, baselines):
+    def instantiate(self, *args, **kwargs):
         """Create an instance. See :class:`NoiseEstMADTDevice`."""
-        return NoiseEstMADTDevice(self, command_queue, channels, baselines)
+        return NoiseEstMADTDevice(self, *args, **kwargs)
 
 class NoiseEstMADTDevice(accel.Operation):
     """Concrete instance of :class:`NoiseEstMADTDeviceTemplate`.
@@ -353,11 +357,13 @@ class NoiseEstMADTDevice(accel.Operation):
         Command-queue in which work will be enqueued
     channels, baselines : int
         Shape of the visibility array
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+        Allocator used to allocate unbound slots
     """
     transposed = True
 
-    def __init__(self, template, command_queue, channels, baselines):
-        super(NoiseEstMADTDevice, self).__init__(command_queue)
+    def __init__(self, template, command_queue, channels, baselines, allocator=None):
+        super(NoiseEstMADTDevice, self).__init__(command_queue, allocator)
         self.template = template
         if channels > self.template.max_channels:
             raise ValueError('channels exceeds max_channels')
@@ -463,9 +469,9 @@ class ThresholdSimpleDeviceTemplate(object):
         # TODO: do real autotuning
         return {'wgsx': 32, 'wgsy': 4}
 
-    def instantiate(self, command_queue, channels, baselines, n_sigma):
+    def instantiate(self, *args, **kwargs):
         """Create an instance. See :class:`ThresholdSimpleDevice`."""
-        return ThresholdSimpleDevice(self, command_queue, channels, baselines, n_sigma)
+        return ThresholdSimpleDevice(self, *args, **kwargs)
 
 class ThresholdSimpleDevice(accel.Operation):
     """Concrete instance of :class:`ThresholdSimpleDeviceTemplate`.
@@ -489,10 +495,12 @@ class ThresholdSimpleDevice(accel.Operation):
         Number of (estimated) standard deviations for the threshold
     channels, baselines : int
         Shape of the visibility array
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+        Allocator used to allocate unbound slots
     """
 
-    def __init__(self, template, command_queue, channels, baselines, n_sigma):
-        super(ThresholdSimpleDevice, self).__init__(command_queue)
+    def __init__(self, template, command_queue, channels, baselines, n_sigma, allocator=None):
+        super(ThresholdSimpleDevice, self).__init__(command_queue, allocator)
         self.template = template
         self.n_sigma = n_sigma
         self.channels = channels
@@ -601,9 +609,9 @@ class ThresholdSumDeviceTemplate(object):
                 wgs=[32, 64, 128, 256, 512],
                 vt=[1, 2, 3, 4, 8, 16])
 
-    def instantiate(self, command_queue, channels, baselines, n_sigma, threshold_falloff=1.2):
+    def instantiate(self, *args, **kwargs):
         """Create an instance. See :class:`ThresholdSumDevice`."""
-        return ThresholdSumDevice(self, command_queue, channels, baselines, n_sigma, threshold_falloff)
+        return ThresholdSumDevice(self, *args, **kwargs)
 
 class ThresholdSumDevice(accel.Operation):
     """Concrete instance of :class:`ThresholdSumDeviceTemplate`.
@@ -623,18 +631,21 @@ class ThresholdSumDevice(accel.Operation):
         Operation template
     command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
         Command-queue in which work will be enqueued
-    n_sigma : float
-        Number of (estimated) standard deviations for the threshold
-    threshold_falloff : float
-        Controls rate at which thresholds decrease (ρ in Offringa 2010)
     channels, baselines : int
         Shape of the visibility array
+    n_sigma : float
+        Number of (estimated) standard deviations for the threshold
+    threshold_falloff : float, optional
+        Controls rate at which thresholds decrease (ρ in Offringa 2010)
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+        Allocator used to allocate unbound slots
     """
     host_class = host.ThresholdSumHost
     transposed = True
 
-    def __init__(self, template, command_queue, channels, baselines, n_sigma, threshold_falloff):
-        super(ThresholdSumDevice, self).__init__(command_queue)
+    def __init__(self, template, command_queue, channels, baselines, n_sigma, threshold_falloff=1.2,
+                 allocator=None):
+        super(ThresholdSumDevice, self).__init__(command_queue, allocator)
         self.template = template
         self.channels = channels
         self.baselines = baselines
@@ -699,10 +710,9 @@ class FlaggerDeviceTemplate(object):
         else:
             self.transpose_flags = None
 
-    def instantiate(self, command_queue, channels, baselines, background_args={}, noise_est_args={}, threshold_args={}):
+    def instantiate(self, *args, **kwargs):
         """Create an instance. See :class:`FlaggerDevice`."""
-        return FlaggerDevice(self, command_queue, channels, baselines,
-                background_args, noise_est_args, threshold_args)
+        return FlaggerDevice(self, *args, **kwargs)
 
 class FlaggerDevice(accel.OperationSequence):
     """Concrete instance of :class:`FlaggerDeviceTemplate`.
@@ -739,15 +749,21 @@ class FlaggerDevice(accel.OperationSequence):
         Extra keyword arguments to pass to the noise estimation instantiation
     threshold_args : dict, optional
         Extra keyword arguments to pass to the threshold instantiation
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`
+        Allocator used to allocate unbound slots
     """
     def __init__(self, template, command_queue, channels, baselines,
-            background_args={}, noise_est_args={}, threshold_args={}):
+            background_args={}, noise_est_args={}, threshold_args={},
+            allocator=None):
         self.template = template
         self.channels = channels
         self.baselines = baselines
-        self.background = self.template.background.instantiate(command_queue, channels, baselines, **background_args)
-        self.noise_est = self.template.noise_est.instantiate(command_queue, channels, baselines, **noise_est_args)
-        self.threshold = self.template.threshold.instantiate(command_queue, channels, baselines, **threshold_args)
+        self.background = self.template.background.instantiate(
+            command_queue, channels, baselines, allocator=allocator, **background_args)
+        self.noise_est = self.template.noise_est.instantiate(
+            command_queue, channels, baselines, allocator=allocator, **noise_est_args)
+        self.threshold = self.template.threshold.instantiate(
+            command_queue, channels, baselines, allocator=allocator, **threshold_args)
 
         noise_est_suffix = '_t' if self.noise_est.transposed else ''
         threshold_suffix = '_t' if self.threshold.transposed else ''
@@ -777,7 +793,7 @@ class FlaggerDevice(accel.OperationSequence):
                     command_queue, (baselines, channels))
             operations.append(('transpose_flags', self.transpose_flags))
 
-        super(FlaggerDevice, self).__init__(command_queue, operations, compounds)
+        super(FlaggerDevice, self).__init__(command_queue, operations, compounds, allocator=allocator)
 
 class FlaggerHostFromDevice(object):
     """Wrapper that makes a :class:`FlaggerDeviceTemplate` present the

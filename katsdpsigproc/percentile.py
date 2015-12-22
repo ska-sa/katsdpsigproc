@@ -74,8 +74,8 @@ class Percentile5Template(object):
                 size=[8, 16, 32, 64, 128, 256, 512, 1024],
                 wgsy=[1, 2, 4, 8, 16, 32])
 
-    def instantiate(self, command_queue, shape, column_range=None):
-        return Percentile5(self, command_queue, shape, column_range)
+    def instantiate(self, *args, **kwargs):
+        return Percentile5(self, *args, **kwargs)
 
 class Percentile5(accel.Operation):
     """Concrete instance of :class:`PercentileTemplate`.
@@ -102,9 +102,11 @@ class Percentile5(accel.Operation):
     column_range: 2-element tuple of int, optional
         Half-open interval of columns that will be processed. If not specified, all columns are
         processed.
+    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+        Allocator used to allocate unbound slots
     """
-    def __init__(self, template, command_queue, shape, column_range=None):
-        super(Percentile5, self).__init__(command_queue)
+    def __init__(self, template, command_queue, shape, column_range=None, allocator=None):
+        super(Percentile5, self).__init__(command_queue, allocator)
         if column_range is None:
             column_range = (0, shape[1])
         if column_range[1] <= column_range[0]:
