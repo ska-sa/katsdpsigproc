@@ -843,10 +843,13 @@ class Dimension(object):
             return
         if root1._size != root2._size:
             raise ValueError('sizes are incompatible')
-        if root1._exact or root2._exact:
+        if root1._exact:
             actual1 = root1.required_padded_size()
+            if not root2.valid(actual1):
+                raise ValueError('linked requirement is unsatisfiable')
+        if root2._exact:
             actual2 = root2.required_padded_size()
-            if actual1 != actual2:
+            if not root2.valid(actual2):
                 raise ValueError('linked requirement is unsatisfiable')
         root1._min_padded_size = max(root1._min_padded_size, root2._min_padded_size)
         root1._alignment = max(root1._alignment, root2._alignment)
