@@ -4,23 +4,24 @@ from setuptools import setup, find_packages
 tests_require = ['nose', 'mock', 'unittest2']
 
 setup(
-    name = "katsdpsigproc",
-    version = "trunk",
-    description = "Karoo Array Telescope accelerated signal processing tools",
-    author_email = "spt@ska.ac.za",
-    packages = find_packages(),
-    package_data = {'': ['*.mako']},
-    scripts = ["scripts/rfiflagtest.py"],
-    url = "http://ska.ac.za",
-    install_requires = [
+    name="katsdpsigproc",
+    description="Karoo Array Telescope accelerated signal processing tools",
+    author_email="spt@ska.ac.za",
+    packages=find_packages(),
+    package_data={'': ['*.mako']},
+    scripts=["scripts/rfiflagtest.py"],
+    url="https://github.com/ska-sa/katsdpsigproc",
+    setup_requires=["katversion"],
+    install_requires=[
         "numpy", "scipy", "decorator", "mako", "appdirs", "futures"
     ],
-    extras_require = {
+    extras_require={
         "CUDA": ["pycuda>=2015.1.3"],
         "OpenCL": ["pyopencl"],
         "tests": tests_require,
         "doc": ["sphinx>=1.3"]
     },
-    tests_require = tests_require,
-    zip_safe = False
+    tests_require=tests_require,
+    zip_safe=False,
+    use_katversion=True
 )
