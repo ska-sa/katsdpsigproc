@@ -11,3 +11,4 @@ pytest
 pytools
 scipy
 six
+git+ssh://git@github.com/ska-sa/katversion
