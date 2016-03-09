@@ -189,10 +189,20 @@ class Device(object):
         return pyopencl.characterize.get_simd_group_size(self._pyopencl_device, 4)
 
     @classmethod
+    def _get_platforms(cls):
+        """Return all platforms"""
+        try:
+            return pyopencl.get_platforms()
+        except pyopencl.LogicError:
+            # OpenCL considers it an error if there are no platforms
+            # available.
+            return []
+
+    @classmethod
     def get_devices(cls):
         """Return a list of all devices on all platforms"""
         ans = []
-        for platform in pyopencl.get_platforms():
+        for platform in cls._get_platforms():
             for device in platform.get_devices():
                 ans.append(Device(device))
         return ans
@@ -201,7 +211,7 @@ class Device(object):
     def get_devices_by_platform(cls):
         """Return a list of all devices, with a sub-list per platform."""
         ans = []
-        for platform in pyopencl.get_platforms():
+        for platform in cls._get_platforms():
             ans.append([Device(device) for device in platform.get_devices()])
         return ans
 
@@ -270,7 +280,7 @@ class Context(object):
         elif device.platform.name == 'NVIDIA CUDA':
             # Based on NVIDIA's recommendation: create a device buffer and
             # leave it mapped permanently.
-            n_bytes = np.product(shape) * dtype.itemsize
+            n_bytes = int(np.product(shape)) * dtype.itemsize
             buf = pyopencl.Buffer(
                     self._pyopencl_context,
                     pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
@@ -302,6 +312,12 @@ class Context(object):
     def create_tuning_command_queue(self):
         """Create a new command queue for doing autotuning"""
         return TuningCommandQueue(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
 
 
 class CommandQueue(object):
@@ -356,7 +372,7 @@ class CommandQueue(object):
 
         Parameters
         ----------
-        buffer : `pyopencl.array.Array`
+        buffer : :class:`pyopencl.array.Array`
             Target
         data : array-like
             Source
@@ -368,6 +384,49 @@ class CommandQueue(object):
             data.enqueue_write_buffer(self._pyopencl_command_queue, buffer.data, blocking)
         else:
             buffer.set(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
+
+    def enqueue_copy_buffer_rect(
+            self, src_buffer, dest_buffer, src_origin, dest_origin,
+            shape, src_strides, dest_strides):
+        """Copy a subregion of one buffer to another. This is a low-level
+        interface that ignores the shape, strides etc of the buffers, and
+        treats them as byte arrays. It also only supports 3 or fewer
+        dimensions. Use
+        :py:meth:`~katsdpsigproc.accel.DeviceArray.copy_region` for a
+        high-level interface.
+
+        Parameters
+        ----------
+        src_buffer,dest_buffer : :class:`pyopencl.array.Array`
+            Source and destination buffers
+        src_origin,dest_origin : int
+            Offsets for the start of the copy, in bytes
+        shape : sequence of int
+            Shape of the region to copy (1-3 elements). The first dimension is
+            a byte count.
+        src_strides,dest_strides : sequence of int
+            Strides for the source and destination memory layout, with the same
+            length as `shape`. The first element of each must be 1, and each
+            element must be a factor of the next element.
+        """
+        assert src_strides[0] == 1
+        assert dest_strides[0] == 1
+        pyopencl.enqueue_copy(
+            self._pyopencl_command_queue,
+            src=src_buffer.data, dest=dest_buffer.data,
+            src_origin=(src_origin,), dst_origin=(dest_origin,),
+            region=shape,
+            src_pitches=src_strides[1:], dst_pitches=dest_strides[1:])
+
+    def enqueue_zero_buffer(self, buffer):
+        """Fill a buffer with zero bytes.
+
+        Parameters
+        ----------
+        buffer : :class:`pyopencl.array.Array`
+        """
+        pyopencl.enqueue_fill_buffer(self._pyopencl_command_queue, buffer.data,
+                                     np.uint8(0), 0, buffer.data.get_info(pyopencl.mem_info.SIZE))
 
     @classmethod
     def _raw_arg(cls, arg):

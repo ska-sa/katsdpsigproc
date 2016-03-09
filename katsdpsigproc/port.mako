@@ -14,6 +14,7 @@
 #define BARRIER() barrier(CLK_LOCAL_MEM_FENCE)
 #define RESTRICT restrict
 #define REQD_WORK_GROUP_SIZE(x, y, z) __attribute__((reqd_work_group_size(x, y, z)))
+#define SHUFFLE_AVAILABLE 0
 
 % for type in ['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'long', 'ulong', 'float']:
 
@@ -44,6 +45,12 @@ DEVICE_FN ${type}4 make_${type}4(${type} x, ${type} y, ${type} z, ${type} w)
 #define BARRIER() __syncthreads()
 #define RESTRICT __restrict
 #define REQD_WORK_GROUP_SIZE(x, y, z) __launch_bounds__((x) * (y) * (z))
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 300
+# define SHUFFLE_AVAILABLE 1
+#else
+# define SHUFFLE_AVAILABLE 0
+#endif
 
 __device__ static inline unsigned int get_local_id(int dim)
 {

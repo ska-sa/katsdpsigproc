@@ -41,7 +41,11 @@ def device_test(test):
             raise SkipTest('CUDA/OpenCL not found')
         with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.stub_autotuner):
             args += (_test_context, _test_command_queue)
-            return test(*args, **kwargs)
+            # Make the context current (for CUDA contexts). Ideally the test
+            # should not depend on this, but PyCUDA leaks memory if objects
+            # are deleted without the context current.
+            with _test_context:
+                return test(*args, **kwargs)
     return wrapper
 
 def cuda_test(test):
@@ -141,6 +145,105 @@ class TestDeviceArray(object):
         # Check that it matches get
         buf = self.array.get(queue)
         np.testing.assert_equal(ary, buf)
+
+    def _test_copy_region(
+            self, context, queue,
+            src_shape, src_padded_shape,
+            dest_shape, dest_padded_shape,
+            src_region, dest_region):
+        dtype = np.int32
+        src = self.cls(context, src_shape, dtype, src_padded_shape)
+        dest = self.cls(context, dest_shape, dtype, dest_padded_shape)
+        h_src = src.empty_like()
+        h_src[...] = np.arange(h_src.size).reshape(src_shape)
+        src.set(queue, h_src)
+        dest.zero(queue)
+        src.copy_region(queue, dest, src_region, dest_region)
+        queue.finish()   # Needed for the SVMArray test, since the next line is a CPU copy
+        h_dest = dest.get(queue)
+        expected = np.zeros_like(h_dest)
+        expected[dest_region] = h_src[src_region]
+        np.testing.assert_array_equal(expected, h_dest)
+
+    @device_test
+    def test_copy_region_4d(self, context, queue):
+        self._test_copy_region(
+            context, queue,
+            (7, 5, 12, 19), (8, 9, 14, 25),
+            (7, 5, 12, 19), (10, 8, 12, 21),
+            np.s_[2:4, :, 3:7:2, 10:], np.s_[1:3, 0:5, 4:8:2, 10:])
+
+    @device_test
+    def test_copy_region_0d(self, context, queue):
+        self._test_copy_region(context, queue, (), (), (), (), (), ())
+
+    @device_test
+    def test_copy_region_1d(self, context, queue):
+        self._test_copy_region(
+            context, queue, (3, 5), (4, 6), (5, 7), (7, 10),
+            np.s_[1, 0:3], np.s_[2, 1:4])
+
+    @device_test
+    def test_copy_region_2d(self, context, queue):
+        self._test_copy_region(
+            context, queue, (3, 5), (4, 6), (5, 7), (7, 10),
+            np.s_[:1, 0:3], np.s_[-1:, 1:4])
+
+    @device_test
+    def test_copy_region_missing_axes(self, context, queue):
+        self._test_copy_region(
+            context, queue, (3, 5), (4, 6), (5, 5), (7, 10),
+            np.s_[:1], np.s_[-1:])
+
+    @device_test
+    def test_copy_region_newaxis(self, context, queue):
+        self._test_copy_region(
+            context, queue, (10,), None, (10, 10), None,
+            np.s_[np.newaxis, 4:6], np.s_[:1, 7:9])
+
+    @device_test
+    def test_copy_region_negative(self, context, queue):
+        self._test_copy_region(
+            context, queue, (10, 12), None, (7, 8), None,
+            np.s_[-4, -3:-1], np.s_[-7, -8:-4:2])
+
+    @device_test
+    def test_copy_region_errors(self, context, queue):
+        # Too many axes
+        with assert_raises(IndexError):
+            self._test_copy_region(
+                context, queue, (10,), None, (10,), None,
+                np.s_[3, 4], np.s_[5, 6])
+        # Out-of-range single index
+        with assert_raises(IndexError):
+            self._test_copy_region(
+                context, queue, (10,), None, (10,), None,
+                np.s_[5], np.s_[10])
+        # Out-of-range slice
+        with assert_raises(IndexError):
+            self._test_copy_region(
+                context, queue, (10,), None, (10,), None,
+                np.s_[10:12], np.s_[8:10])
+        # Empty slice
+        with assert_raises(IndexError):
+            self._test_copy_region(
+                context, queue, (10,), None, (10,), None,
+                np.s_[2:2], np.s_[3:3])
+        # Negative stride
+        with assert_raises(IndexError):
+            self._test_copy_region(
+                context, queue, (10,), None, (10,), None,
+                np.s_[3:0:-1], np.s_[4:1:-1])
+
+    @device_test
+    def test_zero(self, context, queue):
+        ary = np.random.randint(0x12345678, 0x23456789, self.shape).astype(np.int32)
+        self.array.set(queue, ary)
+        before = self.array.get(queue)
+        self.array.zero(queue)
+        after = self.array.get(queue)
+        np.testing.assert_equal(ary, before)
+        assert_equal(0, np.max(after))
 
     def _allocate_raw(self, context, n_bytes):
         return context.allocate_raw(n_bytes)
