@@ -600,9 +600,6 @@ class Dimension(object):
 
         if not self._is_power2(alignment):
             raise ValueError('alignment is not a power of 2')
-        if exact:
-            if min_padded_size > size or size % alignment != 0:
-                raise ValueError('padding requirements are incompatible with exact dimension')
         if min_padded_size < size:
             raise ValueError('padded size is less than size')
 
@@ -650,24 +647,21 @@ class Dimension(object):
     def required_padded_size(self):
         """Padded size required to satisfy this dimension"""
         root = self._root()
-        if root._exact:
-            assert root._min_padded_size == root._size
-            assert root._size % root._alignment == 0
-            return root._size
-        else:
-            size = roundup(root._min_padded_size, root._alignment)
-            # If the size is less than the alignment hint, it could
-            # waste a huge amount of memory to pad it
-            if size >= root._alignment_hint:
-                size = roundup(size, root._alignment_hint)
-            return size
+        size = roundup(root._min_padded_size, root._alignment)
+        # If the size is less than the alignment hint, it could
+        # waste a huge amount of memory to pad it
+        if not root._exact and size >= root._alignment_hint:
+            size = roundup(size, root._alignment_hint)
+        return size
 
     def valid(self, padded_size):
         """Whether `size` is a valid padded size"""
         root = self._root()
-        return ((not root._exact or padded_size == root._size) and
-                (padded_size >= root._min_padded_size) and
-                (padded_size % root._alignment == 0))
+        if root._exact:
+            return padded_size == root.required_padded_size()
+        else:
+            return (padded_size >= root._min_padded_size and
+                    padded_size % root._alignment == 0)
 
     def add_align_dtype(self, dtype):
         """Add an alignment hint that this will be used with an array whose
@@ -680,11 +674,6 @@ class Dimension(object):
         if self._is_power2(itemsize):
             root = self._root()
             root._alignment_hint = max(root._alignment_hint, self.ALIGN_BYTES // itemsize)
-
-    def _can_exact(self):
-        """Whether a padded size of the size is valid. self must be a root"""
-        return (self._min_padded_size == self._size
-                and self._size % self._alignment == 0)
 
     def link(self, other):
         """Make both `self` and `other` reference a single shared
@@ -704,7 +693,9 @@ class Dimension(object):
         if root1._size != root2._size:
             raise ValueError('sizes are incompatible')
         if root1._exact or root2._exact:
-            if not (root1._can_exact() and root2._can_exact()):
+            actual1 = root1.required_padded_size()
+            actual2 = root2.required_padded_size()
+            if actual1 != actual2:
                 raise ValueError('linked requirement is unsatisfiable')
         root1._min_padded_size = max(root1._min_padded_size, root2._min_padded_size)
         root1._alignment = max(root1._alignment, root2._alignment)
