@@ -1,7 +1,12 @@
 """Utilities for scheduling device operations with trollius."""
 
 import trollius
+import logging
 from trollius import From
+
+
+_logger = logging.getLogger(__name__)
+
 
 @trollius.coroutine
 def wait_until(future, when, loop=None):
@@ -18,7 +23,7 @@ def wait_until(future, when, loop=None):
     future = trollius.async(future, loop=loop)
     future.add_done_callback(ready)
     try:
-        result = yield From(waiter)
+        yield From(waiter)
         if future.done():
             raise trollius.Return(future.result())
         else:
@@ -104,7 +109,7 @@ class ResourceAllocation(object):
             if exc_type is not None:
                 self._end.cancel()
             else:
-                logger.warn('Resource allocation was not explicitly made ready')
+                _logger.warn('Resource allocation was not explicitly made ready')
                 self.ready()
 
 
