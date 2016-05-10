@@ -8,6 +8,7 @@ import time
 import Queue
 from trollius import From
 from nose.tools import *
+import mock
 
 
 @nottest
@@ -92,13 +93,16 @@ class TestResource(object):
 
     @trollius.coroutine
     def _run_frame(self, acq, event):
-        yield From(acq.wait_events())
-        acq.ready([event])
-        self.completed.put(acq)
+        with acq as value:
+            assert_equal(42, value)
+            yield From(acq.wait_events())
+            acq.ready([event])
+            self.completed.put(acq)
 
     @async_test
-    def test_ordering(self):
-        r = resource.Resource(None, loop=self.loop)
+    def test_wait_events(self):
+        """Test :meth:`resource.ResourceAcquisition.wait_events`"""
+        r = resource.Resource(42, loop=self.loop)
         a0 = r.acquire()
         a1 = r.acquire()
         e0 = DummyEvent(self.completed)
@@ -114,3 +118,34 @@ class TestResource(object):
         except Queue.Empty:
             pass
         assert_equal(order, [a0, e0, a1])
+
+    @async_test
+    def test_context_manager_exception(self):
+        """Test using :class:`resource.ResourceAcquisition` as a context
+        manager when an error is raised.
+        """
+        r = resource.Resource(None, loop=self.loop)
+        a0 = r.acquire()
+        a1 = r.acquire()
+        with assert_raises(RuntimeError):
+            with a0:
+                yield From(a0.wait_events())
+                raise RuntimeError('test exception')
+        with assert_raises(trollius.CancelledError):
+            with a1:
+                yield From(a1.wait_events())
+                a1.ready()
+
+    @mock.patch('katsdpsigproc.resource._logger')
+    @async_test
+    def test_context_manager_no_ready(self, mock_logging):
+        """Test using :class:`resource.ResourceAllocation` as a context
+        manager when the user does not call
+        :meth:`~resource.ResourceAllocation.ready`.
+        """
+        r = resource.Resource(None, loop=self.loop)
+        a0 = r.acquire()
+        with a0:
+            pass
+        mock_logging.warn.assert_called_once_with(
+                'Resource allocation was not explicitly made ready')
