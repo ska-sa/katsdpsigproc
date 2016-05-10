@@ -41,6 +41,25 @@ def _async_wait_for_events(events, loop=None):
 
 
 class ResourceAllocation(object):
+    """A handle representing a future acquisition of a resource. There are two
+    ways to make the acquisition current:
+
+     1. Call :meth:`wait`, which returns a future. The result of this future
+        is a list of device events that must complete before it is safe to use
+        the resource; they can either be waited for on the host (for example,
+        using ``run_in_executor``), or by enqueuing a device wait before
+        device operations on the resource.
+     2. The above steps (with a blocking host wait) can be combined using
+        :meth:`wait_events`.
+
+    Instances of this class should never be constructed directly. Instead, use
+    :meth:`Resource.acquire`.
+
+    This class implements the context manager protocol, providing the
+    underlying resource as the return value. This handles some cleanup if the
+    method using the resource raises an exception without releasing the
+    resource cleanly.
+    """
     def __init__(self, start, end, value, loop):
         self._start = start
         self._end = end
@@ -48,14 +67,31 @@ class ResourceAllocation(object):
         self.value = value
 
     def wait(self):
+        """Return a future that will be set to a list of device events that
+        must be waited for.
+        """
         return self._start
 
     @trollius.coroutine
     def wait_events(self):
+        """Wait for previous use of the resource to be complete on the host.
+
+        This is a coroutine.
+        """
         events = yield From(self._start)
         yield From(_async_wait_for_events(events, loop=self._loop))
 
     def ready(self, events=None):
+        """Indicate that we are done with the resource, and that subsequent
+        acquirers may use it. Note that even if the caller decides that it
+        doesn't need to use the resource, it must not call this until the
+        resource is ready.
+
+        Parameters
+        ----------
+        events : list
+            Device events that must be waited on before the resource is ready
+        """
         if events is None:
             events = []
         self._end.set_result(events)
@@ -80,6 +116,19 @@ class Resource(object):
     before use, and a future to be signalled with a result when done. The
     value of each of these futures is a (possibly empty) list of device
     events which must be waited on before more device work is scheduled.
+
+    Parameters
+    ----------
+    value : object
+        Underlying resource to manage
+    loop : trollius.BaseEventLoop, optional
+        Event loop used for asynchronous operations. If not specified, defaults
+        to ``trollius.get_event_loop()``.
+
+    Attributes
+    ----------
+    value : object
+        Underlying resource passed to the constructor
     """
     def __init__(self, value, loop=None):
         if loop is None:
@@ -90,6 +139,13 @@ class Resource(object):
         self.value = value
 
     def acquire(self):
+        """Indicate intent to acquire the resource. This does not actually
+        acquire the resource, but instead returns a handle that can be used to
+        acquire and release it later. Acquisitions always occur in the order
+        in which calls to :meth:`acquire` are made.
+
+        See :class:`ResourceAcquisition` for further details.
+        """
         old = self._future
         self._future = trollius.Future(loop=self._loop)
         return ResourceAllocation(old, self._future, self.value, loop=self._loop)
