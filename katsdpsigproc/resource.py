@@ -36,7 +36,7 @@ def wait_until(future, when, loop=None):
 
 
 @trollius.coroutine
-def _async_wait_for_events(events, loop=None):
+def async_wait_for_events(events, loop=None):
     def wait_for_events(events):
         for event in events:
             event.wait()
@@ -85,7 +85,7 @@ class ResourceAllocation(object):
         This is a coroutine.
         """
         events = yield From(self._start)
-        yield From(_async_wait_for_events(events, loop=self._loop))
+        yield From(async_wait_for_events(events, loop=self._loop))
 
     def ready(self, events=None):
         """Indicate that we are done with the resource, and that subsequent
