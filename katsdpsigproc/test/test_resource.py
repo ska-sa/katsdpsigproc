@@ -149,3 +149,61 @@ class TestResource(object):
             pass
         mock_logging.warn.assert_called_once_with(
                 'Resource allocation was not explicitly made ready')
+
+
+class TestJobQueue(object):
+    def setup(self):
+        self.loop = trollius.get_event_loop_policy().new_event_loop()
+        self.jobs = resource.JobQueue()
+        self.finished = [trollius.Future(loop=self.loop) for i in range(5)]
+        self.unfinished = [trollius.Future(loop=self.loop) for i in range(5)]
+        for i, future in enumerate(self.finished):
+            future.set_result(i)
+
+    def teardown(self):
+        self.loop.close()
+
+    def test_clean(self):
+        self.jobs.add(self.finished[0])
+        self.jobs.add(self.unfinished[0])
+        self.jobs.add(self.finished[1])
+        self.jobs.clean()
+        assert_equal(2, len(self.jobs._jobs))
+
+    @trollius.coroutine
+    def _finish(self):
+        for i, future in enumerate(self.unfinished):
+            yield From(trollius.sleep(0.02, loop=self.loop))
+            future.set_result(i)
+
+    @async_test
+    def test_finish(self):
+        self.jobs.add(self.finished[0])
+        self.jobs.add(self.unfinished[0])
+        self.jobs.add(self.unfinished[1])
+        self.jobs.add(self.unfinished[2])
+        finisher = trollius.async(self._finish(), loop=self.loop)
+        yield From(self.jobs.finish(max_remaining=1))
+        assert_true(self.unfinished[0].done())
+        assert_true(self.unfinished[1].done())
+        assert_false(self.unfinished[2].done())
+        assert_equal(1, len(self.jobs))
+        yield From(finisher)
+
+    def test_nonzero(self):
+        assert_false(self.jobs)
+        self.jobs.add(self.finished[0])
+        assert_true(self.jobs)
+
+    def test_len(self):
+        assert_equal(0, len(self.jobs))
+        self.jobs.add(self.finished[0])
+        self.jobs.add(self.unfinished[1])
+        self.jobs.add(self.finished[1])
+        assert_equal(3, len(self.jobs))
+
+    def test_contains(self):
+        assert_not_in(self.finished[0], self.jobs)
+        self.jobs.add(self.finished[0])
+        assert_in(self.finished[0], self.jobs)
+        assert_not_in(self.finished[1], self.jobs)

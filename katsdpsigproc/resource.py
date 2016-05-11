@@ -2,6 +2,7 @@
 
 import trollius
 import logging
+import collections
 from trollius import From
 
 
@@ -156,4 +157,39 @@ class Resource(object):
         return ResourceAllocation(old, self._future, self.value, loop=self._loop)
 
 
-__all__ = ['wait_until', 'Resource', 'ResourceAllocation']
+class JobQueue(object):
+    """Maintains a list of in-flight asynchronous jobs."""
+    def __init__(self):
+        self._jobs = collections.deque()
+
+    def add(self, job):
+        """Append a job to the list. If `job` is a coroutine, it is
+        automatically wrapped in a task."""
+        self._jobs.append(trollius.async(job))
+
+    def clean(self):
+        """Remove completed jobs from the front of the queue."""
+        while self._jobs and self._jobs[0].done():
+            self._jobs.popleft().result()     # Re-throws any exception
+
+    @trollius.coroutine
+    def finish(self, max_remaining=0):
+        """Wait for jobs to finish until there are at most `max_remaining` in
+        the queue.
+
+        This is a coroutine.
+        """
+        while len(self._jobs) > max_remaining:
+            yield From(self._jobs.popleft())
+
+    def __len__(self):
+        return len(self._jobs)
+
+    def __nonzero__(self):
+        return bool(self._jobs)
+
+    def __contains__(self, item):
+        return item in self._jobs
+
+
+__all__ = ['wait_until', 'Resource', 'ResourceAllocation', 'JobQueue']
