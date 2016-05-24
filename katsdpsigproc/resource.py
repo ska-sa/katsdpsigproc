@@ -37,6 +37,7 @@ def wait_until(future, when, loop=None):
 
 @trollius.coroutine
 def async_wait_for_events(events, loop=None):
+    """Coroutine that waits for a list of device events."""
     def wait_for_events(events):
         for event in events:
             event.wait()
