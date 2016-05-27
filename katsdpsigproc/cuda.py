@@ -194,33 +194,109 @@ class CommandQueue(object):
     def enqueue_copy_buffer_rect(
             self, src_buffer, dest_buffer, src_origin, dest_origin,
             shape, src_strides, dest_strides):
-        assert src_strides[0] == 1
-        assert dest_strides[0] == 1
-        assert len(shape) > 0 and len(shape) <= 3
-        if len(shape) == 1:
-            pycuda.driver.memcpy_dtod_async(
-                    self._get_device_pointer(dest_buffer) + dest_origin,
-                    self._get_device_pointer(src_buffer) + src_origin,
-                    shape[0],
-                    self._pycuda_stream)
-        else:
-            if len(shape) == 3:
-                copy = pycuda.driver.Memcpy3D()
+        with self.context:
+            assert src_strides[0] == 1
+            assert dest_strides[0] == 1
+            assert len(shape) > 0 and len(shape) <= 3
+            if len(shape) == 1:
+                pycuda.driver.memcpy_dtod_async(
+                        self._get_device_pointer(dest_buffer) + dest_origin,
+                        self._get_device_pointer(src_buffer) + src_origin,
+                        shape[0],
+                        self._pycuda_stream)
             else:
-                copy = pycuda.driver.Memcpy2D()
-            copy.src_pitch = src_strides[1]
-            copy.set_src_device(self._get_device_pointer(src_buffer) + src_origin)
-            copy.dst_pitch = dest_strides[1]
-            copy.set_dst_device(self._get_device_pointer(dest_buffer) + dest_origin)
-            copy.width_in_bytes = shape[0]
-            copy.height = shape[1]
-            if len(shape) >= 3:
-                assert src_strides[2] % src_strides[1] == 0
-                assert dest_strides[2] % dest_strides[1] == 0
-                copy.src_height = src_strides[2] // src_strides[1]
-                copy.dst_height = dest_strides[2] // dest_strides[1]
-                copy.depth = shape[2]
-            copy(self._pycuda_stream)
+                if len(shape) == 3:
+                    copy = pycuda.driver.Memcpy3D()
+                else:
+                    copy = pycuda.driver.Memcpy2D()
+                copy.src_pitch = src_strides[1]
+                copy.set_src_device(self._get_device_pointer(src_buffer) + src_origin)
+                copy.dst_pitch = dest_strides[1]
+                copy.set_dst_device(self._get_device_pointer(dest_buffer) + dest_origin)
+                copy.width_in_bytes = shape[0]
+                copy.height = shape[1]
+                if len(shape) >= 3:
+                    assert src_strides[2] % src_strides[1] == 0
+                    assert dest_strides[2] % dest_strides[1] == 0
+                    copy.src_height = src_strides[2] // src_strides[1]
+                    copy.dst_height = dest_strides[2] // dest_strides[1]
+                    copy.depth = shape[2]
+                copy(self._pycuda_stream)
+
+    @classmethod
+    def _byte_buffer(cls, data):
+        """Reinterpret a contiguous array as an array of bytes"""
+        view = data.view()
+        view.shape = data.size   # Reshape while disallowing copy
+        return view.view(np.uint8)
+
+    def enqueue_read_buffer_rect(
+            self, buffer, data, buffer_origin, data_origin, shape,
+            buffer_strides, data_strides, blocking=True):
+        with self.context:
+            assert buffer_strides[0] == 1
+            assert data_strides[0] == 1
+            assert len(shape) > 0 and len(shape) <= 3
+            data = self._byte_buffer(data)
+            if len(shape) == 1:
+                pycuda.driver.memcpy_dtoh_async(
+                        data[data_origin : data_origin + shape[0]],
+                        self._get_device_pointer(buffer) + buffer_origin,
+                        self._pycuda_stream)
+            else:
+                if len(shape) == 3:
+                    copy = pycuda.driver.Memcpy3D()
+                else:
+                    copy = pycuda.driver.Memcpy2D()
+                copy.src_pitch = buffer_strides[1]
+                copy.set_src_device(self._get_device_pointer(buffer) + buffer_origin)
+                copy.dst_pitch = data_strides[1]
+                copy.set_dst_host(data[data_origin:])
+                copy.width_in_bytes = shape[0]
+                copy.height = shape[1]
+                if len(shape) >= 3:
+                    assert data_strides[2] % data_strides[1] == 0
+                    assert buffer_strides[2] % buffer_strides[1] == 0
+                    copy.src_height = buffer_strides[2] // buffer_strides[1]
+                    copy.dst_height = data_strides[2] // data_strides[1]
+                    copy.depth = shape[2]
+                copy(self._pycuda_stream)
+            if blocking:
+                self._pycuda_stream.synchronize()
+
+    def enqueue_write_buffer_rect(
+            self, buffer, data, buffer_origin, data_origin, shape,
+            buffer_strides, data_strides, blocking=True):
+        with self.context:
+            assert buffer_strides[0] == 1
+            assert data_strides[0] == 1
+            assert len(shape) > 0 and len(shape) <= 3
+            data = self._byte_buffer(data)
+            if len(shape) == 1:
+                pycuda.driver.memcpy_htod_async(
+                        self._get_device_pointer(buffer) + buffer_origin,
+                        data[data_origin : data_origin + shape[0]],
+                        self._pycuda_stream)
+            else:
+                if len(shape) == 3:
+                    copy = pycuda.driver.Memcpy3D()
+                else:
+                    copy = pycuda.driver.Memcpy2D()
+                copy.src_pitch = data_strides[1]
+                copy.set_src_host(data[data_origin:])
+                copy.dst_pitch = buffer_strides[1]
+                copy.set_dst_device(self._get_device_pointer(buffer) + buffer_origin)
+                copy.width_in_bytes = shape[0]
+                copy.height = shape[1]
+                if len(shape) >= 3:
+                    assert data_strides[2] % data_strides[1] == 0
+                    assert buffer_strides[2] % buffer_strides[1] == 0
+                    copy.src_height = data_strides[2] // data_strides[1]
+                    copy.dst_height = buffer_strides[2] // buffer_strides[1]
+                    copy.depth = shape[2]
+                copy(self._pycuda_stream)
+            if blocking:
+                self._pycuda_stream.synchronize()
 
     def enqueue_zero_buffer(self, buffer):
         with self.context:
