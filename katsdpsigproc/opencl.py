@@ -418,7 +418,7 @@ class CommandQueue(object):
             region=shape,
             src_pitches=src_strides[1:], dst_pitches=dest_strides[1:])
 
-    def enqueue_write_buffer_rect(
+    def enqueue_rect_buffer_rect(
             self, buffer, data, buffer_origin, data_origin, shape,
             buffer_strides, data_strides, blocking=True):
         """Copy a region of a buffer to host memory. This is a low-level
