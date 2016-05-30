@@ -282,6 +282,17 @@ class TestDeviceArray(object):
             actual_raw = ary.buffer.data
         assert actual_raw is raw
 
+class TestPinnedAMD(TestDeviceArray):
+    """Run DeviceArray tests forcing `_PinnedAMD` class for pinned memory."""
+    @device_test
+    def setup(self, context, device):
+        context._force_pinned_amd = True
+        super(TestPinnedAMD, self).setup()
+
+    @device_test
+    def teardown(self, context, device):
+        context._force_pinned_amd = False
+
 class TestSVMArrayHost(TestHostArray):
     """Tests SVMArray using the HostArray tests"""
     cls = SVMArray

@@ -8,6 +8,15 @@ import pyopencl
 import pyopencl.array
 import numpy as np
 
+
+class _DummyArray(object):
+    """Trivial dummy for :class:`pyopencl.array.Array`, that just has
+    a `data` attribute.
+    """
+    def __init__(self, data):
+        self.data = data
+
+
 class _PinnedAMD(np.ndarray):
     """Pinned memory abstraction for AMD GPUs. Copies to the device
     are done by unmapping the buffer, enqueuing the copy, and remapping
@@ -15,7 +24,7 @@ class _PinnedAMD(np.ndarray):
     """
     def __new__(cls, context, queue, shape, dtype):
         dtype = np.dtype(dtype)
-        n_bytes = np.product(shape) * dtype.itemsize
+        n_bytes = int(np.product(shape)) * dtype.itemsize
         # Do not add READ or WRITE to the flags: doing so seems to cause AMD
         # drivers to allocate GPU memory.
         buffer = pyopencl.Buffer(
@@ -31,24 +40,20 @@ class _PinnedAMD(np.ndarray):
         array = array.view(_PinnedAMD)
         array._buffer = buffer
         array._mapping = mapping
+        array._array = _DummyArray(buffer)
         return array
 
-    def _write(self, queue, buffer, host):
-        pyopencl.enqueue_copy(queue, buffer, host)
-
-    def _read(self, queue, buffer, host):
-        pyopencl.enqueue_copy(queue, host, buffer)
-
-    def _enqueue_copy_buffer(self, queue, buffer, blocking, transfer):
+    def _enqueue_transfer(self, queue, blocking, transfer):
         if not hasattr(self, '_buffer'):
             raise ValueError('cannot copy to/from a _PinnedAMD view')
-        self._mapping.release(queue)
-        transfer(queue, buffer, self._buffer)
+        self._mapping.release(queue._pyopencl_command_queue)
+        transfer()
         # The shape and dtype don't matter here as long as we map the entire buffer,
         # because we're going to throw away the array wrapper and just keep the
         # MemoryMap object.
         array = pyopencl.enqueue_map_buffer(
-                queue, self._buffer, pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
+                queue._pyopencl_command_queue,
+                self._buffer, pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
                 0, (self._buffer.size,), np.uint8, is_blocking=blocking)[0]
         self._mapping = array.base
 
@@ -58,14 +63,16 @@ class _PinnedAMD(np.ndarray):
 
         Parameters
         ----------
-        queue : `pyopencl.CommandQueue`
+        queue : :class:`CommandQueue`
             Queue for the copy
-        buffer : `pyopencl.Buffer`
+        buffer : `pyopencl.array.Array`
             Target buffer
         blocking : bool
             If `True`, wait for the copy to complete before returning
         """
-        self._enqueue_copy_buffer(queue, buffer, blocking, self._write)
+        def transfer():
+            queue.enqueue_copy_buffer(self._array, buffer)
+        self._enqueue_transfer(queue, blocking, transfer)
 
     def enqueue_read_buffer(self, queue, buffer, blocking):
         """Enqueue a copy to the host buffer from device memory. The host
@@ -73,14 +80,35 @@ class _PinnedAMD(np.ndarray):
 
         Parameters
         ----------
-        queue : `pyopencl.CommandQueue`
+        queue : :class:`CommandQueue`
             Queue for the copy
-        buffer : `pyopencl.Buffer`
+        buffer : `pyopencl.array.Array`
             Source buffer
         blocking : bool
             If `True`, wait for the copy to complete before returning
         """
-        self._enqueue_copy_buffer(queue, buffer, blocking, self._read)
+        def transfer():
+            queue.enqueue_copy_buffer(buffer, self._array)
+        self._enqueue_transfer(queue, blocking, transfer)
+
+    def enqueue_write_buffer_rect(
+            self, queue, buffer, buffer_origin, data_origin, shape,
+            buffer_strides, data_strides, blocking=True):
+        def transfer():
+            queue.enqueue_copy_buffer_rect(
+                self._array, buffer, data_origin, buffer_origin, shape,
+                data_strides, buffer_strides)
+        self._enqueue_transfer(queue, blocking, transfer)
+
+    def enqueue_read_buffer_rect(
+            self, queue, buffer, buffer_origin, data_origin, shape,
+            buffer_strides, data_strides, blocking=True):
+        def transfer():
+            queue.enqueue_copy_buffer_rect(
+                buffer, self._array, buffer_origin, data_origin, shape,
+                buffer_strides, data_strides)
+        self._enqueue_transfer(queue, blocking, transfer)
+
 
 class Program(object):
     """Abstraction of a program object"""
@@ -221,6 +249,7 @@ class Context(object):
         self._pyopencl_context = pyopencl_context
         device = pyopencl_context.devices[0]
         self._internal_queue = pyopencl.CommandQueue(pyopencl_context, device)
+        self._force_pinned_amd = False   # Used for unit tests
 
     @property
     def device(self):
@@ -274,8 +303,9 @@ class Context(object):
             Type for the data
         """
         device = self._pyopencl_context.devices[0]
-        if ((device.type & pyopencl.device_type.GPU)
-                and device.platform.name == 'AMD Accelerated Parallel Processing'):
+        if (((device.type & pyopencl.device_type.GPU)
+                and device.platform.name == 'AMD Accelerated Parallel Processing')
+            or self._force_pinned_amd):
             return _PinnedAMD(self._pyopencl_context, self._internal_queue, shape, dtype)
         elif device.platform.name == 'NVIDIA CUDA':
             # Based on NVIDIA's recommendation: create a device buffer and
@@ -361,7 +391,7 @@ class CommandQueue(object):
             If true (default) the call blocks until the copy is complete
         """
         if hasattr(data, 'enqueue_read_buffer'):
-            data.enqueue_read_buffer(self._pyopencl_command_queue, buffer.data, blocking)
+            data.enqueue_read_buffer(self, buffer, blocking)
         else:
             buffer.get(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
 
@@ -381,9 +411,22 @@ class CommandQueue(object):
             read (it has no necessarily reached the device).
         """
         if hasattr(data, 'enqueue_write_buffer'):
-            data.enqueue_write_buffer(self._pyopencl_command_queue, buffer.data, blocking)
+            data.enqueue_write_buffer(self, buffer, blocking)
         else:
             buffer.set(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
+
+    def enqueue_copy_buffer(
+            self, src_buffer, dest_buffer):
+        """Copy one buffer to another.
+
+        Parameters
+        ----------
+        src_buffer,dest_buffer : :class:`pyopencl.array.Array`
+            Source and destination buffers
+        """
+        pyopencl.enqueue_copy(
+            self._pyopencl_command_queue,
+            src=src_buffer.data, dest=dest_buffer.data)
 
     def enqueue_copy_buffer_rect(
             self, src_buffer, dest_buffer, src_origin, dest_origin,
@@ -442,15 +485,21 @@ class CommandQueue(object):
             Strides for the destination and source memory layout, with the same
             length as `shape`. The first element of each must be 1, and each
             element must be a factor of the next element.
+        blocking : bool, optional
+            If true, block until the transfer is complete.
         """
         assert buffer_strides[0] == 1
         assert data_strides[0] == 1
-        pyopencl.enqueue_copy(
-            self._pyopencl_command_queue,
-            src=buffer.data, dest=data,
-            host_origin=(data_origin,), buffer_origin=(buffer_origin,),
-            region=shape,
-            host_pitches=data_strides[1:], buffer_pitches=buffer_strides[1:])
+        if hasattr(data, 'enqueue_read_buffer_rect'):
+            data.enqueue_read_buffer_rect(self, buffer, buffer_origin, data_origin, shape,
+                                          buffer_strides, data_strides, blocking)
+        else:
+            pyopencl.enqueue_copy(
+                self._pyopencl_command_queue,
+                src=buffer.data, dest=data,
+                host_origin=(data_origin,), buffer_origin=(buffer_origin,),
+                region=shape,
+                host_pitches=data_strides[1:], buffer_pitches=buffer_strides[1:])
 
     def enqueue_write_buffer_rect(
             self, buffer, data, buffer_origin, data_origin, shape,
@@ -476,15 +525,21 @@ class CommandQueue(object):
             Strides for the destination and source memory layout, with the same
             length as `shape`. The first element of each must be 1, and each
             element must be a factor of the next element.
+        blocking : bool, optional
+            If true, block until the transfer is complete.
         """
         assert buffer_strides[0] == 1
         assert data_strides[0] == 1
-        pyopencl.enqueue_copy(
-            self._pyopencl_command_queue,
-            src=data, dest=buffer.data,
-            host_origin=(data_origin,), buffer_origin=(buffer_origin,),
-            region=shape,
-            host_pitches=data_strides[1:], buffer_pitches=buffer_strides[1:])
+        if hasattr(data, 'enqueue_write_buffer_rect'):
+            data.enqueue_write_buffer_rect(self, buffer, buffer_origin, data_origin, shape,
+                                           buffer_strides, data_strides, blocking)
+        else:
+            pyopencl.enqueue_copy(
+                self._pyopencl_command_queue,
+                src=data, dest=buffer.data,
+                host_origin=(data_origin,), buffer_origin=(buffer_origin,),
+                region=shape,
+                host_pitches=data_strides[1:], buffer_pitches=buffer_strides[1:])
 
     def enqueue_zero_buffer(self, buffer):
         """Fill a buffer with zero bytes.
