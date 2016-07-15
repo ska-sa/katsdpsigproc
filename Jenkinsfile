@@ -3,7 +3,7 @@
 stage 'prepare'
 node {
     sshagent(['katpull']) {
-        println scm
+        deleteDir()
         checkout scm
         virtualenv('venv', true) {
             installRequirements 'requirements.txt'
@@ -16,6 +16,7 @@ node {
 stage 'test'
 parallel 'cuda': {
     node 'cuda' {
+        deleteDir()
         unstash 'source'
         virtualenv('venv') {
             withEnv(['CUDA_DEVICE=0']) { runTest() }
@@ -23,6 +24,7 @@ parallel 'cuda': {
     }
 }, 'opencl': {
     node 'opencl' {
+        deleteDir()
         unstash 'source'
         virtualenv('venv') {
             withEnv(['PYOPENCL_CTX=0:0']) { runTest() }
@@ -32,6 +34,7 @@ parallel 'cuda': {
 
 stage 'doc'
 node {
+    deleteDir()
     unstash 'source'
     installRequirements 'doc-requirements.txt'
     sh 'pip install --no-index ".[doc]"'
