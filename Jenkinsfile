@@ -3,6 +3,7 @@
 stage 'prepare'
 node {
     sshagent(['katpull']) {
+        println scm
         checkout scm
         virtualenv('venv', true) {
             installRequirements 'requirements.txt'
@@ -48,7 +49,8 @@ def virtualenv(String path, boolean create=false, Closure closure) {
     def p = pwd()
     if (create) {
         sh "virtualenv $path"
-        closure = { sh 'pip install -r ~/docker-base/pre-requirements.txt'; closure() }
+        def old_closure = closure
+        closure = { sh 'pip install -r ~/docker-base/pre-requirements.txt'; old_closure() }
     }
     withEnv(["PATH+VE=$p/$path/bin", "VIRTUAL_ENV=$p/$path"], closure)
 }
