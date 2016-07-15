@@ -4,7 +4,7 @@ stage 'prepare'
 node {
     sshagent(['katpull']) {
         checkout scm
-        makeVenv 'venv' {
+        virtualenv('venv', true) {
             installRequirements 'requirements.txt'
             installRequirements 'test-requirements.txt'
             stash includes: '*', name: 'source'
@@ -16,14 +16,14 @@ stage 'test'
 parallel 'cuda': {
     node 'cuda' {
         unstash 'source'
-        venv 'venv' {
+        virtualenv('venv') {
             withEnv(['CUDA_DEVICE=0']) { runTest() }
         }
     }
 }, 'opencl': {
     node 'opencl' {
         unstash 'source'
-        venv 'venv' {
+        virtualenv('venv') {
             withEnv(['PYOPENCL_CTX=0:0']) { runTest() }
         }
     }
@@ -40,17 +40,16 @@ node {
 }
 
 
-def installRequirements(filename) {
+def installRequirements(String filename) {
     sh "install-requirements.py -d ~/docker-base/base-requirements.txt -d ~/docker-base/gpu-requirements.txt $filename"
 }
 
-def venv(name, closure) {
-    withEnv(["PATH+VE=\$PWD/$name/bin", "VIRTUAL_ENV=\$PWD/$name"], closure)
-}
-
-def makeVenv(name, closure) {
-    sh "virtualenv $name"
-    venv(name, { sh 'pip install -r ~/docker-base/pre-requirements.txt'; closure(); })
+def virtualenv(String path, boolean create=false, Closure closure) {
+    if (create) {
+        sh "virtualenv $path"
+    }
+    def p = pwd()
+    withEnv(["PATH+VE=$p/$path/bin", "VIRTUAL_ENV=$p/$path"], closure)
 }
 
 def runTest() {
