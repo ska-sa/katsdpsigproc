@@ -41,7 +41,7 @@ node {
 
 
 def installRequirements(String filename) {
-    sh "install-requirements.py -d ~/docker-base/base-requirements.txt -d ~/docker-base/gpu-requirements.txt $filename"
+    sh "install-requirements.py -d ~/docker-base/base-requirements.txt -d ~/docker-base/gpu-requirements.txt -r $filename"
 }
 
 def virtualenv(String path, boolean create=false, Closure closure) {
