@@ -8,7 +8,7 @@ node {
         virtualenv('venv', true) {
             installRequirements 'requirements.txt'
             installRequirements 'test-requirements.txt'
-            stash includes: '*', name: 'source'
+            stash includes: '**', name: 'source'
         }
     }
 }
