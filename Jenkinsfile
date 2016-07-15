@@ -42,7 +42,7 @@ node {
         sh 'rm -rf doc/_build'
         sh 'make -C doc html'
     }
-    publishHTML reportName: 'API docs', reportDir: 'doc/_build/html'
+    publishHTML([reportName: 'API docs', reportDir: 'doc/_build/html', reportFiles: 'index.html'])
 }
 
 
