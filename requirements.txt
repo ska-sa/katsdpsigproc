@@ -4,6 +4,7 @@ futures
 mako
 markupsafe
 numpy
+pkginfo
 py
 pycuda
 pyopencl
