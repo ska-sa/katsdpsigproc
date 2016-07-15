@@ -15,7 +15,7 @@ node {
 
 stage 'test'
 parallel 'cuda': {
-    node 'cuda' {
+    node('cuda') {
         deleteDir()
         unstash 'source'
         virtualenv('venv') {
@@ -23,7 +23,7 @@ parallel 'cuda': {
         }
     }
 }, 'opencl': {
-    node 'opencl' {
+    node('opencl') {
         deleteDir()
         unstash 'source'
         virtualenv('venv') {
