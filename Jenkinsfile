@@ -36,10 +36,12 @@ stage 'doc'
 node {
     deleteDir()
     unstash 'source'
-    installRequirements 'doc-requirements.txt'
-    sh 'pip install --no-index ".[doc]"'
-    sh 'rm -rf doc/_build'
-    sh 'make -C doc html'
+    virtualenv('venv') {
+        installRequirements 'doc-requirements.txt'
+        sh 'pip install --no-index ".[doc]"'
+        sh 'rm -rf doc/_build'
+        sh 'make -C doc html'
+    }
     publishHTML reportName: 'API docs', reportDir: 'doc/_build/html'
 }
 
