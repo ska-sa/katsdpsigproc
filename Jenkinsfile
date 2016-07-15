@@ -2,7 +2,7 @@
 
 stage 'prepare'
 node {
-    sshagent ['katpull'] {
+    sshagent(['katpull']) {
         checkout scm
     }
 }
