@@ -45,10 +45,11 @@ def installRequirements(String filename) {
 }
 
 def virtualenv(String path, boolean create=false, Closure closure) {
+    def p = pwd()
     if (create) {
         sh "virtualenv $path"
+        closure = { sh 'pip install -r ~/docker-base/pre-requirements.txt'; closure() }
     }
-    def p = pwd()
     withEnv(["PATH+VE=$p/$path/bin", "VIRTUAL_ENV=$p/$path"], closure)
 }
 
