@@ -1,3 +1,3 @@
 #!groovy
 
-standardTest('bmerry@ska.ac.za', 'cuda')
+katsdp.standardTest('bmerry@ska.ac.za', 'cuda')
