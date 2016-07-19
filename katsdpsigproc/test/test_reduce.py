@@ -79,7 +79,7 @@ class TestHReduce(object):
     def test_small(self, context, queue):
         """Test that the special case for columns < work group size works"""
         self.check(context, queue, 7, 8, (1, 7))
-        assertTrue(False)  # DEBUG REMOVE THIS
+        assert_true(False)  # DEBUG REMOVE THIS
 
     @device_test
     @force_autotune
