@@ -1,3 +1,3 @@
 #!groovy
 
-katsdp.gpuBuild(maintainer: 'bmerry@ska.ac.za')
+katsdp.standardBuild(maintainer: 'bmerry@ska.ac.za', opencl: true, cuda: true)
