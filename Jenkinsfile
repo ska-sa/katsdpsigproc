@@ -1,3 +1,3 @@
 #!groovy
 
-katsdp.standardTest('bmerry@ska.ac.za', 'katsdpsigproc', 'cuda')
+katsdp.standardBuild(maintainer: 'bmerry@ska.ac.za', label: 'cuda')
