@@ -20,7 +20,7 @@ def wait_until(future, when, loop=None):
         loop = trollius.get_event_loop()
     waiter = trollius.Future(loop=loop)
     timeout_handle = loop.call_at(when, ready)
-    # Ensure the that future is really a future, not a coroutine object
+    # Ensure that the future is really a future, not a coroutine object
     future = trollius.async(future, loop=loop)
     future.add_done_callback(ready)
     try:
