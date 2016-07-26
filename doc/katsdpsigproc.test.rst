@@ -12,6 +12,30 @@ katsdpsigproc.test.test_accel module
     :undoc-members:
     :show-inheritance:
 
+katsdpsigproc.test.test_fill module
+-----------------------------------
+
+.. automodule:: katsdpsigproc.test.test_fill
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdpsigproc.test.test_maskedsum module
+----------------------------------------
+
+.. automodule:: katsdpsigproc.test.test_maskedsum
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdpsigproc.test.test_percentile module
+-----------------------------------------
+
+.. automodule:: katsdpsigproc.test.test_percentile
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 katsdpsigproc.test.test_rank module
 -----------------------------------
 
@@ -24,6 +48,14 @@ katsdpsigproc.test.test_reduce module
 -------------------------------------
 
 .. automodule:: katsdpsigproc.test.test_reduce
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdpsigproc.test.test_resource module
+---------------------------------------
+
+.. automodule:: katsdpsigproc.test.test_resource
     :members:
     :undoc-members:
     :show-inheritance:

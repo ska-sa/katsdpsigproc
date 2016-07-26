@@ -12,4 +12,5 @@ pytest
 pytools
 scipy
 six
+trollius
 git+ssh://git@github.com/ska-sa/katversion

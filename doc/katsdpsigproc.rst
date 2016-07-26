@@ -28,10 +28,50 @@ katsdpsigproc.cuda module
     :undoc-members:
     :show-inheritance:
 
+katsdpsigproc.fill module
+-------------------------
+
+.. automodule:: katsdpsigproc.fill
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdpsigproc.maskedsum module
+------------------------------
+
+.. automodule:: katsdpsigproc.maskedsum
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 katsdpsigproc.opencl module
 ---------------------------
 
 .. automodule:: katsdpsigproc.opencl
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdpsigproc.percentile module
+-------------------------------
+
+.. automodule:: katsdpsigproc.percentile
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdpsigproc.reduce module
+---------------------------
+
+.. automodule:: katsdpsigproc.reduce
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+katsdpsigproc.resource module
+-----------------------------
+
+.. automodule:: katsdpsigproc.resource
     :members:
     :undoc-members:
     :show-inheritance:
