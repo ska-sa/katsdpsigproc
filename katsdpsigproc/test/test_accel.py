@@ -151,6 +151,7 @@ class TestDeviceArray(object):
             src_shape, src_padded_shape,
             dest_shape, dest_padded_shape,
             src_region, dest_region):
+        # copy_region test
         dtype = np.int32
         src = self.cls(context, src_shape, dtype, src_padded_shape)
         dest = self.cls(context, dest_shape, dtype, dest_padded_shape)
@@ -163,6 +164,17 @@ class TestDeviceArray(object):
         h_dest = dest.get(queue)
         expected = np.zeros_like(h_dest)
         expected[dest_region] = h_src[src_region]
+        np.testing.assert_array_equal(expected, h_dest)
+        # set_region test
+        dest.zero(queue)
+        dest.set_region(queue, h_src, dest_region, src_region)
+        queue.finish()
+        h_dest = dest.get(queue)
+        np.testing.assert_array_equal(expected, h_dest)
+        # get_region test
+        h_dest.fill(0)
+        src.get_region(queue, h_dest, src_region, dest_region)
+        queue.finish()
         np.testing.assert_array_equal(expected, h_dest)
 
     @device_test
@@ -269,6 +281,17 @@ class TestDeviceArray(object):
             # OpenCL
             actual_raw = ary.buffer.data
         assert actual_raw is raw
+
+class TestPinnedAMD(TestDeviceArray):
+    """Run DeviceArray tests forcing `_PinnedAMD` class for pinned memory."""
+    @device_test
+    def setup(self, context, device):
+        context._force_pinned_amd = True
+        super(TestPinnedAMD, self).setup()
+
+    @device_test
+    def teardown(self, context, device):
+        context._force_pinned_amd = False
 
 class TestSVMArrayHost(TestHostArray):
     """Tests SVMArray using the HostArray tests"""
