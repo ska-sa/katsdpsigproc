@@ -1,6 +1,7 @@
 appdirs
 decorator
 futures
+katversion
 mako
 markupsafe
 numpy
@@ -13,4 +14,3 @@ pytools
 scipy
 six
 trollius
-git+ssh://git@github.com/ska-sa/katversion
