@@ -29,9 +29,8 @@ class MaskedSumTemplate(object):
         if tuning is None:
             tuning = self.autotune(context)
         self.size = tuning['size']
-        program = accel.build(context, "maskedsum.mako", {
+        self.program = accel.build(context, "maskedsum.mako", {
                 'size': self.size})
-        self.kernel = program.get_kernel("maskedsum_float2")
 
     @classmethod
     @tune.autotuner(test={'size': 256})
@@ -79,6 +78,7 @@ class MaskedSum(accel.Operation):
     def __init__(self, template, command_queue, shape, allocator=None):
         super(MaskedSum, self).__init__(command_queue, allocator)
         self.template = template
+        self.kernel = template.program.get_kernel("maskedsum_float2")
         self.shape = shape
         self.slots['src'] = accel.IOSlot((shape[0], accel.Dimension(shape[1], template.size)), np.complex64)
         self.slots['mask'] = accel.IOSlot((shape[0],), np.float32)
@@ -89,7 +89,7 @@ class MaskedSum(accel.Operation):
         mask = self.buffer('mask')
         dest = self.buffer('dest')
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [
                     src.buffer, mask.buffer, dest.buffer,
                     np.int32(src.padded_shape[1]), np.int32(src.shape[0])

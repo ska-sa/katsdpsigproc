@@ -40,12 +40,11 @@ class Percentile5Template(object):
         self.size = tuning['size']
         self.wgsy = tuning['wgsy']
         self.vt = accel.divup(max_columns, tuning['size'])
-        program = accel.build(context, "percentile.mako", {
+        self.program = accel.build(context, "percentile.mako", {
                 'size': self.size,
                 'wgsy': self.wgsy,
                 'vt': self.vt,
                 'is_amplitude': self.is_amplitude})
-        self.kernel = program.get_kernel("percentile5_float")
 
     @classmethod
     @tune.autotuner(test={'size': 64, 'wgsy': 4})
@@ -116,6 +115,7 @@ class Percentile5(accel.Operation):
         if column_range[1] - column_range[0] > template.max_columns:
             raise ValueError('columns exceeds max_columns')
         self.template = template
+        self.kernel = template.program.get_kernel("percentile5_float")
         self.shape = shape
         self.column_range = column_range
         src_type = np.float32 if self.template.is_amplitude else np.complex64
@@ -129,7 +129,7 @@ class Percentile5(accel.Operation):
         dest = self.buffer('dest')
         rows_padded = accel.roundup(src.shape[0], self.template.wgsy)
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [
                     src.buffer, dest.buffer,
                     np.int32(src.padded_shape[1]),
