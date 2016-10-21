@@ -34,10 +34,9 @@ class FillTemplate(object):
         if tuning is None:
             tuning = self.autotune(context, dtype, ctype)
         self.wgs = tuning['wgs']
-        program = accel.build(context, "fill.mako", {
+        self.program = accel.build(context, "fill.mako", {
                 'wgs': self.wgs,
                 'ctype': ctype})
-        self.kernel = program.get_kernel("fill")
 
     @classmethod
     @tune.autotuner(test={'wgs': 128})
@@ -78,6 +77,7 @@ class Fill(accel.Operation):
     def __init__(self, template, command_queue, shape, allocator=None):
         super(Fill, self).__init__(command_queue, allocator)
         self.template = template
+        self.kernel = template.program.get_kernel("fill")
         self.shape = shape
         self.slots['data'] = accel.IOSlot(shape, self.template.dtype)
         self.value = self.template.dtype.type()
@@ -91,7 +91,7 @@ class Fill(accel.Operation):
         elements = np.product(data.padded_shape)
         global_size = accel.roundup(elements, self.template.wgs)
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [data.buffer, np.uint32(elements), self.value],
                 global_size=(global_size,),
                 local_size=(self.template.wgs,))

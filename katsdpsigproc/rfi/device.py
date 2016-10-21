@@ -65,9 +65,8 @@ class BackgroundMedianFilterDeviceTemplate(object):
         self.is_amplitude = is_amplitude
         self.wgs = tuning['wgs']
         self.csplit = tuning['csplit']
-        program = accel.build(context, 'rfi/background_median_filter.mako',
+        self.program = accel.build(context, 'rfi/background_median_filter.mako',
                 {'width': width, 'wgs': self.wgs, 'is_amplitude': is_amplitude})
-        self.kernel = program.get_kernel('background_median_filter')
 
     @classmethod
     @tune.autotuner(test={'wgs': 128, 'csplit': 4})
@@ -122,6 +121,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
     def __init__(self, template, command_queue, channels, baselines, allocator=None):
         super(BackgroundMedianFilterDevice, self).__init__(command_queue, allocator)
         self.template = template
+        self.kernel = template.program.get_kernel('background_median_filter')
         self.channels = channels
         self.baselines = baselines
         vis_type = np.float32 if template.is_amplitude else np.complex64
@@ -140,7 +140,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
         deviations = self.buffer('deviations')
         stride = vis.padded_shape[1]
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [
                     vis.buffer,
                     deviations.buffer,
@@ -205,9 +205,8 @@ class NoiseEstMADDeviceTemplate(object):
         self.context = context
         self.wgsx = tuning['wgsx']
         self.wgsy = tuning['wgsy']
-        program = accel.build(context, 'rfi/madnz.mako',
+        self.program = accel.build(context, 'rfi/madnz.mako',
                 {'wgsx': self.wgsx, 'wgsy': self.wgsy})
-        self.kernel = program.get_kernel('madnz')
 
     @classmethod
     @tune.autotuner(test={'wgsx': 32, 'wgsy': 8})
@@ -246,6 +245,7 @@ class NoiseEstMADDevice(accel.Operation):
     def __init__(self, template, command_queue, channels, baselines, allocator=None):
         super(NoiseEstMADDevice, self).__init__(command_queue, allocator)
         self.template = template
+        self.kernel = template.program.get_kernel('madnz')
         self.channels = channels
         self.baselines = baselines
         baselines_dim = accel.Dimension(baselines, self.template.wgsx)
@@ -259,7 +259,7 @@ class NoiseEstMADDevice(accel.Operation):
         deviations = self.buffer('deviations')
         noise = self.buffer('noise')
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [
                     deviations.buffer, noise.buffer,
                     np.int32(self.channels), np.int32(deviations.padded_shape[1]),
@@ -313,9 +313,8 @@ class NoiseEstMADTDeviceTemplate(object):
             tuning = self.autotune(context, max_channels)
         self.wgsx = tuning['wgsx']
         vt = accel.divup(max_channels, self.wgsx)
-        program = accel.build(context, 'rfi/madnz_t.mako',
+        self.program = accel.build(context, 'rfi/madnz_t.mako',
                 {'vt': vt, 'wgsx': self.wgsx})
-        self.kernel = program.get_kernel('madnz_t')
 
     @classmethod
     @tune.autotuner(test={'wgsx': 128})
@@ -365,6 +364,7 @@ class NoiseEstMADTDevice(accel.Operation):
     def __init__(self, template, command_queue, channels, baselines, allocator=None):
         super(NoiseEstMADTDevice, self).__init__(command_queue, allocator)
         self.template = template
+        self.kernel = template.program.get_kernel('madnz_t')
         if channels > self.template.max_channels:
             raise ValueError('channels exceeds max_channels')
         self.channels = channels
@@ -376,7 +376,7 @@ class NoiseEstMADTDevice(accel.Operation):
         deviations = self.buffer('deviations')
         noise = self.buffer('noise')
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [
                     deviations.buffer, noise.buffer,
                     np.int32(self.channels), np.int32(deviations.padded_shape[1])
@@ -454,14 +454,11 @@ class ThresholdSimpleDeviceTemplate(object):
         self.flag_value = flag_value
         if transposed:
             source_name = 'rfi/threshold_simple_t.mako'
-            kernel_name = 'threshold_simple_t'
         else:
             source_name = 'rfi/threshold_simple.mako'
-            kernel_name = 'threshold_simple'
-        program = accel.build(context, source_name,
+        self.program = accel.build(context, source_name,
                 {'wgsx': self.wgsx, 'wgsy': self.wgsy,
                     'flag_value': flag_value})
-        self.kernel = program.get_kernel(kernel_name)
 
     @classmethod
     @tune.autotuner(test={'wgsx': 32, 'wgsy': 4})
@@ -502,6 +499,11 @@ class ThresholdSimpleDevice(accel.Operation):
     def __init__(self, template, command_queue, channels, baselines, n_sigma, allocator=None):
         super(ThresholdSimpleDevice, self).__init__(command_queue, allocator)
         self.template = template
+        if template.transposed:
+            kernel_name = 'threshold_simple_t'
+        else:
+            kernel_name = 'threshold_simple'
+        self.kernel = template.program.get_kernel(kernel_name)
         self.n_sigma = n_sigma
         self.channels = channels
         self.baselines = baselines
@@ -525,7 +527,7 @@ class ThresholdSimpleDevice(accel.Operation):
         global_x = accel.roundup(deviations.shape[1], self.template.wgsx)
         global_y = accel.roundup(deviations.shape[0], self.template.wgsy)
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [
                     deviations.buffer, noise.buffer, flags.buffer,
                     np.int32(stride),
@@ -580,12 +582,11 @@ class ThresholdSumDeviceTemplate(object):
         self.wgs = wgs
         self.vt = vt
         self.flag_value = flag_value
-        program = accel.build(context, 'rfi/threshold_sum.mako',
+        self.program = accel.build(context, 'rfi/threshold_sum.mako',
                 {'wgs': self.wgs,
                  'vt': self.vt,
                  'windows' : self.n_windows,
                  'flag_value': self.flag_value})
-        self.kernel = program.get_kernel('threshold_sum')
 
     @classmethod
     @tune.autotuner(test={'wgs': 128, 'vt': 3})
@@ -647,6 +648,7 @@ class ThresholdSumDevice(accel.Operation):
                  allocator=None):
         super(ThresholdSumDevice, self).__init__(command_queue, allocator)
         self.template = template
+        self.kernel = template.program.get_kernel('threshold_sum')
         self.channels = channels
         self.baselines = baselines
         self.n_sigma = [np.float32(n_sigma * pow(threshold_falloff, -i)) for i in range(template.n_windows)]
@@ -668,7 +670,7 @@ class ThresholdSumDevice(accel.Operation):
                 np.int32(self.channels), np.int32(deviations.padded_shape[1])]
         args.extend(self.n_sigma)
         self.command_queue.enqueue_kernel(
-                self.template.kernel, args,
+                self.kernel, args,
                 global_size=(blocks * self.template.wgs, self.baselines),
                 local_size=(self.template.wgs, 1))
 

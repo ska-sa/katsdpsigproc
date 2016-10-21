@@ -42,10 +42,9 @@ class HReduceTemplate(object):
         self.op = op
         self.identity = identity
         self.extra_code = extra_code
-        program = accel.build(context, 'hreduce.mako', {
+        self.program = accel.build(context, 'hreduce.mako', {
             'wgsx': self.wgsx, 'wgsy': self.wgsy, 'type': self.ctype,
             'op': op, 'identity': identity, 'extra_code': extra_code})
-        self.kernel = program.get_kernel('hreduce')
 
     @classmethod
     @tune.autotuner(test={'wgsx': 64, 'wgsy': 4})
@@ -108,6 +107,7 @@ class HReduce(accel.Operation):
 
         super(HReduce, self).__init__(command_queue, allocator)
         self.template = template
+        self.kernel = template.program.get_kernel('hreduce')
         self.column_range = column_range
         self.slots['src'] = accel.IOSlot(
                 (accel.Dimension(shape[0], self.template.wgsy), shape[1]),
@@ -122,7 +122,7 @@ class HReduce(accel.Operation):
         rows_padded = accel.roundup(src.shape[0], self.template.wgsy)
         n_columns = self.column_range[1] - self.column_range[0]
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [
                     src.buffer, dest.buffer,
                     np.int32(self.column_range[0]), np.int32(n_columns),

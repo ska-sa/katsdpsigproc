@@ -35,12 +35,11 @@ class TransposeTemplate(object):
         self._block = tuning['block']
         self._tilex = tuning['block'] * tuning['vtx']
         self._tiley = tuning['block'] * tuning['vty']
-        program = accel.build(context, "transpose.mako", {
+        self.program = accel.build(context, "transpose.mako", {
                 'block': tuning['block'],
                 'vtx': tuning['vtx'],
                 'vty': tuning['vty'],
                 'ctype': ctype})
-        self.kernel = program.get_kernel("transpose")
 
     @classmethod
     @tune.autotuner(test={'block': 8, 'vtx': 2, 'vty': 3})
@@ -83,6 +82,7 @@ class Transpose(accel.Operation):
     def __init__(self, template, command_queue, shape, allocator=None):
         super(Transpose, self).__init__(command_queue, allocator)
         self.template = template
+        self.kernel = template.program.get_kernel("transpose")
         self.shape = shape
         self.slots['src'] = accel.IOSlot(shape, template.dtype)
         self.slots['dest'] = accel.IOSlot((shape[1], shape[0]), template.dtype)
@@ -94,7 +94,7 @@ class Transpose(accel.Operation):
         in_row_tiles = accel.divup(src.shape[0], self.template._tiley)
         in_col_tiles = accel.divup(src.shape[1], self.template._tilex)
         self.command_queue.enqueue_kernel(
-                self.template.kernel,
+                self.kernel,
                 [
                     dest.buffer, src.buffer,
                     np.int32(src.shape[0]), np.int32(src.shape[1]),
