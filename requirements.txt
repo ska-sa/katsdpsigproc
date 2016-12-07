@@ -1,4 +1,5 @@
 appdirs
+cffi
 decorator
 futures
 katversion
@@ -7,6 +8,7 @@ markupsafe
 numpy
 pkginfo
 py
+pycparser
 pycuda
 pyopencl
 pytest
