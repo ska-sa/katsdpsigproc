@@ -36,6 +36,15 @@ DEVICE_FN ${type}4 make_${type}4(${type} x, ${type} y, ${type} z, ${type} w)
 #include <float.h>
 #include <stdio.h>
 
+/* System headers may provide some of these, but it's OS dependent. It's
+ * legal to repeat typedefs, so make sure that they're all available for
+ * consistency with OpenCL.
+ */
+typedef unsigned char uchar;
+typedef unsigned short ushort;
+typedef unsigned int uint;
+typedef unsigned long ulong;
+
 #define DEVICE_FN __device__
 #define KERNEL __global__
 #define GLOBAL_DECL __global__
