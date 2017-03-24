@@ -36,6 +36,12 @@ DEVICE_FN ${type}4 make_${type}4(${type} x, ${type} y, ${type} z, ${type} w)
 #include <float.h>
 #include <stdio.h>
 
+/* CUDA on Linux seems to provide these, but CUDA on OS X does not. */
+typedef unsigned char uchar;
+typedef unsigned short ushort;
+typedef unsigned int uint;
+typedef unsigned long ulong;
+
 #define DEVICE_FN __device__
 #define KERNEL __global__
 #define GLOBAL_DECL __global__
