@@ -36,7 +36,10 @@ DEVICE_FN ${type}4 make_${type}4(${type} x, ${type} y, ${type} z, ${type} w)
 #include <float.h>
 #include <stdio.h>
 
-/* CUDA on Linux seems to provide these, but CUDA on OS X does not. */
+/* System headers may provide some of these, but it's OS dependent. It's
+ * legal to repeat typedefs, so make sure that they're all available for
+ * consistency with OpenCL.
+ */
 typedef unsigned char uchar;
 typedef unsigned short ushort;
 typedef unsigned int uint;
