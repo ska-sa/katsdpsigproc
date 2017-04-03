@@ -59,7 +59,7 @@ class MaskedSumAbsTemplate(object):
         return MaskedSumAbs(self, *args, **kwargs)
 
 class MaskedSumAbs(accel.Operation):
-    """Concrete instance of :class:`MaskedSumTemplate`.
+    """Concrete instance of :class:`MaskedSumAbsTemplate`.
 
     .. rubric:: Slots
 
@@ -76,7 +76,7 @@ class MaskedSumAbs(accel.Operation):
         Shape is (number of columns of input)
     """
     def __init__(self, template, command_queue, shape, allocator=None):
-        super(MaskedSum, self).__init__(command_queue, allocator)
+        super(MaskedSumAbs, self).__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("maskedsumabs_float")
         self.shape = shape
