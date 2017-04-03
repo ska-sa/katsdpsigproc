@@ -27,7 +27,7 @@ KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void maskedsumabs_float(
     value=0.0;
     for (row=0,rowcoloffset=col;row<Nrows;row++,rowcoloffset+=in_stride)
     {
-        value = fma(in_mask[row], sqrtf(in[rowcoloffset].x*in[rowcoloffset].x+in[rowcoloffset].y*in[rowcoloffset].y), value);
+        value = fma(in_mask[row], sqrt(in[rowcoloffset].x*in[rowcoloffset].x+in[rowcoloffset].y*in[rowcoloffset].y), value);
     }
     out[col]=value;
 }
