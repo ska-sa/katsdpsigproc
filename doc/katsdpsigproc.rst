@@ -44,14 +44,6 @@ katsdpsigproc.maskedsum module
     :undoc-members:
     :show-inheritance:
 
-katsdpsigproc.maskedsumabs module
-------------------------------
-
-.. automodule:: katsdpsigproc.maskedsumabs
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 katsdpsigproc.opencl module
 ---------------------------
 

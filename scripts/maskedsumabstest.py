@@ -4,7 +4,7 @@ import time
 import numpy as np
 from katsdpsigproc import accel
 from katsdpsigproc.accel import DeviceArray, build
-from katsdpsigproc import maskedsumabs as msum
+from katsdpsigproc import maskedsum as msum
 
 context = accel.create_some_context(True)
 queue = context.create_command_queue(profile=True)

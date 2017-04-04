@@ -28,14 +28,6 @@ katsdpsigproc.test.test_maskedsum module
     :undoc-members:
     :show-inheritance:
 
-katsdpsigproc.test.test_maskedsumabs module
-----------------------------------------
-
-.. automodule:: katsdpsigproc.test.test_maskedsumabs
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 katsdpsigproc.test.test_percentile module
 -----------------------------------------
 
