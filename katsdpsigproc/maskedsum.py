@@ -125,7 +125,7 @@ class MaskedSumAbsTemplate(object):
         if tuning is None:
             tuning = self.autotune(context)
         self.size = tuning['size']
-        self.program = accel.build(context, "maskedsumabs.mako", {
+        self.program = accel.build(context, "maskedsum.mako", {
                 'size': self.size})
 
     @classmethod
