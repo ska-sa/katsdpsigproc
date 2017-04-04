@@ -75,7 +75,7 @@ class TestMaskedSumAbs(object):
         fn()
         out = dest.get(queue).reshape(-1)
         expected = np.sum(np.abs(ary)*msk.reshape(ary.shape[0],1),axis=0).astype(np.float32)
-        np.testing.assert_equal(expected, out)
+        np.testing.assert_approx_equal(expected, out, significant=7)
 
     @device_test
     @force_autotune
