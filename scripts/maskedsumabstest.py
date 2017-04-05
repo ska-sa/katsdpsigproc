@@ -26,4 +26,4 @@ t0 = time.time()
 expected = np.sum(np.abs(data)*mask.reshape(data.shape[0],1),axis=0).astype(np.float32)
 t1 = time.time()
 print 'gpu:', end_event.time_since(start_event), 'cpu:', t1-t0
-np.testing.assert_equal(out.reshape(-1), expected)
+np.testing.assert_allclose(expected, out.reshape(-1), rtol=1e-6)
