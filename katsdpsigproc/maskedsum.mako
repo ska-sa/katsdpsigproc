@@ -1,7 +1,7 @@
 /**
  * @file
  *
- * Kernel function for summing floating point arrays using a mask
+ * Kernel function for summing floating point arrays using a mask.
  */
 
 <%include file="/port.mako"/>
@@ -15,21 +15,38 @@
  * Input data in its flattened form is [row0col0, row0col1, row0col2,.., ..padding, row1col0, row1col1, ...]
  * 'in_stride' indexes row1col0 to account for padding
  * 'out' is of shape (ncols of input)
+ *
+ * If @a use_amplitudes is true, then the sum is taken over the amplitudes of
+ * the input complex values, rather than the complex values themselves.
  */
-KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void maskedsum_float2(
+KERNEL REQD_WORK_GROUP_SIZE(${size}, 1, 1) void maskedsum_float(
     GLOBAL const float2 * RESTRICT in, GLOBAL const float * RESTRICT in_mask,
-    GLOBAL float2 * RESTRICT out, int in_stride,
+% if use_amplitudes:
+    GLOBAL float * RESTRICT out,
+% else:
+    GLOBAL float2 * RESTRICT out,
+% endif
+    int in_stride,
     int Nrows)
 {
     int col = get_global_id(0);//block id of processing element
-    int row,rowcoloffset;
+    int row, rowcoloffset;
+% if use_amplitudes:
+    float value = 0.0f;
+% else:
     float2 value;
-    value.x=0.0;
-    value.y=0.0;
-    for (row=0,rowcoloffset=col;row<Nrows;row++,rowcoloffset+=in_stride)
+    value.x = 0.0f;
+    value.y = 0.0f;
+% endif
+    for (row = 0, rowcoloffset = col; row < Nrows; row++, rowcoloffset += in_stride)
     {
-        value.x = fma(in_mask[row], in[rowcoloffset].x, value.x);
-        value.y = fma(in_mask[row], in[rowcoloffset].y, value.y);
+        float2 c = in[rowcoloffset];
+% if use_amplitudes:
+        value = fma(in_mask[row], sqrt(c.x * c.x + c.y * c.y), value);
+% else:
+        value.x = fma(in_mask[row], c.x, value.x);
+        value.y = fma(in_mask[row], c.y, value.y);
+% endif
     }
-    out[col]=value;
+    out[col] = value;
 }

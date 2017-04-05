@@ -7,11 +7,12 @@ from .. import maskedsum
 
 class TestMaskedSum(object):
     def test_maskedsum(self):
-        yield self.check_maskedsum, 4096, 2
-        yield self.check_maskedsum, 4096, 4029
-        yield self.check_maskedsum, 4096, 4030
-        yield self.check_maskedsum, 4096, 4031
-        yield self.check_maskedsum, 4096, 4032
+        for use_amplitudes in (False, True):
+            yield self.check_maskedsum, 4096, 2, use_amplitudes
+            yield self.check_maskedsum, 4096, 4029, use_amplitudes
+            yield self.check_maskedsum, 4096, 4030, use_amplitudes
+            yield self.check_maskedsum, 4096, 4031, use_amplitudes
+            yield self.check_maskedsum, 4096, 4032, use_amplitudes
 
     @classmethod
     def pad_dimension(cls, dim, extra):
@@ -20,10 +21,10 @@ class TestMaskedSum(object):
         newdim.link(dim)
 
     @device_test
-    def check_maskedsum(self, R, C, context, queue):
-        template = maskedsum.MaskedSumTemplate(context)
+    def check_maskedsum(self, R, C, use_amplitudes, context, queue):
+        template = maskedsum.MaskedSumTemplate(context, use_amplitudes)
         fn = template.instantiate(queue, (R, C))
-        # Force some padded, to check that stride calculation works
+        # Force some padding, to check that stride calculation works
         self.pad_dimension(fn.slots['src'].dimensions[0], 1)
         self.pad_dimension(fn.slots['src'].dimensions[1], 4)
         ary = np.random.randn(R, C, 2).astype(np.float32).view(dtype=np.complex64)[...,0]
@@ -35,11 +36,16 @@ class TestMaskedSum(object):
         mask.set_async(queue, msk)
         fn()
         out = dest.get(queue).reshape(-1)
-        expected = np.sum(ary*msk.reshape(ary.shape[0],1),axis=0).astype(np.complex64)
-        np.testing.assert_equal(expected, out)
+        if use_amplitudes:
+            use_ary = np.abs(ary)
+        else:
+            use_ary = ary
+        expected = np.sum(use_ary * msk.reshape(ary.shape[0], 1), axis=0)
+        np.testing.assert_allclose(expected, out, rtol=1e-6)
 
     @device_test
     @force_autotune
     def test_autotune(self, context, queue):
         """Check that the autotuner runs successfully"""
-        maskedsum.MaskedSumTemplate(context)
+        maskedsum.MaskedSumTemplate(context, False)
+        maskedsum.MaskedSumTemplate(context, True)
