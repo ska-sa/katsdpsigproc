@@ -6,6 +6,7 @@ katversion
 mako
 markupsafe
 numpy
+pandas
 pkginfo
 py
 pycparser
@@ -13,6 +14,5 @@ pycuda
 pyopencl
 pytest
 pytools
-scipy
 six
 trollius

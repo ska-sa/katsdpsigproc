@@ -2,7 +2,7 @@
 """RFI flagging algorithms that run on the CPU."""
 
 import numpy as np
-import scipy.signal as signal
+import pandas as pd
 
 class BackgroundMedianFilterHost(object):
     """Host backgrounder that applies a median filter to each baseline
@@ -19,12 +19,21 @@ class BackgroundMedianFilterHost(object):
         self.width = width
         self.amplitudes = amplitudes
 
-    def __call__(self, vis):
+    def __call__(self, vis, flags=None):
         if self.amplitudes:
-            amp = vis
+            amp = pd.DataFrame(vis)
         else:
-            amp = np.abs(vis)
-        return amp - signal.medfilt2d(amp, [self.width, 1])
+            amp = pd.DataFrame(np.abs(vis))
+        if flags is not None:
+            # Convert the flags to bool, and add in a baseline axis. The mask
+            # function in Pandas doesn't automatically broadcast, so we have
+            # to do so explicitly with np.broadcast_to.
+            flags_2d = np.broadcast_to(flags.astype(np.bool)[:, np.newaxis], vis.shape)
+            amp = amp.mask(flags_2d)
+        med = amp.rolling(self.width, center=True, min_periods=1).median()
+        deviation = amp - med
+        deviation.fillna(0, inplace=True)
+        return deviation.values
 
 class NoiseEstMADHost(object):
     """Estimate noise using the median of non-zero absolute deviations."""
@@ -171,22 +180,22 @@ class FlaggerHost(object):
         self.noise_est = noise_est
         self.threshold = threshold
 
-    def __call__(self, vis):
+    def __call__(self, vis, channel_flags=None):
         """Perform the flagging.
 
         Parameters
         ----------
-        vis : array_like
+        vis : array-like
             The input visibilities as a 2D array of complex64, indexed
             by channel and baseline.
+        flags : array-like
+            Predefined channel flags as an array of uint8
 
         Returns
         -------
         :class:`numpy.ndarray`
-            Flags of the same shape as `vis`
+            Flags of the same shape as `vis`.
         """
-
-        deviations = self.background(vis)
+        deviations = self.background(vis, channel_flags)
         noise = self.noise_est(deviations)
-        flags = self.threshold(deviations, noise)
-        return flags
+        return self.threshold(deviations, noise)

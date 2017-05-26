@@ -14,6 +14,17 @@
  *
  * Each thread processes a contiguous part of the band for a baseline, using
  * a sliding-window median filter.
+ *
+ * Optionally, per-channel flags can be passed in, indicating known-bad values
+ * that should be ignored for computing the background. Any non-zero flag value
+ * indicates that the corresponding visibility should be ignored.
+ *
+ * If is_amplitude is true, then the inputs are the amplitudes rather than
+ * complex values. In this case, negative values are also treated as flagged,
+ * regardless of whether flag booleans are provided.
+ *
+ * The output is the difference between the original and filtered amplitudes.
+ * Flagged values in the input are mapped to zero in the output.
  */
 
 <%include file="/port.mako"/>
@@ -43,6 +54,11 @@ DEVICE_FN float amplitude(in_type v)
  * Serial sliding-window median filter. New elements are added using
  * @ref slide, and the median of the last @a WIDTH elements is retrieved
  * by calling @ref get.
+ *
+ * Flagged values are indicated by passing a negative value. Only the unflagged
+ * values are considered when computing the median. If there are an even number
+ * of values, the average of the two medians is returned. If there are no valid
+ * values, the result is undefined.
  */
 typedef struct median_filter
 {
@@ -52,34 +68,42 @@ typedef struct median_filter
     float samples[WIDTH];
 
     /**
-     * Rank of each sample (0 being smallest). When there are ties, the
-     * oldest sample is considered smaller.
+     * Rank of each sample (0 being largest). When there are ties, the
+     * oldest sample is considered larger.
      */
     int rank[WIDTH];
+
+    /// Number of elements in samples that are non-negative
+    int num_valid;
 } median_filter;
 
 /**
- * Initialise the filter using zero-valued samples.
+ * Initialise the filter using invalid samples.
  */
 DEVICE_FN void median_filter_init(median_filter *self)
 {
     for (int i = 0; i < WIDTH; i++)
     {
-        self->samples[i] = 0;
+        self->samples[i] = -1;
         self->rank[i] = i;
     }
+    self->num_valid = 0;
 }
 
 /// Return the median of the current samples
 DEVICE_FN float median_filter_get(const median_filter *self)
 {
-    const int H = WIDTH / 2;
+    int lo = (self->num_valid - 1) / 2;
+    int hi = self->num_valid / 2;
     float result = 0.0f;
     for (int j = 0; j < WIDTH; j++)
     {
-        result = (self->rank[j] == H) ? self->samples[j] : result;
+        if (self->rank[j] == lo)
+            result += self->samples[j];
+        if (self->rank[j] == hi)
+            result += self->samples[j];
     }
-    return result;
+    return result * 0.5f;
 }
 
 DEVICE_FN float median_filter_center(const median_filter *self)
@@ -95,12 +119,13 @@ DEVICE_FN void median_filter_slide(median_filter *self, float new_sample)
     for (int j = 0; j < WIDTH - 1; j++)
     {
         self->samples[j] = self->samples[j + 1];
-        int cmp = (new_sample < self->samples[j]);
-        self->rank[j] = self->rank[j + 1] + cmp - (old_sample <= self->samples[j]);
+        int cmp = (new_sample > self->samples[j]);
+        self->rank[j] = self->rank[j + 1] + cmp - (old_sample >= self->samples[j]);
         new_rank -= cmp;
     }
     self->samples[WIDTH - 1] = new_sample;
     self->rank[WIDTH - 1] = new_rank;
+    self->num_valid += (new_sample >= 0.0f) - (old_sample >= 0.0f);
 }
 
 /**
@@ -109,31 +134,42 @@ DEVICE_FN void median_filter_slide(median_filter *self, float new_sample)
  * size @a N.
  */
 DEVICE_FN static void medfilt_serial_sliding(
-    const GLOBAL in_type * RESTRICT in, GLOBAL float * __restrict out,
+    const GLOBAL in_type * RESTRICT in, GLOBAL float * RESTRICT out,
+% if use_flags:
+    const GLOBAL unsigned char * RESTRICT flags,
+% endif
     int first, int last, int N, int stride)
 {
+% if use_flags:
+#define AMPLITUDE(idx) (flags[(idx)] ? -1.0f : amplitude(in[(idx) * stride]))
+% else:
+#define AMPLITUDE(idx) amplitude(in[(idx) * stride])
+% endif
     const int H = WIDTH / 2;
     median_filter filter;
     median_filter_init(&filter);
 
-    // Load the initial window, substituting zeros beyond the ends.
+    // Load the initial window, substituting invalid values beyond the ends.
     // These is no need for this on the leading edge, because the
-    // constructor initialises with zero samples.
+    // constructor initialises with invalid samples.
     for (int i = max(0, first - H); i < min(first + H, N); i++)
-        median_filter_slide(&filter, amplitude(in[i * stride]));
+        median_filter_slide(&filter, AMPLITUDE(i));
     for (int i = N; i < first + H; i++)
-        median_filter_slide(&filter, 0.0f);
+        median_filter_slide(&filter, -1.0f);
 
     for (int i = first; i < min(last, N - H); i++)
     {
-        median_filter_slide(&filter, amplitude(in[(i + H) * stride]));
-        out[i * stride] = median_filter_center(&filter) - median_filter_get(&filter);
+        median_filter_slide(&filter, AMPLITUDE(i + H));
+        float cur = median_filter_center(&filter);
+        out[i * stride] = cur >= 0.0f ? cur - median_filter_get(&filter) : 0.0f;
     }
     for (int i = max(first, N - H); i < last; i++)
     {
-        median_filter_slide(&filter, 0.0f);
-        out[i * stride] = median_filter_center(&filter) - median_filter_get(&filter);
+        median_filter_slide(&filter, -1.0f);
+        float cur = median_filter_center(&filter);
+        out[i * stride] = cur >= 0.0f ? cur - median_filter_get(&filter) : 0.0f;
     }
+#undef AMPLITUDE
 }
 
 /**
@@ -145,6 +181,9 @@ DEVICE_FN static void medfilt_serial_sliding(
  */
 KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
     const GLOBAL in_type * RESTRICT in, GLOBAL float * RESTRICT out,
+% if use_flags:
+    const GLOBAL unsigned char * flags,
+% endif
     int channels, int stride, int VT)
 {
     int bl = get_global_id(0);
@@ -153,5 +192,8 @@ KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
     int end_channel = min(start_channel + VT, channels);
     medfilt_serial_sliding(
         in + bl, out + bl,
+% if use_flags:
+        flags,
+% endif
         start_channel, end_channel, channels, stride);
 }
