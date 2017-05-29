@@ -6,13 +6,15 @@ katversion
 mako
 markupsafe
 numpy
-pandas
+pandas==0.20.1
 pkginfo
 py
 pycparser
 pycuda
 pyopencl
 pytest
+python-dateutil==2.6.0     # Needed by Pandas
 pytools
+pytz                       # Needed by Pandas
 six
 trollius
