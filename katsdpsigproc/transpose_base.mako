@@ -8,7 +8,7 @@
  * costs.
  *
  * The tiles are mapped in a "diagonal" fashion, which prevents some
- * imbalanced between memory channels.
+ * imbalances between memory channels.
  *
  * This file defines tools for creating custom kernels that do transposition
  * combined with other operations. For a ready-to-use implementation, see

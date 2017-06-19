@@ -8,7 +8,7 @@
  * costs.
  *
  * The tiles are mapped in a "diagonal" fashion, which prevents some
- * imbalanced between memory channels.
+ * imbalances between memory channels.
  *
  * It could potentially benefit from specialisations for the case where
  * padding is available, to avoid the need for conditional accesses.
