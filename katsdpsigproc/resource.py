@@ -109,7 +109,7 @@ class ResourceAllocation(object):
     def __exit__(self, exc_type, exc_value, exc_tb):
         if not self._end.done():
             if exc_type is not None:
-                self._end.cancel()
+                self._end._set_exception_with_tb(exc_value, exc_tb)
             else:
                 _logger.warn('Resource allocation was not explicitly made ready')
                 self.ready()

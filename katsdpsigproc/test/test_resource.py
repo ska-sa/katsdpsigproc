@@ -131,7 +131,7 @@ class TestResource(object):
             with a0:
                 yield From(a0.wait_events())
                 raise RuntimeError('test exception')
-        with assert_raises(trollius.CancelledError):
+        with assert_raises(RuntimeError):
             with a1:
                 yield From(a1.wait_events())
                 a1.ready()
