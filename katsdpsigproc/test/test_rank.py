@@ -1,10 +1,12 @@
 """Tests for rank.mako"""
 
+from __future__ import division, print_function, absolute_import
 import numpy as np
 from .. import accel
 from ..accel import DeviceArray, build
 from .test_accel import device_test
 from nose.tools import assert_equal
+from six.moves import range
 
 @device_test
 def setup(context, queue):

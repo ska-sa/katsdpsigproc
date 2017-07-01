@@ -1,6 +1,7 @@
 #coding: utf-8
 """Reduction algorithms"""
 
+from __future__ import division, print_function, absolute_import
 import numpy as np
 from . import accel
 from . import tune

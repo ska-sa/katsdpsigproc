@@ -1,6 +1,8 @@
 #!/usr/bin/env python
+from __future__ import division, print_function, absolute_import
 from katsdpsigproc import accel, transpose
 import numpy as np
+from six.moves import range
 
 dtype = np.complex64
 ctype = 'float2'
@@ -21,4 +23,4 @@ proc()  # Warmup
 for i in range(4):
     queue.start_tuning()
     proc()
-    print queue.stop_tuning()
+    print(queue.stop_tuning())

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+from __future__ import division, print_function, absolute_import
 import numpy as np
 from nose.tools import assert_equal
 from .test_accel import device_test, force_autotune

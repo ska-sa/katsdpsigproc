@@ -2,6 +2,7 @@
 
 """Test script that runs RFI flagging on random or real data."""
 
+from __future__ import division, print_function, absolute_import
 import numpy as np
 import katsdpsigproc.rfi.host
 import katsdpsigproc.rfi.device
@@ -71,7 +72,7 @@ def main():
         try:
             context = accel.create_some_context(True)
         except RuntimeError:
-            print >>sys.stderr, "No devices available. Executing on the CPU."
+            print("No devices available. Executing on the CPU.", file=sys.stderr)
 
     if context is None:
         background = katsdpsigproc.rfi.host.BackgroundMedianFilterHost(args.width)
@@ -81,7 +82,7 @@ def main():
         start = time.time()
         flags = flagger(data)
         end = time.time()
-        print "CPU time (ms):", (end - start) * 1000.0
+        print("CPU time (ms):", (end - start) * 1000.0)
     else:
         command_queue = context.create_command_queue(profile=True)
         background = katsdpsigproc.rfi.device.BackgroundMedianFilterDeviceTemplate(
@@ -110,15 +111,15 @@ def main():
         command_queue.finish()
         end_time = time.time()
         flags = flags_device.get(command_queue)
-        print "Host time (ms):  ", (end_time - start_time) * 1000.0
+        print("Host time (ms):  ", (end_time - start_time) * 1000.0)
         try:
             device_time = end_event.time_since(start_event) * 1000.0
         except:
             # AMD CPU device doesn't seem to support profiling on marker events
             device_time = 'unknown'
-        print "Device time (ms):", device_time
+        print("Device time (ms):", device_time)
 
-    print flags
+    print(flags)
 
 if __name__ == '__main__':
     main()

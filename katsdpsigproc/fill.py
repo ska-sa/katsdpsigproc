@@ -1,5 +1,6 @@
 """Fill device array with a constant value"""
 
+from __future__ import division, print_function, absolute_import
 import numpy as np
 from . import accel
 from . import tune
@@ -88,7 +89,7 @@ class Fill(accel.Operation):
     def _run(self):
         data = self.buffer('data')
 
-        elements = np.product(data.padded_shape)
+        elements = int(np.product(data.padded_shape))
         global_size = accel.roundup(elements, self.template.wgs)
         self.command_queue.enqueue_kernel(
                 self.kernel,

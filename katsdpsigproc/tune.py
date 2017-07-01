@@ -22,6 +22,7 @@ corresponding to each autotuning method. The table has the following columns:
 The database is stored in the user cache directory.
 """
 
+from __future__ import division, print_function, absolute_import
 from decorator import decorator
 import itertools
 import inspect
@@ -29,11 +30,14 @@ import appdirs
 import sqlite3
 import os
 import os.path
+import sys
 import numpy as np
 import time
 import logging
 import multiprocessing
 import concurrent.futures
+import six
+from six.moves import zip, range
 
 _logger = logging.getLogger(__name__)
 
@@ -56,7 +60,7 @@ def _db_keys(fn, args, kwargs):
     named_args = dict(kwargs)
     for i in range(2, len(args)):
         named_args[argspec.args[i]] = args[i]
-    keys = dict([('arg_' + key, adapt_value(value)) for (key, value) in named_args.iteritems()])
+    keys = dict([('arg_' + key, adapt_value(value)) for (key, value) in six.iteritems(named_args)])
 
     # Add information about the device
     device = args[1].device
@@ -82,7 +86,7 @@ def _query(conn, tablename, keys):
         query = 'SELECT * FROM {0} WHERE'.format(tablename)
         query_args = []
         first = True
-        for key, value in keys.iteritems():
+        for key, value in six.iteritems(keys):
             if not first:
                 query += ' AND'
             first = False
@@ -106,7 +110,7 @@ def _query(conn, tablename, keys):
 
 def _create_table(conn, tablename, keys, values):
     command = 'CREATE TABLE IF NOT EXISTS {0} ('.format(tablename)
-    for name in keys.keys() + values.keys():
+    for name in itertools.chain(keys.keys(), values.keys()):
         command += name + ' NOT NULL, '
     command += 'PRIMARY KEY ({0}) ON CONFLICT REPLACE)'.format(', '.join(keys.keys()))
     conn.execute(command)
@@ -126,7 +130,7 @@ def _save(conn, tablename, keys, values):
     # Start transaction
     with conn:
         cursor = conn.cursor()
-        cursor.execute(command, entries.values())
+        cursor.execute(command, list(entries.values()))
 
 def _open_db():
     cache_dir = appdirs.user_cache_dir('katsdpsigproc', 'ska-sa')
@@ -164,7 +168,7 @@ def autotuner_impl(test, fn, *args, **kwargs):
             # Nothing found in the database, so we need to tune now
             _logger.info('Performing autotuning for %s with key %s', classname, keys)
             ans = fn(*args, **kwargs)
-            values = dict([('value_' + key, value) for (key, value) in ans.iteritems()])
+            values = dict([('value_' + key, value) for (key, value) in six.iteritems(ans)])
             _save(conn, tablename, keys, values)
         else:
             _logger.debug('Autotuning cache hit for %s with key %s', classname, keys)
@@ -262,7 +266,7 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
     opts = itertools.product(*kwargs.values())
     best = None
     best_score = None
-    had_exception = False
+    exc_info = None
     if threads is None:
         try:
             threads = multiprocessing.cpu_count()
@@ -295,12 +299,12 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
                     if best_score is None or score < best_score:
                         best = keywords
                         best_score = score
-                except Exception, e:
-                    had_exception = True
+                except Exception as e:
+                    exc_info = sys.exc_info()
                     _logger.debug("Caught exception while testing configuration %s", keywords, exc_info=True)
     if best is None:
-        if had_exception:
-            raise
+        if exc_info is not None:
+            six.reraise(*exc_info)
         else:
             raise ValueError('No options to test')
     return best

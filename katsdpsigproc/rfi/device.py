@@ -8,12 +8,13 @@ order). In the former case, the `transposed` member is `False`, otherwise it is
 kernel at the appropriate point.
 """
 
-from __future__ import division
+from __future__ import division, print_function, absolute_import
 from .. import accel
 from .. import tune
 from .. import transpose
 from ..accel import DeviceArray
 import numpy as np
+from six.moves import range
 from . import host
 
 class BackgroundHostFromDevice(object):

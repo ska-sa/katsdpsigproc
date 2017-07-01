@@ -1,3 +1,4 @@
+from __future__ import division, print_function, absolute_import
 import sys
 import traceback
 from nose.tools import assert_equal
@@ -55,18 +56,20 @@ def generate_raise(x):
 
 def test_autotune_all_raise():
     exc_value = None
+    exc_info = None
     with assert_raises(CustomError):
         exc_value = None
         try:
             tune.autotune(generate_raise, x=[1, 2, 3])
         except CustomError as e:
             exc_value = e
+            exc_info = sys.exc_info()
             raise
 
     assert_equal('x = 3', str(exc_value))
     # Check that the traceback refers to the original site, not
     # where it was re-raised
-    frames = traceback.extract_tb(sys.exc_info()[2])
+    frames = traceback.extract_tb(exc_info[2])
     assert_equal('generate_raise', frames[-1][2])
 
 class TestAutotuner(object):

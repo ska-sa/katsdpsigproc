@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+from __future__ import division, print_function, absolute_import
 import sys
 import numpy as np
 from decorator import decorator
@@ -8,6 +8,7 @@ from nose.tools import assert_equal
 from .test_tune import assert_raises
 from nose.plugins.skip import SkipTest
 import mock
+from six.moves import zip
 from .. import accel, tune
 from ..accel import HostArray, DeviceArray, SVMArray, LinenoLexer
 if accel.have_cuda:
@@ -31,8 +32,9 @@ def device_test(test):
             try:
                 _test_context = accel.create_some_context(False)
                 _test_command_queue = _test_context.create_command_queue()
-                print >>sys.stderr, "Testing on {0} ({1})".format(
-                        _test_context.device.name, _test_context.device.platform_name)
+                print("Testing on {0} ({1})".format(
+                    _test_context.device.name, _test_context.device.platform_name),
+                    file=sys.stderr)
             except RuntimeError:
                 pass  # No devices available
             _test_initialized = True
