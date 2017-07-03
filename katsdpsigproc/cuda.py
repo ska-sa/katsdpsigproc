@@ -4,11 +4,13 @@ the documentation for :mod:`katsdpsigproc.opencl`, which presents the same
 interfaces.
 """
 
+from __future__ import division, print_function, absolute_import
 import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
 import pycuda.characterize
 import numpy as np
+from six.moves import range
 
 NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
 

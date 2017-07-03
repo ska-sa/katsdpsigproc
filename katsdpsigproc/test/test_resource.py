@@ -1,11 +1,12 @@
 """Tests for :mod:`katsdpsigproc.resource`."""
 
+from __future__ import division, print_function, absolute_import
 from katsdpsigproc import resource
 import functools
 import decorator
 import trollius
 import time
-import Queue
+from six.moves import queue, range
 from trollius import From
 from nose.tools import *
 import mock
@@ -86,7 +87,7 @@ class DummyEvent(object):
 class TestResource(object):
     def setup(self):
         self.loop = trollius.get_event_loop_policy().new_event_loop()
-        self.completed = Queue.Queue()
+        self.completed = queue.Queue()
 
     def teardown(self):
         self.loop.close()
@@ -115,7 +116,7 @@ class TestResource(object):
         try:
             while True:
                 order.append(self.completed.get_nowait())
-        except Queue.Empty:
+        except queue.Empty:
             pass
         assert_equal(order, [a0, e0, a1])
 

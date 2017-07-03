@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 #for nosetest: nosetests katsdpsigproc.test.test_percentile
+
+from __future__ import division, print_function, absolute_import
 import time
 import numpy as np
 from katsdpsigproc import accel
@@ -23,5 +25,5 @@ out = perc.buffer('dest').get(queue)
 t0 = time.time()
 expected = np.percentile(data, [0, 100, 25, 75, 50], axis=1, interpolation='lower')
 t1 = time.time()
-print 'gpu:', end_event.time_since(start_event), 'cpu:', t1-t0
+print('gpu:', end_event.time_since(start_event), 'cpu:', t1-t0)
 np.testing.assert_equal(out, expected)

@@ -14,11 +14,13 @@ have_opencl : boolean
     True if PyOpenCL could be imported (does not guarantee any OpenCL devices)
 """
 
-from __future__ import division
+from __future__ import division, print_function, absolute_import
 import numpy as np
 import mako.lexer
 from mako.template import Template
 from mako.lookup import TemplateLookup
+import six
+from six.moves import filter, range, zip, input
 try:
     from collections import OrderedDict
 except ImportError:
@@ -230,8 +232,8 @@ def create_some_context(interactive=True, device_filter=None):
     if have_opencl:
         opencl_devices = opencl.Device.get_devices_by_platform()
     if device_filter is not None:
-        cuda_devices = filter(device_filter, cuda_devices)
-        opencl_devices = [filter(device_filter, platform) for platform in opencl_devices]
+        cuda_devices = list(filter(device_filter, cuda_devices))
+        opencl_devices = [list(filter(device_filter, platform)) for platform in opencl_devices]
 
     try:
         if cuda_id is not None:
@@ -252,11 +254,11 @@ def create_some_context(interactive=True, device_filter=None):
         raise RuntimeError('No compute devices found')
 
     if interactive and len(devices) > 1 and sys.stdin.isatty():
-        print "Select device:"
+        print("Select device:")
         for i, device in enumerate(devices):
-            print "    [{0}]: {1} ({2})".format(i, device.name, device.platform_name)
-        print
-        choice = raw_input('Enter selection: ')
+            print("    [{0}]: {1} ({2})".format(i, device.name, device.platform_name))
+        print()
+        choice = input('Enter selection: ')
         try:
             choice = int(choice)
             if choice < 0:
@@ -511,7 +513,7 @@ class DeviceArray(object):
                     raise IndexError('Empty slice selection')
                 strides.append(stride * self_strides[axis])
                 axis += 1
-            elif isinstance(index, (int, long)):
+            elif isinstance(index, six.integer_types):
                 if axis >= len(self_shape):
                     raise IndexError('Too many axes in index expression')
                 if index < 0:
@@ -1309,7 +1311,7 @@ class Operation(object):
 
     def ensure_all_bound(self):
         """Make sure that all slots have a buffer bound, allocating if necessary"""
-        for slot in self.slots.itervalues():
+        for slot in six.itervalues(self.slots):
             if not slot.is_bound():
                 slot.allocate(self.allocator)
 
@@ -1343,7 +1345,7 @@ class Operation(object):
 
     def required_bytes(self):
         """Number of bytes of device storage required"""
-        return sum([x.required_bytes() for x in self.slots.itervalues()])
+        return sum([x.required_bytes() for x in six.itervalues(self.slots)])
 
     def parameters(self):
         """Returns dictionary of configuration options for this operation"""
@@ -1396,16 +1398,16 @@ class OperationSequence(Operation):
             for (slot_name, slot) in operation.slots.items():
                 self.slots[name + ':' + slot_name] = slot
         if compounds is not None:
-            for (name, child_names) in compounds.iteritems():
+            for (name, child_names) in six.iteritems(compounds):
                 children = self._extract_slots(child_names, False)
                 if children:
                     self.slots[name] = CompoundIOSlot(children)
         if aliases is not None:
-            for (name, child_names) in aliases.iteritems():
+            for (name, child_names) in six.iteritems(aliases):
                 children = self._extract_slots(child_names, True)
                 if children:
                     self.slots[name] = AliasIOSlot(children)
-        for operation in self.operations.itervalues():
+        for operation in six.itervalues(self.operations):
             operation.is_root = False
 
     def _extract_slots(self, names, add_to_hidden):

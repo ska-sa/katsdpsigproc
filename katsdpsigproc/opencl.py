@@ -4,6 +4,7 @@ functionality can be added, but should be kept in sync with
 :mod:`katsdpsigproc.cuda`.
 """
 
+from __future__ import division, print_function, absolute_import
 import pyopencl
 import pyopencl.array
 import numpy as np

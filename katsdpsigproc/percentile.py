@@ -1,7 +1,7 @@
 """On-device percentile calculation of 2D arrays"""
 # see scripts/percentiletest.py for an example
 
-from __future__ import division
+from __future__ import division, print_function, absolute_import
 import numpy as np
 from . import accel
 from . import tune
