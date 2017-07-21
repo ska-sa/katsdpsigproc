@@ -41,40 +41,10 @@ def running_mean(x, N, axis=None):
     cumsum = np.cumsum(np.insert(x, 0, 0, axis=axis), axis=axis)
     return np.apply_along_axis(lambda x: (x[N:] - x[:-N])/N, axis, cumsum) if axis else (cumsum[N:] - cumsum[:-N])/N
 
-
-def getbackground(data,in_flags=None,iterations=3,spike_width_time=10,spike_width_freq=10,reject_threshold=2.0,interp_nonfinite=True):
-    """Determine a smooth background through a 2d data array by iteratively smoothing
-    the data with a gaussian
-    """
-    #Make mask array
-    mask=np.ones(data.shape,dtype=np.float)
-    #Mask input flags if provided
-    if in_flags is not None:
-        mask[in_flags]=0.0
-    #Filter Brightest spikes
-    for i in range(2):
-        median = np.nanmedian(data[~in_flags])
-        mask[data-median > reject_threshold*3*np.nanstd(data[~in_flags])]=0.0
-    #Next convolve with Gaussians with increasing width from iterations*spike_width to 1*spike_width
-    for extend_factor in range(iterations,0,-1):
-        #Convolution sigma
-        sigma=np.array([min(spike_width_time*extend_factor,max(data.shape[0]//10,1)),min(spike_width_freq*extend_factor,data.shape[1]//10)])
-        #sigma=np.array([1,min(spike_width_freq*extend_factor,data.shape[1]//10)])
-        #Get weight and background convolved in time axis
-        weight=ndimage.gaussian_filter(mask,sigma,mode='constant',cval=0.0,truncate=3.0)
-        #Smooth background and apply weight
-        background=ndimage.gaussian_filter(data*mask,sigma,mode='constant',cval=0.0,truncate=3.0)/weight
-        residual=data-background
-        #Reject outliers
-        residual=residual-np.median(residual[np.where(mask)])
-        mask[np.abs(residual)>reject_threshold*np.nanstd(residual[np.where(mask)])]=0.0
-    weight = ndimage.gaussian_filter(mask,sigma,mode='constant',cval=0.0,truncate=3.0)
-    background = ndimage.gaussian_filter(data*mask,sigma,mode='constant',cval=0.0,truncate=3.0)/weight
-
-    def linearly_interpolate_nans(y):
+def linearly_interpolate_nans(y):
         # Create X matrix for linreg with an intercept and an index
         nan_locs = np.isnan(y)
-        
+
         if np.all(nan_locs):
             y[:] = 0
         else:
@@ -83,7 +53,80 @@ def getbackground(data,in_flags=None,iterations=3,spike_width_time=10,spike_widt
             y[nan_locs] = np.interp(np.nonzero(nan_locs),X,Y)[0]
         return y
 
+
+def getbackground(data, in_flags=None, iterations=1, spike_width_time=10, spike_width_freq=10, reject_threshold=2.0):
+    """Determine a smooth background over a 2d data array by first masking extreme
+    outliers that are 3*reject_threshold*sigma from the median and then
+    iteratively convolving the data with elliptical Gaussians with linearly
+    decreasing width from iterations*spike_width down to 1.*spike width. Outliers
+    greater than reject_threshold*sigma from the background are masked on each
+    iteration.
+    Initial weights are set to zero at positions specified in in_flags if given.
+    After the final iteration a final Gaussian smoothed background is computed
+    and any stray NaNs in the background are interpolated in frequency (axis 1)
+    for each timestamp (axis 0). The NaNs can appear when the the convolving
+    Gaussian is completely covering masked data as the sum of convolved weights
+    will be zero.
+
+    Parameters
+    ----------
+    data: 2D array, float
+        The input data array to be smoothed
+    in_flags: 2D array, boolean (same shape as data)
+        The positions in data to have zero weight in initial iteration.
+    iterations: int
+        The number of iterations if Gaussian smoothing
+    spike_width_time: float
+        The 1 sigma pixel width in time (axis 0) of the smoothing gaussian on the
+        final iteration
+    spike_width_freq: float
+        The 1 sigma pixel width in frequency (axis 1) of the smoothing gaussian on
+        the final iteration
+    reject_threshold: float
+        Multiple of sigma by which to reject outliers on each iteration
+
+    Returns
+    -------
+    background: 2D array, float
+        The smooth background.
+    """
+
+    #Make mask array
+    mask=np.ones(data.shape, dtype=np.float)
+
+    #Mask input flags if provided
+    if in_flags is not None:
+        mask[in_flags]=0.0
+
+    #Filter Brightest spikes (above 3*reject_threshold, 2 iterations)
+    for i in range(2):
+        median = np.median(data[mask>0.])
+        mask[data-median > reject_threshold*3.*np.std(data[mask>0.])]=0.0
+
+    #Convolve with Gaussians with decreasing 1sigma width from iterations*spike_width to 1*spike_width
+    for extend_factor in range(iterations,0,-1):
+
+        #Convolution sigma
+        sigma=np.array([min(spike_width_time*extend_factor,max(data.shape[0]//10,1)),min(spike_width_freq*extend_factor,data.shape[1]//10)])
+
+        #Get weight and background convolved in time axis
+        weight=ndimage.gaussian_filter(mask, sigma, mode='constant', cval=0.0, truncate=3.0)
+
+        #Smooth background and apply weight
+        background=ndimage.gaussian_filter(data*mask, sigma, mode='constant', cval=0.0, truncate=3.0)/weight
+
+        residual=data-background
+
+        #Reject outliers
+        residual=residual-np.median(residual[np.where(mask)])
+        mask[np.abs(residual)>reject_threshold*np.std(residual[np.where(mask)])]=0.0
+
+    weight = ndimage.gaussian_filter(mask, sigma, mode='constant', cval=0.0, truncate=3.0)
+    background = ndimage.gaussian_filter(data*mask, sigma, mode='constant', cval=0.0, truncate=3.0)/weight
+
+    #Remove NaNs via linear interpolation (or extrapolation)
     background = np.apply_along_axis(linearly_interpolate_nans, 1, background)
+
     return background
 
 
