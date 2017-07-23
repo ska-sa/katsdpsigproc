@@ -54,7 +54,7 @@ def linearly_interpolate_nans(y):
         return y
 
 
-def getbackground(data, in_flags=None, iterations=1, spike_width_time=10, spike_width_freq=10, reject_threshold=2.0):
+def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10,10,), reject_threshold=2.0):
     """Determine a smooth background over a 2d data array by first masking extreme
     outliers that are 3*reject_threshold*sigma from the median and then
     iteratively convolving the data with elliptical Gaussians with linearly
@@ -75,13 +75,10 @@ def getbackground(data, in_flags=None, iterations=1, spike_width_time=10, spike_
     in_flags: 2D array, boolean (same shape as data)
         The positions in data to have zero weight in initial iteration.
     iterations: int
-        The number of iterations if Gaussian smoothing
-    spike_width_time: float
-        The 1 sigma pixel width in time (axis 0) of the smoothing gaussian on the
-        final iteration
-    spike_width_freq: float
-        The 1 sigma pixel width in frequency (axis 1) of the smoothing gaussian on
-        the final iteration
+        The number of iterations of Gaussian smoothing
+    spike_width: sequence, float
+        The 1 sigma pixel widths of the smoothing gaussian (corresponding
+        to the axes of data)
     reject_threshold: float
         Multiple of sigma by which to reject outliers on each iteration
 
@@ -105,9 +102,6 @@ def getbackground(data, in_flags=None, iterations=1, spike_width_time=10, spike_
 
     #Convolve with Gaussians with decreasing 1sigma width from iterations*spike_width to 1*spike_width
     for extend_factor in range(iterations,0,-1):
-
-        #Convolution sigma
-        sigma=np.array([min(spike_width_time*extend_factor,max(data.shape[0]//10,1)),min(spike_width_freq*extend_factor,data.shape[1]//10)])
 
         #Get weight and background convolved in time axis
         weight=ndimage.gaussian_filter(mask, sigma, mode='constant', cval=0.0, truncate=3.0)
@@ -257,8 +251,9 @@ class sumthreshold_flagger():
             spec_data = np.nanmedian(np.where(in_flags_chunk,np.nan,in_data_chunk),axis=0).reshape((1,-1,))
             #Re-flag channels that are completely flagged in time.
             in_flags_chunk[:,spec_flags[0]]=True
-            spec_background = getbackground(spec_data,in_flags=spec_flags,iterations=self.background_iterations,spike_width_time=self.spike_width_time,\
-                                                spike_width_freq=self.spike_width_freq,reject_threshold=self.background_reject,interp_nonfinite=True)
+            spec_background = getbackground_2d(spec_data,in_flags=spec_flags,iterations=self.background_iterations, \
+                                spike_width=(self.spike_width_time,self.spike_width_freq), \
+                                reject_threshold=self.background_reject)
             av_dev = spec_data - spec_background
             spec_flags = self._sumthreshold(av_dev,spec_flags,1,self.window_size_freq,self.outlier_sigma_freq)
             #Extend spec_flags to number of timestamps
@@ -266,8 +261,9 @@ class sumthreshold_flagger():
             #Use the spec flags in the mask
             in_flags_chunk |= out_flags_chunk
             #Flag the 2d data in a time,frequency view
-            background_chunk = getbackground(in_data_chunk,in_flags=in_flags_chunk,iterations=self.background_iterations,spike_width_time=self.spike_width_time,\
-                                                spike_width_freq=self.spike_width_freq,reject_threshold=self.background_reject,interp_nonfinite=True)
+            background_chunk = getbackground_2d(spec_data,in_flags=spec_flags,iterations=self.background_iterations, \
+                                spike_width=(self.spike_width_time,self.spike_widht_freq), \
+                                reject_threshold=self.background_reject)
             if self.debug:
                 back_time += (time.time() - back_start)
                 st_start = time.time()
