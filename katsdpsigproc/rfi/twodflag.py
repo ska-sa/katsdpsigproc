@@ -30,6 +30,8 @@ import multiprocessing as mp
 import time
 import itertools
 
+#from katsdpscripts.RTS.rfilib import plot_waterfall
+
 #Supress warnings
 #import warnings
 #warnings.simplefilter('ignore')
@@ -55,8 +57,7 @@ def linearly_interpolate_nans(y):
 
 
 def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10,10,), reject_threshold=2.0):
-    """Determine a smooth background over a 2d data array by first masking extreme
-    outliers that are 3*reject_threshold*sigma from the median and then
+    """Determine a smooth background over a 2d data array by
     iteratively convolving the data with elliptical Gaussians with linearly
     decreasing width from iterations*spike_width down to 1.*spike width. Outliers
     greater than reject_threshold*sigma from the background are masked on each
@@ -89,59 +90,63 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10,10,), re
     """
 
     #Make mask array
-    mask=np.ones(data.shape, dtype=np.float)
+    mask = np.ones(data.shape, dtype=np.float)
 
     #Mask input flags if provided
     if in_flags is not None:
         mask[in_flags]=0.0
 
-    #Filter Brightest spikes (above 3*reject_threshold, 2 iterations)
-    for i in range(2):
-        median = np.median(data[mask>0.])
-        mask[data-median > reject_threshold*3.*np.std(data[mask>0.])]=0.0
-
     #Convolve with Gaussians with decreasing 1sigma width from iterations*spike_width to 1*spike_width
-    for extend_factor in range(iterations,0,-1):
+    for extend_factor in range(iterations, 0, -1):
 
-        #Get weight and background convolved in time axis
-        weight=ndimage.gaussian_filter(mask, sigma, mode='constant', cval=0.0, truncate=3.0)
+        sigma = extend_factor*np.array(spike_width, dtype=np.float)
+
+        #Get weights
+        weight = ndimage.gaussian_filter(mask, sigma, mode='constant', cval=0.0, truncate=3.0)
 
         #Smooth background and apply weight
-        background=ndimage.gaussian_filter(data*mask, sigma, mode='constant', cval=0.0, truncate=3.0)/weight
+        background = ndimage.gaussian_filter(data*mask, sigma, mode='constant', cval=0.0, truncate=3.0)/weight
 
-        residual=data-background
+        residual = data-background
+    
+        #Reject outliers using MAD
+        abs_residual = np.abs(residual)
+        mask[abs_residual>reject_threshold*1.4826*np.median(abs_residual[np.where(mask>0.)])] = 0.0
 
-        #Reject outliers
-        residual=residual-np.median(residual[np.where(mask)])
-        mask[np.abs(residual)>reject_threshold*np.std(residual[np.where(mask)])]=0.0
+    #Compute final background
+    weight = ndimage.gaussian_filter(mask, spike_width, mode='constant', cval=0.0, truncate=3.0)
+    background = ndimage.gaussian_filter(data*mask, spike_width, mode='constant', cval=0.0, truncate=3.0)/weight
 
-    weight = ndimage.gaussian_filter(mask, sigma, mode='constant', cval=0.0, truncate=3.0)
-    background = ndimage.gaussian_filter(data*mask, sigma, mode='constant', cval=0.0, truncate=3.0)/weight
-
-    #Remove NaNs via linear interpolation (or extrapolation)
+    #Remove NaNs via linear interpolation
     background = np.apply_along_axis(linearly_interpolate_nans, 1, background)
 
     return background
 
 
-def get_scan_flags(flagger,data,flags):
-    """
-    Function to run the flagging for a single scan. This is used by multiprocessing
-    to avoid pickling problems therein. It can also be used to run the flagger
+def get_baseline_flags(flagger,data,flags):
+    """Run flagging method for a single baseline. This is used by multiprocessing
+    to avoid problems pickling an object method. It can also be used to run the flagger
     independently of multiprocessing.
-    Inputs:
-        flagger: A flagger object with a method for running the flagging
-        data: a 2d array of data to flag
-        flags: a 2d array of prior flags
-    Outputs:
-        a 2d array of derived flags for the scan
+
+    Parameters
+    ----------
+        flagger: A sumthreshold_flagger object             
+        data: 2D array, float
+            data to flag
+        flags: 2D array, boolean
+            prior flags to ignore 
+
+    Returns
+    -------
+        a 2D array, boolean
+            derived flags
     """
     return flagger._detect_spikes_sumthreshold(data,flags)
 
 
 class sumthreshold_flagger():
     def __init__(self,background_iterations=1, spike_width_time=10, spike_width_freq=10, outlier_sigma_freq=4.5, outlier_sigma_time=5.5, 
-                background_reject=2.0, num_windows=5, average_time=1, average_freq=1, time_extend=3, freq_extend=3, freq_chunks=7, debug=False):
+                background_reject=3.0, num_windows=5, average_time=1, average_freq=1, time_extend=3, freq_extend=3, freq_chunks=7, debug=False):
         self.background_iterations=background_iterations
         spike_width_time/=average_time
         spike_width_freq/=average_freq
@@ -174,19 +179,37 @@ class sumthreshold_flagger():
             print 'window_size_time,window_size_freq:',self.window_size_time,self.window_size_freq
             print 'Frequency splitting channels:',self.freq_chunks
 
-    def get_flags(self,data,flags=None,num_cores=8):
+    def get_flags(self,data,flags,num_cores=8):
+        """Get flags in data array, with optional input flags of same shape
+        that denote samples in data to ignore when backgrounding and deriving
+        thresholds.
+
+        Parameters
+        ----------
+        data: 3D array
+            The input visibility data. These have their absolute value taken 
+            before passing to the flagger.
+        flags: 3D array, boolean
+            Input flags. 
+        num_cores: int
+            Number of cores to use.
+
+        Returns
+        -------
+        out_flags: 3D array, boolean, same shape as data
+            Derived flags (True=flagged)
+
+        """
         if self.debug: start_time=time.time()
-        if flags is None:
-            in_flags = np.repeat(None,in_data.shape[0]).reshape((in_data.shape[0]))
-        out_flags=np.empty(data.shape,dtype=np.bool)
-        async_results=[]
-        p=mp.Pool(num_cores)
-        for i in range(data.shape[-1]):
-            async_results.append(p.apply_async(get_scan_flags,(self,data[...,i],flags[...,i],)))
-        p.close()
-        p.join()
+        out_flags=np.empty(data.shape, dtype=np.bool)
+        #async_results=[]
+        #p=mp.Pool(num_cores)
         #for i in range(data.shape[-1]):
-        #    get_scan_flags(self,data[...,i],flags[...,i])
+        #    async_results.append(p.apply_async(get_baseline_flags,(self,data[...,i],flags[...,i],)))
+        #p.close()
+        #p.join()
+        for i in range(data.shape[-1]):
+            out_flags[...,i]=get_baseline_flags(self,np.abs(data[...,i]),flags[...,i])
         for i,result in enumerate(async_results):
             out_flags[...,i]=result.get()     
         if self.debug: 
@@ -261,12 +284,14 @@ class sumthreshold_flagger():
             #Use the spec flags in the mask
             in_flags_chunk |= out_flags_chunk
             #Flag the 2d data in a time,frequency view
-            background_chunk = getbackground_2d(spec_data,in_flags=spec_flags,iterations=self.background_iterations, \
-                                spike_width=(self.spike_width_time,self.spike_widht_freq), \
+            background_chunk = getbackground_2d(in_data_chunk,in_flags=in_flags_chunk,iterations=self.background_iterations, \
+                                spike_width=(self.spike_width_time,self.spike_width_freq), \
                                 reject_threshold=self.background_reject)
+
             if self.debug:
                 back_time += (time.time() - back_start)
                 st_start = time.time()
+
             #Subtract background
             av_dev = in_data_chunk - background_chunk
             #Sumthershold along time axis
