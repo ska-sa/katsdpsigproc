@@ -165,11 +165,6 @@ class sumthreshold_flagger():
         self.freq_chunks = np.array(freq_chunks)//average_freq
         #Falloff exponent for sumthreshold
         self.rho = 1.3
-        if debug:
-            print 'Initialise flagger:'
-            print 'spike_width_time,spike_width_freq:', spike_width_time,spike_width_freq
-            print 'window_size_time,window_size_freq:',self.window_size_time,self.window_size_freq
-            print 'Frequency splitting channels:',self.freq_chunks
 
     def get_flags(self,data,flags,num_cores=8):
         """Get flags in data array, with optional input flags of same shape
@@ -192,7 +187,7 @@ class sumthreshold_flagger():
             Derived flags (True=flagged)
 
         """
-        if self.debug: start_time=time.time()
+
         out_flags=np.empty(data.shape, dtype=np.bool)
         #async_results=[]
         #p=mp.Pool(num_cores)
@@ -204,9 +199,6 @@ class sumthreshold_flagger():
             out_flags[...,i]=get_baseline_flags(self,np.abs(data[...,i]),flags[...,i])
         for i,result in enumerate(async_results):
             out_flags[...,i]=result.get()     
-        if self.debug: 
-            end_time=time.time()
-            print "TOTAL SCAN TIME: %f"%((end_time-start_time)/60.0)
 
         return out_flags
 
@@ -272,16 +264,16 @@ class sumthreshold_flagger():
             #Append the start and end of the channel range if not specified in input list
             freq_chunks = np.unique(np.append(freq_chunks,[0,in_data.shape[1]]))
             freq_chunks.sort()
-        #Number of channels to pad start and end of each chunk (factor of 3 is gaussian smoothing box size in getbackground)
+        #Number of channels to pad start and end of each chunk
+        #(factor of 3 is gaussian smoothing box size in getbackground)
         freq_chunk_overlap = int(self.spike_width_freq)*3
         #Loop over chunks
         for chunk_num in range(len(freq_chunks)-1):
             #Chunk the input data and flags in frequency and create output chunk
-            chunk_start = freq_chunks[chunk_num]
-            chunk_end = freq_chunks[chunk_num+1]
+            chunk_start, chunk_end = freq_chunks[chunk_num:chunk_num+1]
             chunk_size = chunk_end - chunk_start
-            chunk = slice(chunk_start-freq_chunk_overlap,chunk_end+freq_chunk_overlap) if chunk_num > 0 \
-                                                else slice(chunk_start,chunk_end+freq_chunk_overlap)
+            chunk = slice(chunk_start-freq_chunk_overlap, chunk_end+freq_chunk_overlap) if chunk_num > 0 \
+                                                else slice(chunk_start, chunk_end+freq_chunk_overlap)
             in_data_chunk = in_data[:,chunk]
             in_flags_chunk = in_flags[:,chunk]
             out_flags_chunk = np.zeros_like(in_flags_chunk, dtype=np.bool)
