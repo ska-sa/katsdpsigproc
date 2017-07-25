@@ -44,11 +44,12 @@ def running_mean(x, N, axis=None):
     return np.apply_along_axis(lambda x: (x[N:] - x[:-N])/N, axis, cumsum) if axis else (cumsum[N:] - cumsum[:-N])/N
 
 def linearly_interpolate_nans(y):
-    # Create X matrix for linreg with an intercept and an index
+    #Linearly interpolate across NaNs in y, extrapolate using numpy defaults
+    #(ie. use constant). If all input data are NaNs, return 0's for all y
     nan_locs = np.isnan(y)
 
     if np.all(nan_locs):
-        y[:] = 0
+        y[:] = 0.
     else:
         X = np.nonzero(~nan_locs)[0]
         Y = y[X]
@@ -115,7 +116,7 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10,10,), re
     return background
 
 
-def get_baseline_flags(flagger,data,flags):
+def get_baseline_flags(flagger, data, flags):
     """Run flagging method for a single baseline. This is used by multiprocessing
     to avoid problems pickling an object method. It can also be used to run the flagger
     independently of multiprocessing.
@@ -137,36 +138,76 @@ def get_baseline_flags(flagger,data,flags):
 
 
 class sumthreshold_flagger():
-    def __init__(self,background_iterations=1, spike_width_time=10, spike_width_freq=10, outlier_sigma_freq=4.5, outlier_sigma_time=5.5, 
-                background_reject=2.0, num_windows=5, average_time=1, average_freq=1, time_extend=3, freq_extend=3, freq_chunks=7, debug=False):
-        self.background_iterations=background_iterations
-        spike_width_time/=average_time
-        spike_width_freq/=average_freq
-        self.spike_width_time=spike_width_time
-        self.spike_width_freq=spike_width_freq
-        self.outlier_nsigma_freq=outlier_sigma_freq
-        self.outlier_nsigma_time=outlier_sigma_time
-        self.background_reject=background_reject
-        # Range of windows from 1 to 2*spike_width
-        self.window_size_freq=np.unique(np.logspace(0,max(0,np.log10(spike_width_freq + 1e-6)),num_windows,endpoint=True,dtype=np.int))
-        self.window_size_time=np.unique(np.logspace(0,max(0,np.log10(spike_width_time + 1e-6)),num_windows,endpoint=True,dtype=np.int))
-        self.average_time=average_time
-        self.average_freq=average_freq
-        self.debug=debug
-        #Internal parameters
-        #Fraction of data flagged to extend flag to all data
-        self.flag_all_time_frac = 0.6
-        self.flag_all_freq_frac = 0.8
-        #Extend size of flags in time and frequency
+    """Flagger that uses the SumThreshold method (Offringa, A., MNRAS, 405, 155-167, 2010)
+    to detect spikes in both frequency and time axes.
+    The full algorithm does the following:
+        1) Average the data in the frequency dimension (axis 1) into bins of
+           size self.average_freq
+        2) Divide the data into overlapping sub-chunks in frequency which are
+           backgrounded and thresholded independently
+        3) Flag a 1d spectrum median filtered in time to get fainter contaminated
+           channels.
+        4) Derive a smooth 2d background through each chunk
+        5) SumThreshold the background subtracted chunks in time and frequency
+        6) Extend derived flags in time a frequency, via self.freq_extend and
+           self.time_extend
+        7) Extend flags to all times and frequencies in cases when more than
+           a given fraction of samples are flagged (via self.flag_all_time_frac and
+           self.flag_all_freq_frac)
+
+    Parameters
+    ----------
+
+    outlier_nsigma: float
+        Number of sigma to reject outliers when thresholding
+    windows: array, int
+        Size of averaging windows to use in the SumThreshold method
+    background_reject: float
+        Number of sigma to reject outliers when backgrounding
+    background_iterations: int
+        Number of iterations to use when determining a smooth background, after each
+        iteration data in excess of background_reject*sigma are masked
+    spike_width_time: float
+        Characteristic width in dumps to smooth over when backgrounding. This is
+        the one-sigma width of the convolving Gaussian in axis 0.
+    spike_width_freq: float
+        Characteristic width in channels to smooth over when backgrounding. This is
+        the one-sigma width of the convolving Gaussian in axis 1.
+    time_extend: int
+        Size of window by which to extend flags in time after detection
+    freq_extend: int
+        Size of window by which to extend flags in frequency after detection
+    freq_chunks: int
+        Number of equal sized chunks to independently flag in frequnecy. Smaller
+        chunks will be less affected by variations in the band in the frequency domain.
+    average_freq: int
+        Number of channels to average frequency before flagging. Flags will be extended
+        to the frequency shape of the input data before being returned
+    flag_all_time_frac: float
+        Fraction of data flagged avove which to extend flags to all data in time axis.
+    flag_all_freq_frac: float
+        Fraction of data flagged above which to extend flags to all data in frequency axis.
+    """
+    def __init__(self, outlier_nsigma=4.0, windows=[1, 2, 4, 8, 16], background_reject=2.0, background_iterations=1,
+                 spike_width_time=12.5, spike_width_freq=7.0, time_extend=3, freq_extend=3, freq_chunks=7,
+                 average_freq=1, flag_all_time_frac=0.6, flag_all_freq_frac=0.8):
+        self.outlier_nsigma = outlier_nsigma
+        self.windows = windows
+        self.background_reject = background_reject
+        self.background_iterations = background_iterations
+        self.spike_width_time = spike_width_time
+        #Scale spike_width by average_freq
+        self.spike_width_freq = spike_width_freq/average_freq
         self.time_extend = time_extend
         self.freq_extend = freq_extend
-        #Set up subbands in frequency
-        #Can be an int to equally subdivide into the required chunks, or a list which specifies the channels of the chunk edges.
-        self.freq_chunks = np.array(freq_chunks)//average_freq
-        #Falloff exponent for sumthreshold
+        self.freq_chunks = freq_chunks
+        self.average_freq = average_freq
+        self.flag_all_time_frac = flag_all_time_frac
+        self.flag_all_freq_frac = flag_all_freq_frac
+        #Falloff exponent for SumThreshold
         self.rho = 1.3
 
-    def get_flags(self,data,flags,num_cores=8):
+    def get_flags(self, data, flags, num_cores=8):
         """Get flags in data array, with optional input flags of same shape
         that denote samples in data to ignore when backgrounding and deriving
         thresholds.
@@ -195,18 +236,16 @@ class sumthreshold_flagger():
             async_results.append(p.apply_async(get_baseline_flags, (self, data[...,i], flags[...,i])))
         p.close()
         p.join()
-        #for i in range(data.shape[-1]):
-        #    out_flags[...,i]=get_baseline_flags(self,np.abs(data[...,i]),flags[...,i])
         for i,result in enumerate(async_results):
             out_flags[...,i]=result.get()     
 
         return out_flags
 
-    def _average_freq(self,data,flags):
+    def _average_freq(self, data, flags):
         """Average the frequency axis (axis 1) of data into bins
         of size self.average_freq, ignoring flags.
         If all data in a bin is flagged in the input the data are
-        summed and the output is flagged.
+        averaged and the output is flagged.
         If self.average_freq does not divide the frequency axis
         of data, the last channel of avg_data will be an average of
         the remaining channels in the last bin.
@@ -240,22 +279,9 @@ class sumthreshold_flagger():
 
         return avg_data, avg_flags
 
-    def _detect_spikes_sumthreshold(self,in_data,in_flags):
+    def _detect_spikes_sumthreshold(self, in_data, in_flags):
         """For a time,channel ordered input data find outliers, and extrapolate
-        flags in extreme cases. The algorithm does the following:
-        1) Average the data in the frequency dimension (axis 1) into bins of 
-           size self.average_freq
-        2) Divide the data into overlapping sub-chunks in frequency which are 
-           backgrounded and thresholded independently
-        3) Flag a 1d spectrum median filtered in time to get fainter contaminated 
-           channels.
-        3) Derive a smooth 2d background through each chunk via gaussian convolution
-        4) SumThreshold the background subtracted chunks in time and frequency
-        5) Extend derived flags in time a frequency, via self.freq_extend and 
-           self.time_extend
-        6) Extend flags to all times and frequencies in cases when more than
-           a given fraction of samples are flagged (via self.flag_all_time_frac and
-           self.flag_all_freq_frac)
+        flags in extreme cases.
 
         Parameters
         ----------
@@ -282,14 +308,7 @@ class sumthreshold_flagger():
         out_flags = np.empty(in_data.shape, dtype=np.bool)
 
         #Set up frequency chunks
-        if type(self.freq_chunks) is int:
-            freq_chunks = np.linspace(0,in_data.shape[1],self.freq_chunks+1,dtype=np.int)
-        else:
-            #Assume it's an iterable and correct for averaging
-            freq_chunks = self.freq_chunks
-            #Append the start and end of the channel range if not specified in input list
-            freq_chunks = np.unique(np.append(freq_chunks,[0,in_data.shape[1]]))
-            freq_chunks.sort()
+        freq_chunks = np.linspace(0,in_data.shape[1],self.freq_chunks+1,dtype=np.int)
         #Number of channels to pad start and end of each chunk
         #(factor of 3 is gaussian smoothing box size in getbackground)
         freq_chunk_overlap = int(self.spike_width_freq)*3
@@ -318,7 +337,7 @@ class sumthreshold_flagger():
             spec_background = getbackground_2d(spec_data, in_flags=spec_flags, iterations=self.background_iterations, \
                                                 spike_width=(1.,self.spike_width_freq), reject_threshold=self.background_reject)
             av_dev = spec_data - spec_background
-            spec_flags = self._sumthreshold(av_dev,spec_flags,1,self.window_size_freq,self.outlier_nsigma_freq)
+            spec_flags = self._sumthreshold(av_dev,spec_flags,1)
             #Broadcast spec_flags to timestamps
             out_flags_chunk[:] = spec_flags
             #Bootstrap the spec_flags in the mask from now on
@@ -332,9 +351,9 @@ class sumthreshold_flagger():
             #Subtract background
             av_dev = in_data_chunk - background_chunk
             #SumThreshold along time axis
-            time_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk, 0, self.window_size_time, self.outlier_nsigma_time)
+            time_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk, 0)
             #SumThreshold along frequency axis- with time flags in the mask
-            freq_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk | time_flags_chunk, 1, self.window_size_freq, self.outlier_nsigma_freq)
+            freq_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk | time_flags_chunk, 1)
             #Combine all the flags
             out_flags_chunk |= time_flags_chunk | freq_flags_chunk
 
@@ -362,7 +381,7 @@ class sumthreshold_flagger():
         return out_flags
 
 
-    def _sumthreshold(self, input_data, flags, axis, window_bl, nsigma):
+    def _sumthreshold(self, input_data, flags, axis):
         """Apply the SumThreshold method along the given axis of
         input_data. 
 
@@ -394,9 +413,9 @@ class sumthreshold_flagger():
         #Set NaNs to zero to ensure these data are flagged
         estm_stdev = np.nan_to_num(estm_stdev)
         #Set up initial threshold
-        threshold = nsigma * estm_stdev
+        threshold = self.outlier_nsigma * estm_stdev
         output_flags = np.zeros_like(flags,dtype=np.bool)
-        for window in window_bl:
+        for window in self.windows:
             #Stop if the window is too large 
             if window>input_data.shape[axis]: break
             #The threshold for this iteration is calculated from the initial threshold
