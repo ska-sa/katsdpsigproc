@@ -104,7 +104,7 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10,10,), re
         residual = data-background
         #Reject outliers using MAD
         abs_residual = np.abs(residual)
-        sigma = 1.4826*np.median(abs_residual[np.where(mask>0.)])
+        sigma = 1.4826*np.nanmedian(abs_residual[np.where(mask>0.)])
         mask=np.where(abs_residual>reject_threshold*sigma,0.0,mask)
     #Compute final background
     weight = ndimage.gaussian_filter(mask, spike_width, mode='constant', cval=0.0, truncate=3.0)
@@ -192,30 +192,51 @@ class sumthreshold_flagger():
         async_results=[]
         p=mp.Pool(num_cores)
         for i in range(data.shape[-1]):
-            async_results.append(p.apply_async(get_baseline_flags,(self,data[...,i],flags[...,i],)))
+            async_results.append(p.apply_async(get_baseline_flags, (self, data[...,i], flags[...,i])))
         p.close()
         p.join()
-        for i in range(data.shape[-1]):
-            out_flags[...,i]=get_baseline_flags(self,np.abs(data[...,i]),flags[...,i])
+        #for i in range(data.shape[-1]):
+        #    out_flags[...,i]=get_baseline_flags(self,np.abs(data[...,i]),flags[...,i])
         for i,result in enumerate(async_results):
             out_flags[...,i]=result.get()     
 
         return out_flags
 
-    def _average(self,data,flags):
-        #Only works if self.average_time and self.average_freq divide into data.shape
-        new_time_axis = data.shape[0]//self.average_time
-        new_freq_axis = data.shape[1]//self.average_freq
-        bin_area = self.average_time*self.average_freq
-        avg_data = data.reshape(new_time_axis,self.average_time,new_freq_axis,self.average_freq)
-        avg_flags = flags.reshape(new_time_axis,self.average_time,new_freq_axis,self.average_freq)
-        avg_data = np.nansum(np.nansum(avg_data*(~avg_flags),axis=3),axis=1)
-        avg_flags = np.nansum(np.nansum(avg_flags,axis=3),axis=1)
-        bin_weight = (bin_area - avg_flags)
-        avg_flags = (avg_flags == bin_area)
-        #Avoid NaNs where all data is flagged (data will become zero)
-        bin_weight[avg_flags==True] = 1
-        avg_data /= bin_weight
+    def _average_freq(self,data,flags):
+        """Average the frequency axis (axis 1) of data into bins
+        of size self.average_freq, ignoring flags.
+        If all data in a bin is flagged in the input the data are
+        summed and the output is flagged.
+        If self.average_freq does not divide the frequency axis
+        of data, the last channel of avg_data will be an average of
+        the remaining channels in the last bin.
+
+        Parameters
+        ----------
+        data: 2D Array, real
+            Input data to average.
+        data: 2D Array, boolean
+            Input flags of data to ignore when averaging.
+
+        Returns
+        -------
+        avg_data: 2D Array, real
+            The averaged data.
+
+        avg_flags: 2D Array, boolean
+            Averaged flags array- only data for which an entire averaging bin
+            is flagged in the input will be flagged in avg_flags.
+
+        """
+
+        freq_length = data.shape[1]
+        data_sum = np.add.reduceat(data * ~flags, range(0, freq_length, self.average_freq), axis=1)
+        weights = np.add.reduceat(~flags, range(0, freq_length, self.average_freq), axis=1, dtype=np.float)
+        avg_flags = (weights == 0.)
+        #Fix weights to bin size where all data are flagged
+        #This weight will be wrong for the end remainder, but data are flagged so it doesn't matter
+        weights = np.where(avg_flags, float(self.average_freq), weights)
+        avg_data = data_sum/weights
 
         return avg_data, avg_flags
 
@@ -253,10 +274,13 @@ class sumthreshold_flagger():
         """
 
         #Average in_data in frequency if requested
+        #(we should have a copy of in_data,in_flags at this point)
+        orig_freq_shape = in_data.shape[1]
         if self.average_freq > 1:
-            in_data, in_flags = self._average(in_data, in_flags)
+            in_data, in_flags = self._average_freq(in_data, in_flags)
         #Set up output flags
         out_flags = np.empty(in_data.shape, dtype=np.bool)
+
         #Set up frequency chunks
         if type(self.freq_chunks) is int:
             freq_chunks = np.linspace(0,in_data.shape[1],self.freq_chunks+1,dtype=np.int)
@@ -269,6 +293,7 @@ class sumthreshold_flagger():
         #Number of channels to pad start and end of each chunk
         #(factor of 3 is gaussian smoothing box size in getbackground)
         freq_chunk_overlap = int(self.spike_width_freq)*3
+
         #Loop over chunks
         for chunk_num in range(len(freq_chunks)-1):
             #Chunk the input data and flags in frequency and create output chunk
@@ -286,6 +311,7 @@ class sumthreshold_flagger():
             spec_flags = np.all(in_flags_chunk,axis=0).reshape((1,-1,))
             #Un-flag channels that are completely flagged to avoid nans in the median
             in_flags_chunk[:,spec_flags[0]]=False
+            #Get median spectrum
             spec_data = np.nanmedian(np.where(in_flags_chunk,np.nan,in_data_chunk),axis=0).reshape((1,-1,))
             #Re-flag channels that are completely flagged in time.
             in_flags_chunk[:,spec_flags[0]]=True
@@ -295,7 +321,7 @@ class sumthreshold_flagger():
             spec_flags = self._sumthreshold(av_dev,spec_flags,1,self.window_size_freq,self.outlier_nsigma_freq)
             #Broadcast spec_flags to timestamps
             out_flags_chunk[:] = spec_flags
-            #Use the spec flags in the mask from now on
+            #Bootstrap the spec_flags in the mask from now on
             in_flags_chunk |= out_flags_chunk
 
             #Flag the data in 2d
@@ -305,9 +331,9 @@ class sumthreshold_flagger():
                                                 reject_threshold=self.background_reject)
             #Subtract background
             av_dev = in_data_chunk - background_chunk
-            #Sumthershold along time axis
+            #SumThreshold along time axis
             time_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk, 0, self.window_size_time, self.outlier_nsigma_time)
-            #Sumthreshold along frequency axis- with time flags in the mask
+            #SumThreshold along frequency axis- with time flags in the mask
             freq_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk | time_flags_chunk, 1, self.window_size_freq, self.outlier_nsigma_freq)
             #Combine all the flags
             out_flags_chunk |= time_flags_chunk | freq_flags_chunk
@@ -319,8 +345,9 @@ class sumthreshold_flagger():
                 out_flags[:,chunk_start:chunk_end] = out_flags_chunk[:,0:chunk_size]
 
         #Bring flags to correct frequency shape if the input data was averaged
+        #Need to chop the end to the right shape if there was a remainder after averaging
         if self.average_freq > 1:
-            out_flags=np.repeat(out_flags,self.average_freq,axis=1)
+            out_flags=np.repeat(out_flags,self.average_freq,axis=1)[:,:orig_freq_shape]
 
         #Extend flags in time and frequency
         if self.freq_extend > 1 or self.time_extend > 1:
