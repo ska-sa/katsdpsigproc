@@ -138,7 +138,7 @@ def get_baseline_flags(flagger,data,flags):
 
 class sumthreshold_flagger():
     def __init__(self,background_iterations=1, spike_width_time=10, spike_width_freq=10, outlier_sigma_freq=4.5, outlier_sigma_time=5.5, 
-                background_reject=3.0, num_windows=5, average_time=1, average_freq=1, time_extend=3, freq_extend=3, freq_chunks=7, debug=False):
+                background_reject=2.0, num_windows=5, average_time=1, average_freq=1, time_extend=3, freq_extend=3, freq_chunks=7, debug=False):
         self.background_iterations=background_iterations
         spike_width_time/=average_time
         spike_width_freq/=average_freq
@@ -189,12 +189,12 @@ class sumthreshold_flagger():
         """
 
         out_flags=np.empty(data.shape, dtype=np.bool)
-        #async_results=[]
-        #p=mp.Pool(num_cores)
-        #for i in range(data.shape[-1]):
-        #    async_results.append(p.apply_async(get_baseline_flags,(self,data[...,i],flags[...,i],)))
-        #p.close()
-        #p.join()
+        async_results=[]
+        p=mp.Pool(num_cores)
+        for i in range(data.shape[-1]):
+            async_results.append(p.apply_async(get_baseline_flags,(self,data[...,i],flags[...,i],)))
+        p.close()
+        p.join()
         for i in range(data.shape[-1]):
             out_flags[...,i]=get_baseline_flags(self,np.abs(data[...,i]),flags[...,i])
         for i,result in enumerate(async_results):
@@ -226,6 +226,8 @@ class sumthreshold_flagger():
            size self.average_freq
         2) Divide the data into overlapping sub-chunks in frequency which are 
            backgrounded and thresholded independently
+        3) Flag a 1d spectrum median filtered in time to get fainter contaminated 
+           channels.
         3) Derive a smooth 2d background through each chunk via gaussian convolution
         4) SumThreshold the background subtracted chunks in time and frequency
         5) Extend derived flags in time a frequency, via self.freq_extend and 
@@ -270,13 +272,33 @@ class sumthreshold_flagger():
         #Loop over chunks
         for chunk_num in range(len(freq_chunks)-1):
             #Chunk the input data and flags in frequency and create output chunk
-            chunk_start, chunk_end = freq_chunks[chunk_num:chunk_num+1]
+            chunk_start, chunk_end = freq_chunks[chunk_num:chunk_num+2]
             chunk_size = chunk_end - chunk_start
-            chunk = slice(chunk_start-freq_chunk_overlap, chunk_end+freq_chunk_overlap) if chunk_num > 0 \
-                                                else slice(chunk_start, chunk_end+freq_chunk_overlap)
+            if chunk_num > 0:
+                chunk = slice(chunk_start-freq_chunk_overlap, chunk_end+freq_chunk_overlap)
+            else:
+                chunk = slice(chunk_start, chunk_end+freq_chunk_overlap)
             in_data_chunk = in_data[:,chunk]
-            in_flags_chunk = in_flags[:,chunk]
-            out_flags_chunk = np.zeros_like(in_flags_chunk, dtype=np.bool)
+            in_flags_chunk = np.copy(in_flags[:,chunk])
+            out_flags_chunk = np.zeros_like(in_flags_chunk,dtype=np.bool)
+
+            #Flag a 1d median frequency spectrum
+            spec_flags = np.all(in_flags_chunk,axis=0).reshape((1,-1,))
+            #Un-flag channels that are completely flagged to avoid nans in the median
+            in_flags_chunk[:,spec_flags[0]]=False
+            spec_data = np.nanmedian(np.where(in_flags_chunk,np.nan,in_data_chunk),axis=0).reshape((1,-1,))
+            #Re-flag channels that are completely flagged in time.
+            in_flags_chunk[:,spec_flags[0]]=True
+            spec_background = getbackground_2d(spec_data, in_flags=spec_flags, iterations=self.background_iterations, \
+                                                spike_width=(1.,self.spike_width_freq), reject_threshold=self.background_reject)
+            av_dev = spec_data - spec_background
+            spec_flags = self._sumthreshold(av_dev,spec_flags,1,self.window_size_freq,self.outlier_nsigma_freq)
+            #Broadcast spec_flags to timestamps
+            out_flags_chunk[:] = spec_flags
+            #Use the spec flags in the mask from now on
+            in_flags_chunk |= out_flags_chunk
+
+            #Flag the data in 2d
             #Get the background in the current chunk
             background_chunk = getbackground_2d(in_data_chunk, in_flags=in_flags_chunk, iterations=self.background_iterations, \
                                                 spike_width=(self.spike_width_time,self.spike_width_freq), \
@@ -289,15 +311,21 @@ class sumthreshold_flagger():
             freq_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk | time_flags_chunk, 1, self.window_size_freq, self.outlier_nsigma_freq)
             #Combine all the flags
             out_flags_chunk |= time_flags_chunk | freq_flags_chunk
+
             #Copy out_flags from the current chunk into the correct position in out_flags (ignoring overlap)
-            out_flags[:,chunk_start:chunk_end] = out_flags_chunk[:,freq_chunk_overlap:freq_chunk_overlap+chunk_size] if chunk_num > 0 \
-                                                                    else out_flags_chunk[:,0:chunk_size]
+            if chunk_num >0:
+                out_flags[:,chunk_start:chunk_end] = out_flags_chunk[:,freq_chunk_overlap:freq_chunk_overlap+chunk_size]
+            else:
+                out_flags[:,chunk_start:chunk_end] = out_flags_chunk[:,0:chunk_size]
+
         #Bring flags to correct frequency shape if the input data was averaged
         if self.average_freq > 1:
             out_flags=np.repeat(out_flags,self.average_freq,axis=1)
+
         #Extend flags in time and frequency
         if self.freq_extend > 1 or self.time_extend > 1:
             out_flags = ndimage.convolve(out_flags, np.ones((self.time_extend, self.freq_extend), dtype=np.bool), mode='reflect')
+
         #Flag all freqencies and times if too much is flagged.
         flag_frac_time = np.sum(out_flags, dtype=np.float, axis=0)/float(out_flags.shape[0])
         out_flags[:,np.where(flag_frac_time > self.flag_all_time_frac)[0]]=True
