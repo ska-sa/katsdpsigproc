@@ -1,40 +1,7 @@
-#Library to contain RFI flagging routines and other RFI related functions
-import katdal
-import katpoint 
-import warnings
-warnings.simplefilter('ignore')
-from matplotlib.backends.backend_pdf import PdfPages
-from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
-from mpl_toolkits.axes_grid import Grid
-
-import matplotlib.pyplot as plt #; plt.ioff()
-import matplotlib.gridspec as gridspec
-from matplotlib import ticker
-import matplotlib
-
+#Library to contain 2d RFI flagging routines and other RFI related functions
 import numpy as np
-import optparse
-import scipy.signal as signal
-import scipy.interpolate as interpolate
 import scipy.ndimage as ndimage
-import skimage
-import skimage.morphology
-import math
-
-import pickle
-
-import h5py
-import os
-import shutil
 import multiprocessing as mp
-import time
-import itertools
-
-#from katsdpscripts.RTS.rfilib import plot_waterfall
-
-#Supress warnings
-#import warnings
-#warnings.simplefilter('ignore')
 
 def running_mean(x, N, axis=None):
     #Fast implementation of a running mean (array x with width N)
