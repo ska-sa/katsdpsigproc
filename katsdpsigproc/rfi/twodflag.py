@@ -197,12 +197,14 @@ class SumThresholdFlagger(object):
                  flag_all_time_frac=0.6, flag_all_freq_frac=0.8, rho=0.3):
         self.outlier_nsigma = outlier_nsigma
         self.windows_time = windows_time
-        self.windows_freq = np.array(windows_freq)//average_freq
+        # Scale the frequency windows, and remove possible duplicates
+        windows_freq = np.ceil(np.array(windows_freq, dtype=np.float32) / average_freq)
+        self.windows_freq = np.unique(windows_freq.astype(np.int))
         self.background_reject = background_reject
         self.background_iterations = background_iterations
         self.spike_width_time = spike_width_time
         # Scale spike_width by average_freq
-        self.spike_width_freq = spike_width_freq/average_freq
+        self.spike_width_freq = spike_width_freq / average_freq
         self.time_extend = time_extend
         self.freq_extend = freq_extend
         self.freq_chunks = freq_chunks
@@ -391,7 +393,7 @@ class SumThresholdFlagger(object):
 
         return out_flags
 
-    def _sumthreshold(self, input_data, flags, axis):
+    def _sumthreshold(self, input_data, flags, axis, windows):
         """Apply the SumThreshold method along the given axis of
         `input_data`.
 
@@ -425,7 +427,7 @@ class SumThresholdFlagger(object):
         # Set up initial threshold
         threshold = self.outlier_nsigma * estm_stdev
         output_flags = np.zeros_like(flags, dtype=np.bool)
-        for window in self.windows:
+        for window in windows:
             # Stop if the window is too large
             if window > input_data.shape[axis]:
                 break
