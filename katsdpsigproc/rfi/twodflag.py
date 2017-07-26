@@ -237,13 +237,17 @@ class SumThresholdFlagger(object):
         out_flags = np.empty(data.shape, dtype=np.bool)
         async_results = []
         p = mp.Pool(num_cores)
-        for i in range(data.shape[-1]):
-            async_results.append(p.apply_async(get_baseline_flags,
-                                               (self, np.abs(data[..., i]), flags[..., i])))
-        p.close()
-        p.join()
-        for i, result in enumerate(async_results):
-            out_flags[..., i] = result.get()
+        try:
+            for i in range(data.shape[-1]):
+                async_results.append(p.apply_async(get_baseline_flags,
+                                                   (self, np.abs(data[..., i]), flags[..., i])))
+            p.close()
+        except:
+            p.terminate()
+        finally:
+            p.join()
+            for i, result in enumerate(async_results):
+                out_flags[..., i] = result.get()
 
         return out_flags
 
@@ -318,27 +322,26 @@ class SumThresholdFlagger(object):
         freq_chunks = np.linspace(0, in_data.shape[1], self.freq_chunks+1, dtype=np.int)
         # Number of channels to pad start and end of each chunk
         # (factor of 3 is gaussian smoothing box size in getbackground)
-        chunk_overlap = np.ceil(self.spike_width_freq*self.background_iterations*3.).astype(np.int)
+        chunk_overlap = int(np.ceil(self.spike_width_freq * self.background_iterations * 3.))
 
         # Loop over chunks
         for chunk_num in range(len(freq_chunks)-1):
             # Chunk the input data and flags in frequency and create output chunk
-            chunk_start, chunk_end = freq_chunks[chunk_num:chunk_num+2]
+            chunk_start, chunk_end = freq_chunks[chunk_num:chunk_num + 2]
             chunk_size = chunk_end - chunk_start
-            if chunk_num > 0:
-                chunk = slice(chunk_start-chunk_overlap, chunk_end+chunk_overlap)
-            else:
-                chunk = slice(chunk_start, chunk_end+chunk_overlap)
+            chunk = slice(max(chunk_start - chunk_overlap, 0),
+                          min(chunk_end + chunk_overlap, in_data.shape[1]))
             in_data_chunk = in_data[:, chunk]
             in_flags_chunk = np.copy(in_flags[:, chunk])
             out_flags_chunk = np.zeros_like(in_flags_chunk, dtype=np.bool)
 
             # Flag a 1d median frequency spectrum
-            spec_flags = np.all(in_flags_chunk, axis=0).reshape((1, -1,))
+            spec_flags = np.all(in_flags_chunk, axis=0, keep_dims=True)
             # Un-flag channels that are completely flagged to avoid nans in the median
             in_flags_chunk[:, spec_flags[0]] = False
             # Get median spectrum
-            spec_data = np.nanmedian(np.where(in_flags_chunk, np.nan, in_data_chunk), axis=0).reshape((1, -1,))
+            masked_data = np.where(in_flags_chunk, np.nan, in_data_chunk)
+            spec_data = np.nanmedian(masked_data, axis=0, keep_dims=True)
             # Re-flag channels that are completely flagged in time.
             in_flags_chunk[:, spec_flags[0]] = True
             spec_background = getbackground_2d(spec_data, in_flags=spec_flags,
@@ -363,17 +366,15 @@ class SumThresholdFlagger(object):
             # SumThreshold along time axis
             time_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk, 0, self.windows_time)
             # SumThreshold along frequency axis- with time flags in the mask
-            freq_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk | time_flags_chunk, 1, self.windows_freq)
+            freq_mask = in_flags_chunk | time_flags_chunk
+            freq_flags_chunk = self._sumthreshold(av_dev, freq_mask, 1, self.windows_freq)
             # Combine all the flags
             out_flags_chunk |= time_flags_chunk | freq_flags_chunk
 
             # Copy output flags from the current chunk into the correct
             # position in out_flags (ignoring overlap)
-            if chunk_num > 0:
-                out_flags[:, chunk_start:chunk_end] = \
-                    out_flags_chunk[:, chunk_overlap:chunk_overlap + chunk_size]
-            else:
-                out_flags[:, chunk_start:chunk_end] = out_flags_chunk[:, 0:chunk_size]
+            out_chunk = slice(max(chunk_overlap, 0), min(chunk_size + chunk_overlap, chunk_size))
+            out_flags[:, chunk_start:chunk_end] = out_flags_chunk[:, out_chunk]
 
         # Bring flags to correct frequency shape if the input data was averaged
         # Need to chop the end to the right shape if there was a remainder after averaging
@@ -433,7 +434,7 @@ class SumThresholdFlagger(object):
                 break
             # The threshold for this iteration is calculated from the initial threshold
             # using the equation from Offringa (2010).
-            tf = pow(self.rho, np.log(window) / np.log(2.0))
+            tf = pow(self.rho, np.log2(window))
             # Get the thresholds for each element of the desired axis,
             # with an extra exis for broadcasting.
             thisthreshold_1d = np.expand_dims(threshold / tf, axis)
