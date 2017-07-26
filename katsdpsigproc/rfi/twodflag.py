@@ -133,10 +133,10 @@ def get_baseline_flags(flagger, data, flags):
         a 2D array, boolean
             derived flags
     """
-    return flagger._detect_spikes_sumthreshold(data, flags)
+    return flagger.detect_spikes_sumthreshold(data, flags)
 
 
-class sumthreshold_flagger():
+class SumThresholdFlagger():
     """Flagger that uses the SumThreshold method (Offringa, A., MNRAS, 405, 155-167, 2010)
     to detect spikes in both frequency and time axes.
     The full algorithm does the following:
@@ -280,7 +280,7 @@ class sumthreshold_flagger():
 
         return avg_data, avg_flags
 
-    def _detect_spikes_sumthreshold(self, in_data, in_flags):
+    def detect_spikes_sumthreshold(self, in_data, in_flags):
         """For a time,channel ordered input data find outliers, and extrapolate
         flags in extreme cases.
 
