@@ -14,11 +14,11 @@ def running_mean(x, N, axis=None):
 
     Parameters
     ----------
-    x: array
+    x : array
         Input array to average
-    N: int
+    N : int
         Size of averaging window
-    axis: int
+    axis : int
         Axis along which to apply
 
     Returns
@@ -36,7 +36,7 @@ def linearly_interpolate_nans(y):
 
     Parameters
     ----------
-    y: array, 1d
+    y : array, 1d
 
     Returns
     -------
@@ -70,21 +70,21 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
 
     Parameters
     ----------
-    data: 2D array, float
+    data : 2D array, float
         The input data array to be smoothed
-    in_flags: 2D array, boolean (same shape as data)
+    in_flags : 2D array, boolean (same shape as data)
         The positions in data to have zero weight in initial iteration.
-    iterations: int
+    iterations : int
         The number of iterations of Gaussian smoothing
-    spike_width: sequence, float
+    spike_width : sequence, float
         The 1 sigma pixel widths of the smoothing gaussian (corresponding
         to the axes of data)
-    reject_threshold: float
+    reject_threshold : float
         Multiple of sigma by which to reject outliers on each iteration
 
     Returns
     -------
-    background: 2D array, float
+    background : 2D array, float
         The smooth background.
     """
 
@@ -121,10 +121,11 @@ def get_baseline_flags(flagger, data, flags):
 
     Parameters
     ----------
-        flagger: A sumthreshold_flagger object
-        data: 2D array, float
+        flagger : :class:`SumThresholdFlagger`
+            A sumthreshold_flagger object
+        data : 2D array, float
             data to flag
-        flags: 2D array, boolean
+        flags : 2D array, boolean
             prior flags to ignore
 
     Returns
@@ -156,34 +157,34 @@ class sumthreshold_flagger():
     Parameters
     ----------
 
-    outlier_nsigma: float
+    outlier_nsigma : float
         Number of sigma to reject outliers when thresholding
     windows: array, int
         Size of averaging windows to use in the SumThreshold method
-    background_reject: float
+    background_reject : float
         Number of sigma to reject outliers when backgrounding
-    background_iterations: int
+    background_iterations : int
         Number of iterations to use when determining a smooth background, after each
         iteration data in excess of background_reject*sigma are masked
-    spike_width_time: float
+    spike_width_time : float
         Characteristic width in dumps to smooth over when backgrounding. This is
         the one-sigma width of the convolving Gaussian in axis 0.
-    spike_width_freq: float
+    spike_width_freq : float
         Characteristic width in channels to smooth over when backgrounding. This is
         the one-sigma width of the convolving Gaussian in axis 1.
-    time_extend: int
+    time_extend : int
         Size of window by which to extend flags in time after detection
-    freq_extend: int
+    freq_extend : int
         Size of window by which to extend flags in frequency after detection
-    freq_chunks: int
+    freq_chunks : int
         Number of equal sized chunks to independently flag in frequnecy. Smaller
         chunks will be less affected by variations in the band in the frequency domain.
-    average_freq: int
+    average_freq : int
         Number of channels to average frequency before flagging. Flags will be extended
         to the frequency shape of the input data before being returned
-    flag_all_time_frac: float
+    flag_all_time_frac : float
         Fraction of data flagged avove which to extend flags to all data in time axis.
-    flag_all_freq_frac: float
+    flag_all_freq_frac : float
         Fraction of data flagged above which to extend flags to all data in frequency axis.
     """
     def __init__(self, outlier_nsigma=4.0, windows=[1, 2, 4, 8, 16], background_reject=2.0,
@@ -213,16 +214,16 @@ class sumthreshold_flagger():
 
         Parameters
         ----------
-        data: 3D array
+        data : 3D array
             The input visibility data.
-        flags: 3D array, boolean
+        flags : 3D array, boolean
             Input flags.
-        num_cores: int
+        num_cores : int
             Number of cores to use.
 
         Returns
         -------
-        out_flags: 3D array, boolean, same shape as data
+        out_flags : 3D array, boolean, same shape as data
             Derived flags (True=flagged)
 
         """
@@ -251,17 +252,17 @@ class sumthreshold_flagger():
 
         Parameters
         ----------
-        data: 2D Array, real
+        data : 2D Array, real
             Input data to average.
-        data: 2D Array, boolean
+        data : 2D Array, boolean
             Input flags of data to ignore when averaging.
 
         Returns
         -------
-        avg_data: 2D Array, real
+        avg_data : 2D Array, real
             The averaged data.
 
-        avg_flags: 2D Array, boolean
+        avg_flags : 2D Array, boolean
             Averaged flags array- only data for which an entire averaging bin
             is flagged in the input will be flagged in avg_flags.
 
@@ -285,17 +286,17 @@ class sumthreshold_flagger():
 
         Parameters
         ----------
-        in_data: 2D Array, float
-            Array of input data (should be in (time, channel) order, and be
+        in_data : 2D Array, float
+            Array of input data. Should be in (time, channel) order, and be
             real valued- ie. complex values should have had their absolute
             value taken before inupt.
-        in_flags: 2D Array, boolean
+        in_flags : 2D Array, boolean
             Array of input flags. Used to ignore points when backgrounding and
             thresholding.
 
         Returns
         -------
-        out_flags: 2D Array, boolean
+        out_flags : 2D Array, boolean
             The output flags for the given baseline (same shape as in_data)
         """
 
@@ -392,22 +393,22 @@ class sumthreshold_flagger():
 
         Parameters
         ----------
-        input_data: 2D Array, real
+        input_data : 2D Array, real
             Input data array (time,frequency) to flag
-        flags: 2D Array, boolean
+        flags : 2D Array, boolean
             Input flags. Used as a mask when computing the initial
             standard deviations of the input data
-        axis: int
+        axis : int
             The axis to apply the SumThreshold operation
             0=time, 1=frequency
-        window_bl: Array, int
+        window_bl : Array, int
             Window sizes to average data in each SumThreshold step
-        nsigma: int
+        nsigma : int
             Number of sigma to adopt for threshold.
 
         Returns
         -------
-        output_flags: 2D Array, boolean
+        output_flags : 2D Array, boolean
             The derived flags
         """
 
