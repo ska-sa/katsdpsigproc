@@ -318,7 +318,7 @@ class SumThresholdFlagger(object):
         freq_chunks = np.linspace(0, in_data.shape[1], self.freq_chunks+1, dtype=np.int)
         # Number of channels to pad start and end of each chunk
         # (factor of 3 is gaussian smoothing box size in getbackground)
-        chunk_overlap = int(self.spike_width_freq)*3
+        chunk_overlap = np.ceil(self.spike_width_freq*self.background_iterations*3.).astype(np.int)
 
         # Loop over chunks
         for chunk_num in range(len(freq_chunks)-1):
