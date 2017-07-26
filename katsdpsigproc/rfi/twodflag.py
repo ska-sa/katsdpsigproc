@@ -26,7 +26,7 @@ def running_mean(x, N, axis=None):
         Array with averaging window applied.
     """
     cumsum = np.cumsum(np.insert(x, 0, 0, axis=axis), axis=axis)
-    return np.apply_along_axis(lambda x: (x[N:] - x[:-N])/N, axis, cumsum) if axis is None \
+    return np.apply_along_axis(lambda x: (x[N:] - x[:-N])/N, axis, cumsum) if axis \
         else (cumsum[N:] - cumsum[:-N])/N
 
 
@@ -89,13 +89,13 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
     """
 
     # Make mask array
-    mask = np.ones(data.shape, dtype=np.float)
+    mask = np.ones(data.shape, dtype=np.float32)
     # Mask input flags if provided
     if in_flags is not None:
         mask[in_flags] = 0.0
     # Convolve with Gaussians of decreasing 1sigma width from iterations*spike_width to spike_width
     for extend_factor in range(iterations, 0, -1):
-        sigma = extend_factor*np.array(spike_width, dtype=np.float)
+        sigma = extend_factor*np.array(spike_width, dtype=np.float32)
         # Get weights
         weight = gaussian_filter(mask, sigma, mode='constant', truncate=3.0)
         # Smooth background and apply weight
@@ -270,7 +270,7 @@ class sumthreshold_flagger():
         freq_length = data.shape[1]
         bin_edges = np.arange(0, freq_length, self.average_freq, dtype=np.int)
         data_sum = np.add.reduceat(data * ~flags, bin_edges, axis=1)
-        weights = np.add.reduceat(~flags, bin_edges, axis=1, dtype=np.float)
+        weights = np.add.reduceat(~flags, bin_edges, axis=1, dtype=np.float32)
         avg_flags = (weights == 0.)
         # Fix weights to bin size where all data are flagged
         # This weight will be wrong for the end remainder, but data are flagged so it doesn't matter
@@ -379,9 +379,9 @@ class sumthreshold_flagger():
             out_flags = convolve(out_flags, kern, mode='reflect')
 
         # Flag all freqencies and times if too much is flagged.
-        flag_frac_time = np.sum(out_flags, dtype=np.float, axis=0) / float(out_flags.shape[0])
+        flag_frac_time = np.sum(out_flags, dtype=np.float32, axis=0) / float(out_flags.shape[0])
         out_flags[:, np.where(flag_frac_time > self.flag_all_time_frac)[0]] = True
-        flag_frac_freq = np.sum(out_flags, dtype=np.float, axis=1) / float(out_flags.shape[1])
+        flag_frac_freq = np.sum(out_flags, dtype=np.float32, axis=1) / float(out_flags.shape[1])
         out_flags[np.where(flag_frac_freq > self.flag_all_freq_frac)] = True
 
         return out_flags
