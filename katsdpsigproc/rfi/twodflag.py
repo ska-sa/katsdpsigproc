@@ -211,7 +211,7 @@ class SumThresholdFlagger(object):
         self.flag_all_freq_frac = flag_all_freq_frac
         self.rho = 1.3
 
-    def get_flags(self, data, flags, num_cores=8):
+    def get_flags(self, data, flags, num_cores=None):
         """Get flags in data array, with optional input flags of same shape
         that denote samples in data to ignore when backgrounding and deriving
         thresholds.
