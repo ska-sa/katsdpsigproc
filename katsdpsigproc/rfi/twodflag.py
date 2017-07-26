@@ -103,7 +103,7 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
         residual = data-background
         # Reject outliers using MAD
         abs_residual = np.abs(residual)
-        sigma = 1.4826 * np.nanmedian(abs_residual[np.where(mask > 0.)])
+        sigma = 1.4826 * np.median(abs_residual[np.where(mask > 0.)])
         mask = np.where(abs_residual > reject_threshold * sigma, 0.0, mask)
     # Compute final background
     weight = gaussian_filter(mask, spike_width, mode='constant', truncate=3.0)
