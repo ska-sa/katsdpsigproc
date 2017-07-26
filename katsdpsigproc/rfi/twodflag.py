@@ -1,6 +1,8 @@
 """Library to contain 2d RFI flagging routines and other RFI related functions."""
 
 import multiprocessing as mp
+from __future__ import division, print_function, absolute_import
+
 import numpy as np
 from scipy.ndimage import gaussian_filter, convolve
 
