@@ -1,14 +1,14 @@
 """Library to contain 2d RFI flagging routines and other RFI related functions."""
 
-import multiprocessing as mp
 from __future__ import division, print_function, absolute_import
+import multiprocessing as mp
 
 import numpy as np
 from scipy.ndimage import gaussian_filter, convolve
 
 
 def running_mean(x, N, axis=None):
-    """Fast implementation of a running mean (array x with width N)
+    """Fast implementation of a running mean (array `x` with width `N`)
     Stolen from http://stackoverflow.com/questions/13728392/moving-average-or-running-mean
     and modified to allow axis selection.
 
@@ -58,10 +58,10 @@ def linearly_interpolate_nans(y):
 def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), reject_threshold=2.0):
     """Determine a smooth background over a 2d data array by
     iteratively convolving the data with elliptical Gaussians with linearly
-    decreasing width from iterations*spike_width down to 1.*spike width. Outliers
-    greater than reject_threshold*sigma from the background are masked on each
+    decreasing width from `iterations`*`spike_width` down to `spike width`. Outliers
+    greater than `reject_threshold`*sigma from the background are masked on each
     iteration.
-    Initial weights are set to zero at positions specified in in_flags if given.
+    Initial weights are set to zero at positions specified in `in_flags` if given.
     After the final iteration a final Gaussian smoothed background is computed
     and any stray NaNs in the background are interpolated in frequency (axis 1)
     for each timestamp (axis 0). The NaNs can appear when the the convolving
@@ -72,13 +72,13 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
     ----------
     data : 2D array, float
         The input data array to be smoothed
-    in_flags : 2D array, boolean (same shape as data)
+    in_flags : 2D array, boolean (same shape as `data`)
         The positions in data to have zero weight in initial iteration.
     iterations : int
         The number of iterations of Gaussian smoothing
     spike_width : sequence, float
         The 1 sigma pixel widths of the smoothing gaussian (corresponding
-        to the axes of data)
+        to the axes of `data`)
     reject_threshold : float
         Multiple of sigma by which to reject outliers on each iteration
 
@@ -141,7 +141,7 @@ class SumThresholdFlagger(object):
     to detect spikes in both frequency and time axes.
     The full algorithm does the following:
         1) Average the data in the frequency dimension (axis 1) into bins of
-           size self.average_freq
+           size `self.average_freq`
         2) Divide the data into overlapping sub-chunks in frequency which are
            backgrounded and thresholded independently
         3) Flag a 1d spectrum median filtered in time to get fainter contaminated
@@ -151,8 +151,8 @@ class SumThresholdFlagger(object):
         6) Extend derived flags in time and frequency, via self.freq_extend and
            self.time_extend
         7) Extend flags to all times and frequencies in cases when more than
-           a given fraction of samples are flagged (via self.flag_all_time_frac and
-           self.flag_all_freq_frac)
+           a given fraction of samples are flagged (via `self.flag_all_time_frac` and
+           `self.flag_all_freq_frac`)
 
     Parameters
     ----------
@@ -167,7 +167,7 @@ class SumThresholdFlagger(object):
         Number of sigma to reject outliers when backgrounding
     background_iterations : int
         Number of iterations to use when determining a smooth background, after each
-        iteration data in excess of background_reject*sigma are masked
+        iteration data in excess of `background_reject`*`sigma` are masked
     spike_width_time : float
         Characteristic width in dumps to smooth over when backgrounding. This is
         the one-sigma width of the convolving Gaussian in axis 0.
@@ -219,7 +219,7 @@ class SumThresholdFlagger(object):
         Parameters
         ----------
         data : 3D array
-            The input visibility data.
+            The input visibility data, in (time, frequency, baseline) order.
         flags : 3D array, boolean
             Input flags.
         num_cores : int
@@ -227,7 +227,7 @@ class SumThresholdFlagger(object):
 
         Returns
         -------
-        out_flags : 3D array, boolean, same shape as data
+        out_flags : 3D array, boolean, same shape as `data`
             Derived flags (True=flagged)
 
         """
@@ -247,18 +247,18 @@ class SumThresholdFlagger(object):
 
     def _average_freq(self, data, flags):
         """Average the frequency axis (axis 1) of data into bins
-        of size self.average_freq, ignoring flags.
+        of size `self.average_freq`, ignoring flags.
         If all data in a bin is flagged in the input the data are
         averaged and the output is flagged.
-        If self.average_freq does not divide the frequency axis
-        of data, the last channel of avg_data will be an average of
+        If `self.average_freq` does not divide the frequency axis
+        of data, the last channel of `avg_data` will be an average of
         the remaining channels in the last bin.
 
         Parameters
         ----------
         data : 2D Array, real
             Input data to average.
-        data : 2D Array, boolean
+        flags : 2D Array, boolean
             Input flags of data to ignore when averaging.
 
         Returns
@@ -293,7 +293,7 @@ class SumThresholdFlagger(object):
         in_data : 2D Array, float
             Array of input data. Should be in (time, channel) order, and be
             real valued- ie. complex values should have had their absolute
-            value taken before inupt.
+            value taken before input.
         in_flags : 2D Array, boolean
             Array of input flags. Used to ignore points when backgrounding and
             thresholding.
@@ -301,11 +301,11 @@ class SumThresholdFlagger(object):
         Returns
         -------
         out_flags : 2D Array, boolean
-            The output flags for the given baseline (same shape as in_data)
+            The output flags for the given baseline (same shape as `in_data`)
         """
 
-        # Average in_data in frequency if requested
-        # (we should have a copy of in_data,in_flags at this point)
+        # Average `in_data` in frequency if requested
+        # (we should have a copy of `in_data` and `in_flags` at this point)
         orig_freq_shape = in_data.shape[1]
         if self.average_freq > 1:
             in_data, in_flags = self._average_freq(in_data, in_flags)
@@ -393,7 +393,7 @@ class SumThresholdFlagger(object):
 
     def _sumthreshold(self, input_data, flags, axis):
         """Apply the SumThreshold method along the given axis of
-        input_data.
+        `input_data`.
 
         Parameters
         ----------
@@ -435,7 +435,7 @@ class SumThresholdFlagger(object):
             # Get the thresholds for each element of the desired axis,
             # with an extra exis for broadcasting.
             thisthreshold_1d = np.expand_dims(threshold / tf, axis)
-            # Expand thisthreshold to be same shape as input_data
+            # Expand thisthreshold to be same shape as `input_data`
             thisthreshold = thisthreshold_1d.repeat(input_data.shape[axis], axis=axis)
             # Set already flagged values to be the value of the
             # threshold if they are outside the threshold.
