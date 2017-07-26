@@ -179,20 +179,22 @@ class SumThresholdFlagger(object):
     freq_extend : int
         Size of window by which to extend flags in frequency after detection
     freq_chunks : int
-        Number of equal sized chunks to independently flag in frequnecy. Smaller
+        Number of equal-sized chunks to independently flag in frequency. Smaller
         chunks will be less affected by variations in the band in the frequency domain.
     average_freq : int
         Number of channels to average frequency before flagging. Flags will be extended
         to the frequency shape of the input data before being returned
     flag_all_time_frac : float
-        Fraction of data flagged avove which to extend flags to all data in time axis.
+        Fraction of data flagged above which to extend flags to all data in time axis.
     flag_all_freq_frac : float
         Fraction of data flagged above which to extend flags to all data in frequency axis.
+    rho : float
+        Falloff exponent for SumThreshold
     """
     def __init__(self, outlier_nsigma=4.0, windows_time=[1, 2, 4, 8, 16], windows_freq=[1, 2, 4, 8, 16],
                  background_reject=2.0, background_iterations=1, spike_width_time=12.5,
                  spike_width_freq=7.0, time_extend=3, freq_extend=3, freq_chunks=10, average_freq=1,
-                 flag_all_time_frac=0.6, flag_all_freq_frac=0.8):
+                 flag_all_time_frac=0.6, flag_all_freq_frac=0.8, rho=0.3):
         self.outlier_nsigma = outlier_nsigma
         self.windows_time = windows_time
         self.windows_freq = np.array(windows_freq)//average_freq
@@ -207,7 +209,6 @@ class SumThresholdFlagger(object):
         self.average_freq = average_freq
         self.flag_all_time_frac = flag_all_time_frac
         self.flag_all_freq_frac = flag_all_freq_frac
-        # Falloff exponent for SumThreshold
         self.rho = 1.3
 
     def get_flags(self, data, flags, num_cores=8):
