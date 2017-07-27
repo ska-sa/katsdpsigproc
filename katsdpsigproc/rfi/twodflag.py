@@ -242,13 +242,11 @@ class SumThresholdFlagger(object):
             for i in range(data.shape[-1]):
                 async_results.append(p.apply_async(get_baseline_flags,
                                                    (self, np.abs(data[..., i]), flags[..., i])))
-            p.close()
-            p.join()
-        except:
-            p.terminate()
-        finally:
             for i, result in enumerate(async_results):
                 out_flags[..., i] = result.get()
+        finally:
+            p.close()
+            p.join()
 
         return out_flags
 
