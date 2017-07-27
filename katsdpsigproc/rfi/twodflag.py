@@ -123,17 +123,17 @@ def get_baseline_flags(flagger, data, flags):
 
     Parameters
     ----------
-        flagger : :class:`SumThresholdFlagger`
-            A sumthreshold_flagger object
-        data : 2D array, float
-            data to flag
-        flags : 2D array, boolean
-            prior flags to ignore
+    flagger : :class:`SumThresholdFlagger`
+        A sumthreshold_flagger object
+    data : 2D array, float
+        data to flag
+    flags : 2D array, boolean
+        prior flags to ignore
 
     Returns
     -------
-        a 2D array, boolean
-            derived flags
+    a 2D array, boolean
+        derived flags
     """
     return flagger.detect_spikes_sumthreshold(data, flags)
 
@@ -177,9 +177,9 @@ class SumThresholdFlagger(object):
         Characteristic width in channels to smooth over when backgrounding. This is
         the one-sigma width of the convolving Gaussian in axis 1.
     time_extend : int
-        Size of window by which to extend flags in time after detection
+        Size of kernel in time to convolve with flags after detection
     freq_extend : int
-        Size of window by which to extend flags in frequency after detection
+        Size of kernel in frequency to convolve with flags after detection
     freq_chunks : int
         Number of equal-sized chunks to independently flag in frequency. Smaller
         chunks will be less affected by variations in the band in the frequency domain.
@@ -387,11 +387,11 @@ class SumThresholdFlagger(object):
             kern = np.ones((self.time_extend, self.freq_extend), dtype=np.bool)
             out_flags = convolve(out_flags, kern, mode='reflect')
 
-        # Flag all freqencies and times if too much is flagged.
-        flag_frac_time = np.sum(out_flags, dtype=np.float32, axis=0) / float(out_flags.shape[0])
-        out_flags[:, np.where(flag_frac_time > self.flag_all_time_frac)[0]] = True
-        flag_frac_freq = np.sum(out_flags, dtype=np.float32, axis=1) / float(out_flags.shape[1])
-        out_flags[np.where(flag_frac_freq > self.flag_all_freq_frac)] = True
+        # Flag all frequencies and times if too much is flagged.
+        flag_frac_time = np.sum(out_flags, dtype=np.float32, axis=0) / out_flags.shape[0]
+        out_flags[:, flag_frac_time > self.flag_all_time_frac] = True
+        flag_frac_freq = np.sum(out_flags, dtype=np.float32, axis=1) / out_flags.shape[1]
+        out_flags[flag_frac_freq > self.flag_all_freq_frac] = True
 
         return out_flags
 
