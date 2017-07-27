@@ -27,6 +27,14 @@ katsdpsigproc.rfi.host module
     :undoc-members:
     :show-inheritance:
 
+katsdpsigproc.rfi.twodflag module
+---------------------------------
+
+.. automodule:: katsdpsigproc.rfi.twodflag
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 Module contents
 ---------------
