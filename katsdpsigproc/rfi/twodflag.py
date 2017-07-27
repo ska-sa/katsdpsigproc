@@ -1,6 +1,6 @@
 """Library to contain 2d RFI flagging routines and other RFI related functions."""
 
-#from __future__ import division, print_function, absolute_import
+from __future__ import division, print_function, absolute_import
 import multiprocessing as mp
 
 import numpy as np
@@ -26,8 +26,8 @@ def running_mean(x, N, axis=None):
         Array with averaging window applied.
     """
     cumsum = np.cumsum(np.insert(x, 0, 0, axis=axis), axis=axis)
-    return np.apply_along_axis(lambda x: (x[N:] - x[:-N])/N, axis, cumsum) if axis \
-        else (cumsum[N:] - cumsum[:-N])/N
+    return np.apply_along_axis(lambda x: (x[N:] - x[:-N]) / N, axis, cumsum) if axis \
+        else (cumsum[N:] - cumsum[:-N]) / N
 
 
 def linearly_interpolate_nans(y):
@@ -242,10 +242,10 @@ class SumThresholdFlagger(object):
                 async_results.append(p.apply_async(get_baseline_flags,
                                                    (self, np.abs(data[..., i]), flags[..., i])))
             p.close()
+            p.join()
         except:
             p.terminate()
         finally:
-            p.join()
             for i, result in enumerate(async_results):
                 out_flags[..., i] = result.get()
 
@@ -438,12 +438,10 @@ class SumThresholdFlagger(object):
             # Get the thresholds for each element of the desired axis,
             # with an extra exis for broadcasting.
             thisthreshold_1d = np.expand_dims(threshold / tf, axis)
-            # Expand thisthreshold to be same shape as `input_data`
-            thisthreshold = thisthreshold_1d.repeat(input_data.shape[axis], axis=axis)
             # Set already flagged values to be the value of the
             # threshold if they are outside the threshold.
-            bl_mask = np.logical_or(output_flags, thisthreshold < abs_input)
-            bl_data = np.where(bl_mask, thisthreshold, input_data)
+            bl_mask = np.logical_or(output_flags, thisthreshold_1d < abs_input)
+            bl_data = np.where(bl_mask, thisthreshold_1d, input_data)
             # Calculate a rolling average array from the data with the window for this iteration
             avgarray = running_mean(bl_data, window, axis=axis)
             abs_avg = np.abs(avgarray)
