@@ -14,7 +14,7 @@ def running_mean(x, N, axis=None):
 
     Parameters
     ----------
-    x : array
+    x : array, float
         Input array to average
     N : int
         Size of averaging window
@@ -23,11 +23,13 @@ def running_mean(x, N, axis=None):
 
     Returns
     -------
+    result: array, float32
         Array with averaging window applied.
     """
-    cumsum = np.cumsum(np.insert(x, 0, 0, axis=axis), axis=axis)
-    return np.apply_along_axis(lambda x: (x[N:] - x[:-N]) / N, axis, cumsum) if axis \
-        else (cumsum[N:] - cumsum[:-N]) / N
+    cumsum = np.cumsum(np.insert(x, 0, 0, axis=axis), axis=axis, dtype=np.float64)
+    result = np.apply_along_axis(lambda x: (x[N:] - x[:-N]) / N, axis, cumsum) if axis \
+                    else (cumsum[N:] - cumsum[:-N]) / N
+    return result.astype(np.float32)
 
 
 def linearly_interpolate_nans(y):
