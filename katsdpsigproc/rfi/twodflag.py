@@ -191,10 +191,11 @@ class SumThresholdFlagger(object):
     rho : float
         Falloff exponent for SumThreshold
     """
-    def __init__(self, outlier_nsigma=4.0, windows_time=[1, 2, 4, 8, 16], windows_freq=[1, 2, 4, 8, 16],
-                 background_reject=2.0, background_iterations=1, spike_width_time=12.5,
-                 spike_width_freq=7.0, time_extend=3, freq_extend=3, freq_chunks=10, average_freq=1,
-                 flag_all_time_frac=0.6, flag_all_freq_frac=0.8, rho=0.3):
+    def __init__(self, outlier_nsigma=4.0, windows_time=[1, 2, 4, 8, 16],
+                 windows_freq=[1, 2, 4, 8, 16], background_reject=2.0, background_iterations=1,
+                 spike_width_time=12.5, spike_width_freq=7.0, time_extend=3, freq_extend=3,
+                 freq_chunks=10, average_freq=1, flag_all_time_frac=0.6, flag_all_freq_frac=0.8,
+                 rho=0.3):
         self.outlier_nsigma = outlier_nsigma
         self.windows_time = windows_time
         # Scale the frequency windows, and remove possible duplicates
