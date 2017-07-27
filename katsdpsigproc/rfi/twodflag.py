@@ -1,6 +1,6 @@
 """Library to contain 2d RFI flagging routines and other RFI related functions."""
 
-from __future__ import division, print_function, absolute_import
+#from __future__ import division, print_function, absolute_import
 import multiprocessing as mp
 
 import numpy as np
@@ -323,7 +323,6 @@ class SumThresholdFlagger(object):
         # Number of channels to pad start and end of each chunk
         # (factor of 3 is gaussian smoothing box size in getbackground)
         chunk_overlap = int(np.ceil(self.spike_width_freq * self.background_iterations * 3.))
-
         # Loop over chunks
         for chunk_num in range(len(freq_chunks)-1):
             # Chunk the input data and flags in frequency and create output chunk
@@ -336,12 +335,12 @@ class SumThresholdFlagger(object):
             out_flags_chunk = np.zeros_like(in_flags_chunk, dtype=np.bool)
 
             # Flag a 1d median frequency spectrum
-            spec_flags = np.all(in_flags_chunk, axis=0, keep_dims=True)
+            spec_flags = np.all(in_flags_chunk, axis=0, keepdims=True)
             # Un-flag channels that are completely flagged to avoid nans in the median
             in_flags_chunk[:, spec_flags[0]] = False
             # Get median spectrum
             masked_data = np.where(in_flags_chunk, np.nan, in_data_chunk)
-            spec_data = np.nanmedian(masked_data, axis=0, keep_dims=True)
+            spec_data = np.nanmedian(masked_data, axis=0, keepdims=True)
             # Re-flag channels that are completely flagged in time.
             in_flags_chunk[:, spec_flags[0]] = True
             spec_background = getbackground_2d(spec_data, in_flags=spec_flags,
@@ -373,7 +372,8 @@ class SumThresholdFlagger(object):
 
             # Copy output flags from the current chunk into the correct
             # position in out_flags (ignoring overlap)
-            out_chunk = slice(max(chunk_overlap, 0), min(chunk_size + chunk_overlap, chunk_size))
+            chunk_offset = min(chunk_overlap, chunk_start)
+            out_chunk = slice(chunk_offset, chunk_size+chunk_offset)
             out_flags[:, chunk_start:chunk_end] = out_flags_chunk[:, out_chunk]
 
         # Bring flags to correct frequency shape if the input data was averaged
