@@ -142,17 +142,18 @@ class SumThresholdFlagger(object):
     """Flagger that uses the SumThreshold method (Offringa, A., MNRAS, 405, 155-167, 2010)
     to detect spikes in both frequency and time axes.
     The full algorithm does the following:
-        1) Average the data in the frequency dimension (axis 1) into bins of
+
+        1. Average the data in the frequency dimension (axis 1) into bins of
            size `self.average_freq`
-        2) Divide the data into overlapping sub-chunks in frequency which are
+        2. Divide the data into overlapping sub-chunks in frequency which are
            backgrounded and thresholded independently
-        3) Flag a 1d spectrum median filtered in time to get fainter contaminated
+        3. Flag a 1d spectrum median filtered in time to get fainter contaminated
            channels.
-        4) Derive a smooth 2d background through each chunk
-        5) SumThreshold the background subtracted chunks in time and frequency
-        6) Extend derived flags in time and frequency, via self.freq_extend and
+        4. Derive a smooth 2d background through each chunk
+        5. SumThreshold the background subtracted chunks in time and frequency
+        6. Extend derived flags in time and frequency, via self.freq_extend and
            self.time_extend
-        7) Extend flags to all times and frequencies in cases when more than
+        7. Extend flags to all times and frequencies in cases when more than
            a given fraction of samples are flagged (via `self.flag_all_time_frac` and
            `self.flag_all_freq_frac`)
 
