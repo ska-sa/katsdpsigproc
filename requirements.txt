@@ -7,7 +7,7 @@ katversion
 mako
 markupsafe
 numpy
-pandas==0.20.1
+pandas
 pkginfo
 py
 pycparser
