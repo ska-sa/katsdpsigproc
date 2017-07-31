@@ -432,9 +432,6 @@ class SumThresholdFlagger(object):
         abs_input = np.abs(input_data)
         # Get standard deviations along the axis using MAD
         estm_stdev = 1.4826 * np.nanmedian(np.abs(np.where(flags, np.nan, abs_input)), axis=axis)
-        # estm_stdev will contain NaNs when all the input data are flagged
-        # Set NaNs to zero to ensure these data are flagged
-        estm_stdev = np.nan_to_num(estm_stdev)
         # Set up initial threshold
         threshold = self.outlier_nsigma * estm_stdev
         output_flags_pos = np.zeros_like(flags, dtype=np.bool)
@@ -451,16 +448,16 @@ class SumThresholdFlagger(object):
             thisthreshold_1d = np.expand_dims(threshold / tf, axis)
             # Set already flagged values to be the +/- value of the
             # threshold if they are outside the threshold.
-            bl_mask = np.logical_or(output_flags_pos, input_data >= thisthreshold_1d)
+            bl_mask = np.logical_or(output_flags_pos, input_data > thisthreshold_1d)
             bl_data = np.where(bl_mask, thisthreshold_1d, input_data)
             # Negative outliers
-            bl_mask = np.logical_or(output_flags_neg, input_data <= -thisthreshold_1d)
+            bl_mask = np.logical_or(output_flags_neg, input_data < -thisthreshold_1d)
             bl_data = np.where(bl_mask, -thisthreshold_1d, input_data)
             # Calculate a rolling average array from the data with the window for this iteration
             avgarray = running_mean(bl_data, window, axis=axis)
 
             # Work out the flags from the average data above the current threshold.
-            this_flags = avgarray >= thisthreshold_1d
+            this_flags = avgarray > thisthreshold_1d
             # Convolve the flags to be of the same width as the current window.
             convwindow = np.ones(window, dtype=np.bool)
             this_flags = np.apply_along_axis(np.convolve, axis, this_flags, convwindow)
@@ -468,7 +465,7 @@ class SumThresholdFlagger(object):
             output_flags_pos = output_flags_pos | this_flags
 
             # Work out the flags from the average data below the current threshold.
-            this_flags = avgarray <= -thisthreshold_1d
+            this_flags = avgarray < -thisthreshold_1d
             # Convolve the flags to be of the same width as the current window.
             convwindow = np.ones(window, dtype=np.bool)
             this_flags = np.apply_along_axis(np.convolve, axis, this_flags, convwindow)
