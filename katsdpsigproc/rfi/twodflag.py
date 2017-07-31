@@ -311,7 +311,12 @@ class SumThresholdFlagger(object):
         out_flags : 2D Array, boolean
             The output flags for the given baseline (same shape as `in_data`)
         """
-
+        # Get nonfinite locations
+        nf_locs = ~np.isfinite(in_data)
+        # Flag nonfinite locations in input
+        in_flags[nf_locs] = True
+        # Replace nonfinite data with zero
+        in_data[nf_locs] = 0.
         # Average `in_data` in frequency if requested
         # (we should have a copy of `in_data` and `in_flags` at this point)
         orig_freq_shape = in_data.shape[1]
@@ -393,6 +398,9 @@ class SumThresholdFlagger(object):
         out_flags[:, flag_frac_time > self.flag_all_time_frac] = True
         flag_frac_freq = np.sum(out_flags, dtype=np.float32, axis=1) / out_flags.shape[1]
         out_flags[flag_frac_freq > self.flag_all_freq_frac] = True
+
+        # Flag nan location in output
+        out_flags[nf_locs] = True
 
         return out_flags
 
