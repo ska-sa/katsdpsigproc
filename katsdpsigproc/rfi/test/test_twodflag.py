@@ -48,7 +48,7 @@ class TestRunningMean(object):
         """Return empty array if window size larger than array dim"""
         expected = np.empty((0, 4))
         out = twodflag.running_mean(self.a, 5, axis=0)
-        np.testing.assert_equal(expected, out)
+        np.testing.assert_array_equal(expected, out)
 
 
 class TestLinearlyInterpolateNans(object):
@@ -63,7 +63,7 @@ class TestLinearlyInterpolateNans(object):
         out = twodflag.linearly_interpolate_nans(self.y)
         np.testing.assert_allclose(self.expected, out)
         # Check that the input isn't being overwritten
-        np.testing.assert_equal(orig, self.y)
+        np.testing.assert_array_equal(orig, self.y)
 
     def test_no_nans(self):
         out = twodflag.linearly_interpolate_nans(self.expected)
@@ -76,7 +76,7 @@ class TestLinearlyInterpolateNans(object):
         out = twodflag.linearly_interpolate_nans(self.expected)
         np.testing.assert_allclose(self.expected, out)
         # Check that the input isn't being overwritten
-        np.testing.assert_equal(orig, self.y)
+        np.testing.assert_array_equal(orig, self.y)
 
     def test_float32(self):
         expected = self.expected.astype(np.float32)
@@ -110,7 +110,7 @@ class TestGetbackground2D(object):
         self.flags.fill(True)
         background = twodflag.getbackground_2d(self.data, self.flags)
         assert_equal(np.float32, background.dtype)
-        np.testing.assert_equal(np.zeros(self.shape, np.float32), background)
+        np.testing.assert_array_equal(np.zeros(self.shape, np.float32), background)
 
     def test_in_flags(self):
         # This needs to be done carefully, because getbackground_2d does
@@ -157,3 +157,68 @@ class TestGetbackground2D(object):
         background = twodflag.getbackground_2d(self.data, iterations=3)
         import matplotlib.pyplot as plt; plt.imshow(background - expected); plt.show()
         np.testing.assert_allclose(expected, background, rtol=1e-2)
+
+
+class TestSumThresholdFlagger(object):
+    """Tests for :class:`katsdpsigproc.rfi.twodflag.SumThresholdFlagger`."""
+
+    def setup(self):
+        self.flagger = twodflag.SumThresholdFlagger()
+        self.small_data = np.arange(30, dtype=np.float32).reshape(5, 6)
+        self.small_flags = np.zeros(self.small_data.shape, np.bool_)
+        self.small_flags[3, :] = 1
+        self.small_flags[:, 4] = 1
+        self.small_flags[2, 0] = 1
+        self.small_flags[2, 5] = 1
+
+    def test_average_freq_one(self):
+        """_average_freq with 1 channel must have no effect on unflagged data"""
+        avg_data, avg_flags = self.flagger._average_freq(self.small_data, self.small_flags)
+        expected = self.small_data.copy()
+        expected[self.small_flags] = 0
+        assert_equal(np.float32, avg_data.dtype)
+        assert_equal(np.bool_, avg_flags.dtype)
+        np.testing.assert_array_equal(expected, avg_data)
+        np.testing.assert_array_equal(self.small_flags, avg_flags)
+
+    def test_average_freq_divides(self):
+        """Test _average_freq when averaging factor divides in exactly"""
+        expected_data = np.array([
+            [0.5, 2.5, 5.0],
+            [6.5, 8.5, 11.0],
+            [13.0, 14.5, 0.0],
+            [0.0, 0.0, 0.0],
+            [24.5, 26.5, 29.0]], np.float32)
+        expected_flags = np.array([
+            [False, False, False],
+            [False, False, False],
+            [False, False, True],
+            [True, True, True],
+            [False, False, False]])
+        flagger = twodflag.SumThresholdFlagger(average_freq=2)
+        avg_data, avg_flags = flagger._average_freq(self.small_data, self.small_flags)
+        assert_equal(np.float32, avg_data.dtype)
+        assert_equal(np.bool_, avg_flags.dtype)
+        np.testing.assert_array_equal(expected_data, avg_data)
+        np.testing.assert_array_equal(expected_flags, avg_flags)
+
+    def test_average_freq_uneven(self):
+        """Test _average_freq when averaging factor does not divide number of channels"""
+        expected_data = np.array([
+            [1.5, 5.0],
+            [7.5, 11.0],
+            [14.0, 0.0],
+            [0.0, 0.0],
+            [25.5, 29.0]], np.float32)
+        expected_flags = np.array([
+            [False, False],
+            [False, False],
+            [False, True],
+            [True, True],
+            [False, False]], np.bool_)
+        flagger = twodflag.SumThresholdFlagger(average_freq=4)
+        avg_data, avg_flags = flagger._average_freq(self.small_data, self.small_flags)
+        assert_equal(np.float32, avg_data.dtype)
+        assert_equal(np.bool_, avg_flags.dtype)
+        np.testing.assert_array_equal(expected_data, avg_data)
+        np.testing.assert_array_equal(expected_flags, avg_flags)
