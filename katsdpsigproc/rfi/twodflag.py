@@ -320,6 +320,8 @@ class SumThresholdFlagger(object):
         """
         # Get nonfinite locations
         nf_locs = ~np.isfinite(in_data)
+        in_flags = in_flags.copy()
+        in_data = in_data.copy()
         # Flag nonfinite locations in input
         in_flags[nf_locs] = True
         # Replace nonfinite data with zero
