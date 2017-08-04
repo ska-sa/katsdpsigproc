@@ -418,7 +418,7 @@ class SumThresholdFlagger(object):
         Parameters
         ----------
         input_data : 2D Array, real
-            Input data array (time,frequency) to flag
+            Deviations from the background, with shape (time,frequency)
         flags : 2D Array, boolean
             Input flags. Used as a mask when computing the initial
             standard deviations of the input data
@@ -438,7 +438,8 @@ class SumThresholdFlagger(object):
 
         abs_input = np.abs(input_data)
         # Get standard deviations along the axis using MAD
-        estm_stdev = 1.4826 * np.nanmedian(np.abs(np.where(flags, np.nan, abs_input)), axis=axis)
+        masked_abs = np.ma.array(abs_input, mask=flags)
+        estm_stdev = 1.4826 * np.ma.median(masked_abs, axis=axis).filled(np.inf)
         # Set up initial threshold
         threshold = self.outlier_nsigma * estm_stdev
         output_flags_pos = np.zeros_like(flags, dtype=np.bool)
@@ -455,11 +456,11 @@ class SumThresholdFlagger(object):
             thisthreshold_1d = np.expand_dims(threshold / tf, axis)
             # Set already flagged values to be the +/- value of the
             # threshold if they are outside the threshold.
-            bl_mask = np.logical_or(output_flags_pos, input_data > thisthreshold_1d)
+            bl_mask = np.logical_and(output_flags_pos, input_data > thisthreshold_1d)
             bl_data = np.where(bl_mask, thisthreshold_1d, input_data)
             # Negative outliers
-            bl_mask = np.logical_or(output_flags_neg, input_data < -thisthreshold_1d)
-            bl_data = np.where(bl_mask, -thisthreshold_1d, input_data)
+            bl_mask = np.logical_and(output_flags_neg, input_data < -thisthreshold_1d)
+            bl_data = np.where(bl_mask, -thisthreshold_1d, bl_data)
             # Calculate a rolling average array from the data with the window for this iteration
             avgarray = running_mean(bl_data, window, axis=axis)
 

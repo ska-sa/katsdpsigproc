@@ -3,7 +3,7 @@
 from __future__ import division, print_function, absolute_import
 
 import numpy as np
-from nose.tools import assert_equal
+from nose.tools import assert_equal, assert_less
 
 from .. import twodflag
 
@@ -222,3 +222,62 @@ class TestSumThresholdFlagger(object):
         assert_equal(np.bool_, avg_flags.dtype)
         np.testing.assert_array_equal(expected_data, avg_data)
         np.testing.assert_array_equal(expected_flags, avg_flags)
+
+    def test_sumthreshold_all_flagged(self):
+        out_flags = self.flagger._sumthreshold(self.small_data, self.small_flags, 0, [1, 2, 4])
+        np.testing.assert_equal(np.zeros_like(self.small_flags), out_flags)
+
+    def _test_sumthreshold_basic(self, axis):
+        rs = np.random.RandomState(seed=1)
+        data = rs.standard_normal((100, 90)).astype(np.float32) * 3.0
+        rfi = np.zeros_like(data)
+        # Add some individual spikes and some bad channels
+        rfi[10, 20] = 100.0
+        rfi[80, 80] = -100.0
+        rfi[:, 40] = rs.uniform(80.0, 120.0, size=(100,))
+        rfi[:, 2] = -rfi[:, 40]
+        # Smaller but wider spike
+        rfi[:, 60:67] = rs.uniform(15.0, 20.0, size=(100, 7))
+        rfi[:, 10:17] = -rfi[:, 60:67]
+        in_flags = np.zeros(data.shape, np.bool_)
+        expected_flags = rfi != 0
+        data += rfi
+        if axis == 0:
+            # Swap axes around so that we're doing essentially the same test
+            rfi = rfi.T.copy()
+            data = data.T.copy()
+            in_flags = in_flags.T.copy()
+        out_flags = self.flagger._sumthreshold(data, in_flags, axis, self.flagger.windows_freq)
+        if axis == 0:
+            out_flags = out_flags.T
+        # Due to random data, won't get perfect agreement, but should get close
+        errors = np.sum(expected_flags != out_flags)
+        assert_less(errors / data.size, 0.01)
+        # Check for exact match on the individual spikes
+        for region in (np.s_[8:13, 18:23], np.s_[78:83, 78:83]):
+            np.testing.assert_equal(expected_flags[region], out_flags[region])
+
+    def test_sumthreshold_time(self):
+        self._test_sumthreshold_basic(axis=0)
+
+    def test_sumthreshold_frequency(self):
+        self._test_sumthreshold_basic(axis=1)
+
+    def test_sumthreshold_existing(self):
+        rs = np.random.RandomState(seed=1)
+        flagger = twodflag.SumThresholdFlagger(outlier_nsigma=5)
+        data = rs.standard_normal((100, 90)).astype(np.float32) * 3.0
+        in_flags = np.zeros(data.shape, np.bool_)
+        # Corrupt but pre-flag just under half the data, which will skew the
+        # noise estimate if not taken into account.
+        data[:48] += 1000.0
+        in_flags[:48] = True
+        # Add some spikes that should be just under the detection limit.
+        data[70, 0] = 12.5
+        data[70, 1] = -12.5
+        # Add some spikes that should still be detected.
+        data[70, 2] = 20.0
+        data[70, 3] = -20.0
+        # Test it
+        out_flags = flagger._sumthreshold(data, in_flags, 0, flagger.windows_freq)
+        np.testing.assert_array_equal([False, False, True, True], out_flags[70, :4])
