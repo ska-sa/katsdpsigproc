@@ -3,7 +3,9 @@
 from __future__ import division, print_function, absolute_import
 
 import numpy as np
+import scipy.interpolate
 from nose.tools import assert_equal, assert_less
+from nose.plugins.skip import SkipTest
 
 from .. import twodflag
 
@@ -71,7 +73,6 @@ class TestLinearlyInterpolateNans(object):
 
     def test_all_nans(self):
         orig = self.y[:]
-        expected = np.zeros_like(self.y)
         self.y[:] = np.nan
         out = twodflag.linearly_interpolate_nans(self.expected)
         np.testing.assert_allclose(self.expected, out)
@@ -155,7 +156,6 @@ class TestGetbackground2D(object):
         self.data[20:50, 30:80] += 15
 
         background = twodflag.getbackground_2d(self.data, iterations=3)
-        import matplotlib.pyplot as plt; plt.imshow(background - expected); plt.show()
         np.testing.assert_allclose(expected, background, rtol=1e-2)
 
 
@@ -281,3 +281,97 @@ class TestSumThresholdFlagger(object):
         # Test it
         out_flags = flagger._sumthreshold(data, in_flags, 0, flagger.windows_freq)
         np.testing.assert_array_equal([False, False, True, True], out_flags[70, :4])
+
+    def _make_background(self, shape, rs):
+        """Simulate a bandpass with some smooth variation."""
+        ntime, nfreq = shape
+        nx = 10
+        x = np.linspace(0.0, nfreq, nx)
+        y = np.ones((ntime, nx)) * 2.34
+        y[:, 0] = 0.1
+        y[:, -1] = 0.1
+        y[:] += rs.uniform(0.0, 0.1, y.shape)
+        f = scipy.interpolate.interp1d(x, y, kind='cubic', assume_sorted=True)
+        return f(np.arange(nfreq))
+
+    def _test_detect_spikes_sumthreshold(self, flagger):
+        rs = np.random.RandomState(seed=1)
+        shape = (234, 345)
+        background = self._make_background(shape, rs).astype(np.float32)
+        data = background + rs.standard_normal(shape) * 0.1
+        rfi = np.zeros(shape)
+        # Some completely bad channels and bad times
+        rfi[12, :] = 1
+        rfi[20:25, :] = 1
+        rfi[:, 17] = 1
+        rfi[:, 200:220] = 1
+        # Some mostly bad channels and times
+        rfi[30, :300] = 1
+        rfi[50:, 80] = 1
+        # Some smaller blocks of RFI
+        rfi[60:65, 100:170] = 1
+        rfi[150:200, 150:153] = 1
+        expected = rfi.astype(np.bool_)
+        # The mostly-bad channels and times must be fully flagged
+        expected[30, :] = True
+        expected[:, 80] = True
+        data += rfi * rs.standard_normal(shape) * 3.0
+        # Channel that is slightly biased, but wouldn't be picked up in a single dump
+        data[:, 260] += 0.2 * flagger.average_freq # TODO
+        expected[:, 260] = True
+        in_flags = np.zeros(shape, np.bool_)
+        # Pre-flag some channels, and make those values NaN (because cal
+        # currently does this - but should be fixed).
+        in_flags[:, 185:190] = True
+        data[:, 185:190] = np.nan
+        orig_data = data.copy()
+        orig_in_flags = in_flags.copy()
+        out_flags = flagger.detect_spikes_sumthreshold(data, in_flags)
+        # Check that the original values aren't disturbed
+        np.testing.assert_equal(orig_data, data)
+        np.testing.assert_equal(orig_in_flags, in_flags)
+
+        # Check the results. Everything that's expected must be flagged,
+        # everything within time_extend and freq_extend kernels may be
+        # flagged. A small number of values outside this may be flagged.
+        # The backgrounding doesn't currently handle the edges of the band
+        # well, so for now we also allow the edges to be flagged too.
+        # TODO: improve getbackground_2d so that it better fits a slope
+        # at the edges of the passband.
+        allowed = expected | in_flags
+        allowed[:-1] |= allowed[1:]
+        allowed[1:] |= allowed[:-1]
+        allowed[:, :-1] |= allowed[:, 1:]
+        allowed[:, 1:] |= allowed[:, :-1]
+        allowed[:, :40] = True
+        allowed[:, -40:] = True
+        missing = expected & ~out_flags
+        extra = out_flags & ~allowed
+        # Uncomment for debugging failures
+        # import matplotlib.pyplot as plt
+        # plt.imshow(expected + 2 * out_flags)
+        # plt.show()
+        assert_equal(0, missing.sum())
+        assert_less(extra.sum() / data.size, 0.02)
+
+    def test_detect_spikes_sumthreshold_defaults(self):
+        self._test_detect_spikes_sumthreshold(self.flagger)
+
+    def test_detect_spikes_sumthreshold_single_chunk(self):
+        flagger = twodflag.SumThresholdFlagger(freq_chunks=1)
+        self._test_detect_spikes_sumthreshold(flagger)
+
+    def test_detect_spikes_sumthreshold_many_chunks(self):
+        flagger = twodflag.SumThresholdFlagger(freq_chunks=30)
+        self._test_detect_spikes_sumthreshold(flagger)
+
+    def test_detect_spikes_sumthreshold_average_freq(self):
+        flagger = twodflag.SumThresholdFlagger(average_freq=2)
+        self._test_detect_spikes_sumthreshold(flagger)
+
+    def test_detect_spikes_sumthreshold_iterations(self):
+        # TODO: fix up the overflagging of the background in the flagger,
+        # which currently causes this to fail.
+        raise SkipTest('Backgrounder overflags edges of the slope')
+        # flagger = twodflag.SumThresholdFlagger(background_iterations=3)
+        # self._test_detect_spikes_sumthreshold(flagger)
