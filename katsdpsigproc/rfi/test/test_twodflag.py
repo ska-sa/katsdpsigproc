@@ -225,7 +225,7 @@ class TestSumThresholdFlagger(object):
 
     def test_sumthreshold_all_flagged(self):
         out_flags = self.flagger._sumthreshold(self.small_data, self.small_flags, 0, [1, 2, 4])
-        np.testing.assert_equal(np.zeros_like(self.small_flags), out_flags)
+        np.testing.assert_array_equal(np.zeros_like(self.small_flags), out_flags)
 
     def _test_sumthreshold_basic(self, axis):
         rs = np.random.RandomState(seed=1)
@@ -294,8 +294,7 @@ class TestSumThresholdFlagger(object):
         f = scipy.interpolate.interp1d(x, y, kind='cubic', assume_sorted=True)
         return f(np.arange(nfreq))
 
-    def _test_detect_spikes_sumthreshold(self, flagger):
-        rs = np.random.RandomState(seed=1)
+    def _make_data(self, flagger, rs):
         shape = (234, 345)
         background = self._make_background(shape, rs).astype(np.float32)
         data = background + rs.standard_normal(shape) * 0.1
@@ -324,6 +323,12 @@ class TestSumThresholdFlagger(object):
         # currently does this - but should be fixed).
         in_flags[:, 185:190] = True
         data[:, 185:190] = np.nan
+        return data, in_flags, expected
+
+    def _test_detect_spikes_sumthreshold(self, flagger):
+        rs = np.random.RandomState(seed=1)
+        data, in_flags, expected = self._make_data(flagger, rs)
+
         orig_data = data.copy()
         orig_in_flags = in_flags.copy()
         out_flags = flagger.detect_spikes_sumthreshold(data, in_flags)
@@ -375,3 +380,34 @@ class TestSumThresholdFlagger(object):
         raise SkipTest('Backgrounder overflags edges of the slope')
         # flagger = twodflag.SumThresholdFlagger(background_iterations=3)
         # self._test_detect_spikes_sumthreshold(flagger)
+
+    def _test_detect_spikes_sum_threshold_all_flagged(self, flagger):
+        data = np.zeros((100, 80), np.float32)
+        in_flags = np.ones(data.shape, np.bool_)
+        out_flags = flagger.detect_spikes_sumthreshold(data, in_flags)
+        np.testing.assert_array_equal(np.zeros_like(in_flags), out_flags)
+
+    def test_detect_spikes_sum_threshold_all_flagged(self):
+        self._test_detect_spikes_sum_threshold_all_flagged(self.flagger)
+
+    def test_detect_spikes_sum_threshold_all_flagged_average_freq(self):
+        flagger = twodflag.SumThresholdFlagger(average_freq=4)
+        self._test_detect_spikes_sum_threshold_all_flagged(self.flagger)
+
+    def test_variable_noise(self):
+        """Noise level that varies across the band."""
+        rs = np.random.RandomState(seed=1)
+        shape = (234, 345)
+        # For this test we use a flat background, to avoid the issues with
+        # bandpass estimation in sloped regions.
+        background = np.ones(shape, np.float32) * 11
+        # Noise level that varies from 0 to 1 across the band
+        noise = rs.standard_normal(shape) * (np.arange(shape[1]) / shape[1])
+        noise[100, 17] = 1.0    # About 20 sigma - must be detected
+        noise[200, 170] = 1.0   # About 2 sigma -  must not be detected
+        data = background + noise
+        in_flags = np.zeros(shape, np.bool_)
+        expected = np.zeros_like(in_flags)
+        out_flags = self.flagger.detect_spikes_sumthreshold(data, in_flags)
+        assert_equal(True, out_flags[100, 17])
+        assert_equal(False, out_flags[200, 170])
