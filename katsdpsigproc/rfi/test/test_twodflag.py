@@ -297,8 +297,8 @@ class TestSumThresholdFlagger(object):
     def _make_data(self, flagger, rs):
         shape = (234, 345)
         background = self._make_background(shape, rs).astype(np.float32)
-        data = background + rs.standard_normal(shape) * 0.1
-        rfi = np.zeros(shape)
+        data = background + (rs.standard_normal(shape) * 0.1).astype(np.float32)
+        rfi = np.zeros(shape, np.float32)
         # Some completely bad channels and bad times
         rfi[12, :] = 1
         rfi[20:25, :] = 1
@@ -403,6 +403,7 @@ class TestSumThresholdFlagger(object):
         background = np.ones(shape, np.float32) * 11
         # Noise level that varies from 0 to 1 across the band
         noise = rs.standard_normal(shape) * (np.arange(shape[1]) / shape[1])
+        noise = noise.astype(np.float32)
         noise[100, 17] = 1.0    # About 20 sigma - must be detected
         noise[200, 170] = 1.0   # About 2 sigma -  must not be detected
         data = background + noise
