@@ -13,7 +13,8 @@ setup(
     url="https://github.com/ska-sa/katsdpsigproc",
     setup_requires=["katversion"],
     install_requires=[
-        "numpy>=1.10", "decorator", "mako", "appdirs", "futures", "pandas", "trollius", "six"
+        "numpy>=1.10", "scipy", "pandas",
+        "decorator", "mako", "appdirs", "futures", "trollius", "six"
     ],
     extras_require={
         "CUDA": ["pycuda>=2015.1.3"],
