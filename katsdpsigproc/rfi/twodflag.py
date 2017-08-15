@@ -1,7 +1,7 @@
 """Library to contain 2d RFI flagging routines and other RFI related functions."""
 
 from __future__ import division, print_function, absolute_import
-import multiprocessing as mp
+import multiprocessing.pool
 
 import numpy as np
 from scipy.ndimage import gaussian_filter, convolve
@@ -142,7 +142,7 @@ def get_baseline_flags(flagger, data, flags):
     a 2D array, boolean
         derived flags
     """
-    return flagger.detect_spikes_sumthreshold(data, flags)
+    return flagger.get_baseline_flags(data, flags)
 
 
 class SumThresholdFlagger(object):
@@ -224,7 +224,7 @@ class SumThresholdFlagger(object):
         self.flag_all_freq_frac = flag_all_freq_frac
         self.rho = 1.3
 
-    def get_flags(self, data, flags, num_cores=None):
+    def get_flags(self, data, flags, pool=None):
         """Get flags in data array, with optional input flags of same shape
         that denote samples in data to ignore when backgrounding and deriving
         thresholds.
@@ -232,11 +232,13 @@ class SumThresholdFlagger(object):
         Parameters
         ----------
         data : 3D array
-            The input visibility data, in (time, frequency, baseline) order.
+            The input visibility data, in (time, frequency, baseline) order. It may
+            also contain just the magnitudes.
         flags : 3D array, boolean
             Input flags.
-        num_cores : int
-            Number of cores to use.
+        pool : `multiprocessing.Pool` or similar
+            Worker pool for parallel computation. If not specified,
+            computation will be done serially.
 
         Returns
         -------
@@ -246,18 +248,20 @@ class SumThresholdFlagger(object):
         """
 
         out_flags = np.empty(data.shape, dtype=np.bool)
-        async_results = []
-        p = mp.Pool(num_cores)
-        try:
+        # This is redundant because get_baseline_flags also does this check,
+        # but it avoids having to pickle the full complex values
+        if np.iscomplexobj(data) and isinstance(pool, multiprocessing.pool.Pool):
+            data = np.abs(data)
+        if pool is not None:
+            async_results = []
             for i in range(data.shape[-1]):
-                async_results.append(p.apply_async(get_baseline_flags,
-                                                   (self, np.abs(data[..., i]), flags[..., i])))
+                async_results.append(pool.apply_async(get_baseline_flags,
+                                                      (self, data[..., i], flags[..., i])))
             for i, result in enumerate(async_results):
                 out_flags[..., i] = result.get()
-        finally:
-            p.close()
-            p.join()
-
+        else:
+            for i in range(data.shape[-1]):
+                out_flags[..., i] = self.get_baseline_flags(data[..., i], flags[..., i])
         return out_flags
 
     def _average_freq(self, data, flags):
@@ -299,16 +303,15 @@ class SumThresholdFlagger(object):
 
         return avg_data, avg_flags
 
-    def detect_spikes_sumthreshold(self, in_data, in_flags):
+    def get_baseline_flags(self, in_data, in_flags):
         """For a time,channel ordered input data find outliers, and extrapolate
         flags in extreme cases.
 
         Parameters
         ----------
-        in_data : 2D Array, float
-            Array of input data. Should be in (time, channel) order, and be
-            real valued- ie. complex values should have had their absolute
-            value taken before input.
+        in_data : 2D Array, float or complex
+            Array of input data. Should be in (time, channel) order, and be either
+            complex visibilities or their absolute values.
         in_flags : 2D Array, boolean
             Array of input flags. Used to ignore points when backgrounding and
             thresholding.
@@ -318,10 +321,14 @@ class SumThresholdFlagger(object):
         out_flags : 2D Array, boolean
             The output flags for the given baseline (same shape as `in_data`)
         """
+        # Convert to magnitudes
+        if np.iscomplexobj(in_data):
+            in_data = np.abs(in_data)
+        else:
+            in_data = in_data.copy()   # Will be modified
         # Get nonfinite locations
         nf_locs = ~np.isfinite(in_data)
         in_flags = in_flags.copy()
-        in_data = in_data.copy()
         # Flag nonfinite locations in input
         in_flags[nf_locs] = True
         # Replace nonfinite data with zero

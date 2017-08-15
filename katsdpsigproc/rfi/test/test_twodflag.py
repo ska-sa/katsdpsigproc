@@ -325,13 +325,13 @@ class TestSumThresholdFlagger(object):
         data[:, 185:190] = np.nan
         return data, in_flags, expected
 
-    def _test_detect_spikes_sumthreshold(self, flagger):
+    def _test_get_baseline_flags(self, flagger):
         rs = np.random.RandomState(seed=1)
         data, in_flags, expected = self._make_data(flagger, rs)
 
         orig_data = data.copy()
         orig_in_flags = in_flags.copy()
-        out_flags = flagger.detect_spikes_sumthreshold(data, in_flags)
+        out_flags = flagger.get_baseline_flags(data, in_flags)
         # Check that the original values aren't disturbed
         np.testing.assert_equal(orig_data, data)
         np.testing.assert_equal(orig_in_flags, in_flags)
@@ -359,32 +359,32 @@ class TestSumThresholdFlagger(object):
         assert_equal(0, missing.sum())
         assert_less(extra.sum() / data.size, 0.02)
 
-    def test_detect_spikes_sumthreshold_defaults(self):
-        self._test_detect_spikes_sumthreshold(self.flagger)
+    def test_get_baseline_flags(self):
+        self._test_get_baseline_flags(self.flagger)
 
-    def test_detect_spikes_sumthreshold_single_chunk(self):
+    def test_get_baseline_flags_single_chunk(self):
         flagger = twodflag.SumThresholdFlagger(freq_chunks=1)
-        self._test_detect_spikes_sumthreshold(flagger)
+        self._test_get_baseline_flags(flagger)
 
-    def test_detect_spikes_sumthreshold_many_chunks(self):
+    def test_get_baseline_flags_many_chunks(self):
         flagger = twodflag.SumThresholdFlagger(freq_chunks=30)
-        self._test_detect_spikes_sumthreshold(flagger)
+        self._test_get_baseline_flags(flagger)
 
-    def test_detect_spikes_sumthreshold_average_freq(self):
+    def test_get_baseline_flags_average_freq(self):
         flagger = twodflag.SumThresholdFlagger(average_freq=2)
-        self._test_detect_spikes_sumthreshold(flagger)
+        self._test_get_baseline_flags(flagger)
 
-    def test_detect_spikes_sumthreshold_iterations(self):
+    def test_get_baseline_flags_iterations(self):
         # TODO: fix up the overflagging of the background in the flagger,
         # which currently causes this to fail.
         raise SkipTest('Backgrounder overflags edges of the slope')
         # flagger = twodflag.SumThresholdFlagger(background_iterations=3)
-        # self._test_detect_spikes_sumthreshold(flagger)
+        # self._test_get_baseline_flags(flagger)
 
     def _test_detect_spikes_sum_threshold_all_flagged(self, flagger):
         data = np.zeros((100, 80), np.float32)
         in_flags = np.ones(data.shape, np.bool_)
-        out_flags = flagger.detect_spikes_sumthreshold(data, in_flags)
+        out_flags = flagger.get_baseline_flags(data, in_flags)
         np.testing.assert_array_equal(np.zeros_like(in_flags), out_flags)
 
     def test_detect_spikes_sum_threshold_all_flagged(self):
@@ -409,6 +409,6 @@ class TestSumThresholdFlagger(object):
         data = background + noise
         in_flags = np.zeros(shape, np.bool_)
         expected = np.zeros_like(in_flags)
-        out_flags = self.flagger.detect_spikes_sumthreshold(data, in_flags)
+        out_flags = self.flagger.get_baseline_flags(data, in_flags)
         assert_equal(True, out_flags[100, 17])
         assert_equal(False, out_flags[200, 170])
