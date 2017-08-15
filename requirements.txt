@@ -2,10 +2,14 @@ appdirs
 argparse
 cffi
 decorator
+enum34                     # Needed by numba
+funcsigs                   # Needed by numba
 futures
 katversion
+llvmlite                   # Needed by numba
 mako
 markupsafe
+numba
 numpy
 pandas
 pkginfo
@@ -18,5 +22,6 @@ python-dateutil            # Needed by Pandas
 pytools
 pytz                       # Needed by Pandas
 scipy
+singledispatch             # Needed by numba
 six
 trollius

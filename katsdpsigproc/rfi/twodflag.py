@@ -4,6 +4,7 @@ from __future__ import division, print_function, absolute_import
 import multiprocessing.pool
 
 import numpy as np
+import numba
 from scipy.ndimage import gaussian_filter, convolve
 
 
@@ -143,6 +144,78 @@ def get_baseline_flags(flagger, data, flags):
         derived flags
     """
     return flagger.get_baseline_flags(data, flags)
+
+
+@numba.jit(nopython=True, nogil=True)
+def _convolve_flags(in_values, scale, threshold, out_flags, window):
+    cum_size = in_values.shape[0] + 2 * window - 1
+    cum = np.empty(cum_size, np.uint32)
+    cum[:window] = 0
+    for i in range(in_values.shape[0]):
+        cum[window + i] = cum[window + i - 1] + (in_values[i] * scale > threshold)
+    # numba doesn't seem to fully support negative indices, hence
+    # the addition of cum_size.
+    cum[cum_size - (window - 1):] = cum[cum_size - window]
+    for i in range(out_flags.shape[0]):
+        out_flags[i] |= (cum[i + window] - cum[i] != 0)
+
+
+@numba.guvectorize(
+    ['f4[:], b1[:], i8[:], f4, f4, b1[:]'],
+    '(n),(n),(m),(),()->(n)', nopython=True)
+def _sumthreshold_1d(input_data, flags, windows, outlier_nsigma, rho,
+                     output_flags):
+    abs_input = np.empty(input_data.shape, np.float32)
+    nvalid = np.int64(0)
+    for i in range(input_data.shape[0]):
+        if not flags[i] and not np.isnan(input_data[i]):
+            abs_input[nvalid] = np.abs(input_data[i])
+            nvalid += 1
+    # Get standard deviations using MAD
+    if nvalid == 0:
+        estm_stdev = np.inf
+    else:
+        estm_stdev = 1.4826 * np.median(abs_input[:nvalid])
+    # Set up initial threshold
+    threshold = outlier_nsigma * estm_stdev
+    output_flags_pos = np.zeros(flags.shape, np.bool_)
+    output_flags_neg = np.zeros(flags.shape, np.bool_)
+    avgarray_full = np.empty(input_data.shape, np.float32)
+    for window in windows:
+        # Stop if the window is too large
+        if window > input_data.shape[0]:
+            break
+        # The threshold for this iteration is calculated from the initial threshold
+        # using the equation from Offringa (2010).
+        tf = pow(rho, np.log2(window))
+        # Get the thresholds for each element of the desired axis,
+        # with an extra exis for broadcasting.
+        thisthreshold = threshold / tf
+        # Set already flagged values to be the +/- value of the
+        # threshold if they are outside the threshold.
+        cum_data = np.empty(input_data.shape[0] + 1, np.float64)
+        cum_data[0] = 0
+        for i in range(input_data.shape[0]):
+            clamped = input_data[i]
+            if output_flags_pos[i] and clamped > thisthreshold:
+                clamped = thisthreshold
+            elif output_flags_neg[i] and clamped < -thisthreshold:
+                clamped = -thisthreshold
+            cum_data[i + 1] = cum_data[i] + clamped
+        # Calculate a rolling sum array from the data with the window for this iteration,
+        # which is later scaled by rolliing_scale to give the rolling average.
+        avgarray = cum_data[window:] - cum_data[:-window]
+        rolling_scale = np.float32(1.0 / window)
+
+        # Work out the flags from the average data above the current threshold,
+        # convolve them, and OR with current flags.
+        _convolve_flags(avgarray, rolling_scale, thisthreshold, output_flags_pos, window)
+
+        # Work out the flags from the average data below the current threshold,
+        # convolve them, and OR with current flags.
+        _convolve_flags(avgarray, -rolling_scale, thisthreshold, output_flags_neg, window)
+
+    output_flags[:] = output_flags_pos | output_flags_neg
 
 
 class SumThresholdFlagger(object):
@@ -434,59 +507,21 @@ class SumThresholdFlagger(object):
         axis : int
             The axis to apply the SumThreshold operation
             0=time, 1=frequency
-        window_bl : Array, int
+        windows : Array, int
             Window sizes to average data in each SumThreshold step
-        nsigma : int
-            Number of sigma to adopt for threshold.
 
         Returns
         -------
         output_flags : 2D Array, boolean
             The derived flags
         """
-
-        abs_input = np.abs(input_data)
-        # Get standard deviations along the axis using MAD
-        masked_abs = np.ma.array(abs_input, mask=flags)
-        estm_stdev = 1.4826 * np.ma.median(masked_abs, axis=axis).filled(np.inf)
-        # Set up initial threshold
-        threshold = self.outlier_nsigma * estm_stdev
-        output_flags_pos = np.zeros_like(flags, dtype=np.bool)
-        output_flags_neg = np.zeros_like(flags, dtype=np.bool)
-        for window in windows:
-            # Stop if the window is too large
-            if window > input_data.shape[axis]:
-                break
-            # The threshold for this iteration is calculated from the initial threshold
-            # using the equation from Offringa (2010).
-            tf = pow(self.rho, np.log2(window))
-            # Get the thresholds for each element of the desired axis,
-            # with an extra exis for broadcasting.
-            thisthreshold_1d = np.expand_dims(threshold / tf, axis)
-            # Set already flagged values to be the +/- value of the
-            # threshold if they are outside the threshold.
-            bl_mask = np.logical_and(output_flags_pos, input_data > thisthreshold_1d)
-            bl_data = np.where(bl_mask, thisthreshold_1d, input_data)
-            # Negative outliers
-            bl_mask = np.logical_and(output_flags_neg, input_data < -thisthreshold_1d)
-            bl_data = np.where(bl_mask, -thisthreshold_1d, bl_data)
-            # Calculate a rolling average array from the data with the window for this iteration
-            avgarray = running_mean(bl_data, window, axis=axis)
-
-            # Work out the flags from the average data above the current threshold.
-            this_flags = avgarray > thisthreshold_1d
-            # Convolve the flags to be of the same width as the current window.
-            convwindow = np.ones(window, dtype=np.bool)
-            this_flags = np.apply_along_axis(np.convolve, axis, this_flags, convwindow)
-            # "OR" the flags with the flags from the previous iteration.
-            output_flags_pos = output_flags_pos | this_flags
-
-            # Work out the flags from the average data below the current threshold.
-            this_flags = avgarray < -thisthreshold_1d
-            # Convolve the flags to be of the same width as the current window.
-            convwindow = np.ones(window, dtype=np.bool)
-            this_flags = np.apply_along_axis(np.convolve, axis, this_flags, convwindow)
-            # "OR" the flags with the flags from the previous iteration.
-            output_flags_neg = output_flags_neg | this_flags
-
-        return output_flags_pos | output_flags_neg
+        if axis == 0:
+            input_data = input_data.T
+            flags = flags.T
+        abs_input = np.empty_like(input_data[0])
+        windows = np.array(windows, np.int64)
+        output_flags = _sumthreshold_1d(input_data, flags, windows,
+                                        self.outlier_nsigma, self.rho)
+        if axis == 0:
+            output_flags = output_flags.T
+        return output_flags

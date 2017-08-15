@@ -294,8 +294,7 @@ class TestSumThresholdFlagger(object):
         f = scipy.interpolate.interp1d(x, y, kind='cubic', assume_sorted=True)
         return f(np.arange(nfreq))
 
-    def _make_data(self, flagger, rs):
-        shape = (234, 345)
+    def _make_data(self, flagger, rs, shape=(234, 345)):
         background = self._make_background(shape, rs).astype(np.float32)
         data = background + (rs.standard_normal(shape) * 0.1).astype(np.float32)
         rfi = np.zeros(shape, np.float32)
