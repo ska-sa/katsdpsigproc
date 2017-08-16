@@ -3,65 +3,28 @@
 """Test script that runs RFI flagging on random or real data."""
 
 from __future__ import division, print_function, absolute_import
-import numpy as np
-import katsdpsigproc.rfi.host
-import katsdpsigproc.rfi.device
-import katsdpsigproc.accel as accel
-from katsdpsigproc.accel import DeviceArray
 import argparse
 import time
 import sys
+import json
+import multiprocessing.pool
 
-def generate_data(channels, baselines):
-    real = np.random.randn(channels, baselines)
-    imag = np.random.randn(channels, baselines)
+import numpy as np
+
+import katsdpsigproc.rfi.host
+import katsdpsigproc.rfi.device
+import katsdpsigproc.rfi.twodflag
+import katsdpsigproc.accel as accel
+
+
+def generate_data(times, channels, baselines):
+    shape = (channels, baselines) if times is None else (times, channels, baselines)
+    real = np.random.randn(*shape)
+    imag = np.random.randn(*shape)
     return (real + 1j * imag).astype(np.complex64)
 
-def main():
-    parser = argparse.ArgumentParser()
 
-    parser.add_argument('--host', action='store_true', help='Compute on the host instead of with CUDA/OpenCL')
-
-    parser.add_argument_group('Data selection')
-    parser.add_argument('--antennas', '-a', type=int, default=7)
-    parser.add_argument('--channels', '-c', type=int, default=1024)
-    parser.add_argument('--baselines', '-b', type=int, help='(overrides --antennas)')
-    parser.add_argument('--preset', '-p', choices=('small', 'medium', 'big', 'kat7'), help='(overrides other options)')
-    parser.add_argument('--file', type=str, help='specify a real data file (.npy)')
-
-    parser.add_argument_group('Parameters')
-    parser.add_argument('--width', '-w', type=int, help='median filter kernel size (must be odd)', default=13)
-    parser.add_argument('--sigmas', type=float, help='Threshold for detecting RFI', default=11.0)
-
-    args = parser.parse_args()
-
-    if args.file is not None:
-        if args.file.endswith('.npy'):
-            data = np.load(args.file)
-        else:
-            raise argparse.ArgumentError("Don't know how to handle " + args.file)
-    else:
-        if args.preset is not None:
-            args.baselines = None    # Force recomputation from antennas
-            if args.preset == 'small':
-                args.antennas = 2
-                args.channels = max(2 * args.width, 8)
-            elif args.preset == 'medium':
-                args.antennas = 15
-                args.channels = max(2 * args.width, 128)
-            elif args.preset == 'kat7':
-                args.antennas = 7
-                args.channels = 8192
-            elif args.preset == 'big':
-                args.antennas = 64
-                args.channels = 10240
-            else:
-                raise argparse.ArgumentError('Unexpected value for preset')
-        if args.baselines is None:
-            # Note: * 2 not / 2 because there are 4 polarisations
-            args.baselines = args.antennas * (2 * args.antennas + 1)
-        data = generate_data(args.channels, args.baselines)
-
+def benchmark1d(args, data):
     if args.width % 2 != 1:
         raise argparse.ArgumentError('Width must be odd')
     if data.shape[0] <= args.width:
@@ -92,7 +55,7 @@ def main():
         threshold = katsdpsigproc.rfi.device.ThresholdSumDeviceTemplate(context)
         template = katsdpsigproc.rfi.device.FlaggerDeviceTemplate(background, noise_est, threshold)
         flagger = template.instantiate(command_queue, data.shape[0], data.shape[1],
-                threshold_args={'n_sigma': args.sigmas})
+                                       threshold_args={'n_sigma': args.sigmas})
         flagger.ensure_all_bound()
 
         data_device = flagger.buffer('vis')
@@ -118,8 +81,92 @@ def main():
             # AMD CPU device doesn't seem to support profiling on marker events
             device_time = 'unknown'
         print("Device time (ms):", device_time)
+    return flags
 
-    print(flags)
+
+def benchmark2d(args, data):
+    flagger = katsdpsigproc.rfi.twodflag.SumThresholdFlagger(**args.params)
+    in_flags = np.zeros(data.shape, np.bool_)
+    if args.pool == 'none':
+        pool = None
+    elif args.pool == 'process':
+        pool = multiprocessing.Pool(args.workers)
+    elif args.pool == 'thread':
+        pool = multiprocessing.pool.ThreadPool(args.workers)
+    else:
+        raise argparse.ArgumentError('unhandled value {} for --pool'.format(args.pool))
+    # Warmup
+    flagger.get_flags(data[:2], in_flags[:2], pool=pool)
+    start = time.time()
+    flags = flagger.get_flags(data, in_flags, pool=pool)
+    end = time.time()
+    print("CPU time (ms):", (end - start) * 1000.0)
+    if pool is not None:
+        pool.close()
+    return flags
+
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--host', action='store_true',
+                        help='Compute on the host instead of with CUDA/OpenCL')
+
+    parser.add_argument_group('Data selection')
+    parser.add_argument('--antennas', '-a', type=int, default=7)
+    parser.add_argument('--channels', '-c', type=int, default=1024)
+    parser.add_argument('--baselines', '-b', type=int, help='(overrides --antennas)')
+    parser.add_argument('--times', '-t', type=int, help='time samples (uses 2D flagger)')
+    parser.add_argument('--preset', '-p', choices=('small', 'medium', 'big', 'kat7'),
+                        help='(overrides other options)')
+    parser.add_argument('--file', type=str, help='specify a real data file (.npy)')
+
+    parser.add_argument_group('Parameters (1D flagger)')
+    parser.add_argument('--width', '-w', type=int, help='median filter kernel size (must be odd)',
+                        default=13)
+    parser.add_argument('--sigmas', type=float, help='threshold for detecting RFI', default=11.0)
+
+    parser.add_argument_group('Parameters (2D flagger)')
+    parser.add_argument('--params', type=json.loads, default={}, help='JSON dict of parameters')
+    parser.add_argument('--pool', choices=('none', 'process', 'thread'),
+                        help='parallelization method')
+    parser.add_argument('--workers', type=int, help='Number of parallel workers')
+
+    args = parser.parse_args()
+
+    if args.file is not None:
+        if args.file.endswith('.npy'):
+            data = np.load(args.file)
+        else:
+            raise argparse.ArgumentError("Don't know how to handle " + args.file)
+    else:
+        if args.preset is not None:
+            args.baselines = None    # Force recomputation from antennas
+            if args.preset == 'small':
+                args.antennas = 2
+                args.channels = max(2 * args.width, 8)
+            elif args.preset == 'medium':
+                args.antennas = 15
+                args.channels = max(2 * args.width, 128)
+            elif args.preset == 'kat7':
+                args.antennas = 7
+                args.channels = 8192
+            elif args.preset == 'big':
+                args.antennas = 64
+                args.channels = 10240
+            else:
+                raise argparse.ArgumentError('Unexpected value for preset')
+        if args.baselines is None:
+            # Note: * 2 not / 2 because there are 4 polarisations
+            args.baselines = args.antennas * (2 * args.antennas + 1)
+        data = generate_data(args.times, args.channels, args.baselines)
+
+    if args.times is None:
+        flags = benchmark1d(args, data)
+    else:
+        flags = benchmark2d(args, data)
+    print('{:.2f}% flagged'.format(100.0 * np.sum(flags) / flags.size))
+
 
 if __name__ == '__main__':
     main()
