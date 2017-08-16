@@ -4,6 +4,7 @@ from __future__ import division, print_function, absolute_import
 
 import numpy as np
 import scipy.interpolate
+from scipy.ndimage import gaussian_filter
 from nose.tools import assert_equal, assert_less
 from nose.plugins.skip import SkipTest
 
@@ -84,6 +85,26 @@ class TestLinearlyInterpolateNans(object):
         out = twodflag.linearly_interpolate_nans(self.y.astype(np.float32))
         assert_equal(np.float32, out.dtype)
         np.testing.assert_allclose(expected, out, rtol=1e-6)
+
+
+class TestWeightedGaussianFilter(object):
+    def test_basic(self):
+        rs = np.random.RandomState(seed=1)
+        shape = (77, 53)
+        sigma = (5, 2.3)
+        data = rs.uniform(size=shape)
+        weight = rs.uniform(size=shape)
+        # Ensure some NaNs in the output
+        weight[10:60, 10:30] = 0
+
+        # Compute expected value
+        fweight = gaussian_filter(weight, sigma, mode='constant', truncate=3.0)
+        fdata = gaussian_filter(data * weight, sigma, mode='constant', truncate=3.0)
+        with np.errstate(invalid='ignore'):
+            expected = fdata / fweight
+
+        actual = twodflag.weighted_gaussian_filter(data, weight, sigma, 3.0)
+        np.testing.assert_allclose(expected, actual, rtol=1e-4)
 
 
 class TestGetbackground2D(object):

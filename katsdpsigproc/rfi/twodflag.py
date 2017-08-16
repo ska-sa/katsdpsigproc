@@ -58,6 +58,20 @@ def linearly_interpolate_nans(y):
     return y
 
 
+def weighted_gaussian_filter(data, weight, sigma, truncate):
+    """Filter an image using a Gaussian filter, where there are
+    additionally weights associated with each input sample. Only 'constant'
+    extrapolation with a `cval` of 0 is supported.
+    """
+    if data.shape != weight.shape:
+        raise ValueError('shape mismatch')
+    filtered_weight = gaussian_filter(weight, sigma, mode='constant', truncate=truncate)
+    filtered = gaussian_filter(data * weight, sigma, mode='constant', truncate=truncate)
+    with np.errstate(invalid='ignore'):
+        out = filtered / filtered_weight
+    return out
+
+
 def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), reject_threshold=2.0):
     """Determine a smooth background over a 2d data array by
     iteratively convolving the data with elliptical Gaussians with linearly
@@ -100,11 +114,8 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
     # Convolve with Gaussians of decreasing 1sigma width from iterations*spike_width to spike_width
     for extend_factor in range(iterations, 0, -1):
         sigma = extend_factor*np.array(spike_width, dtype=np.float32)
-        # Get weights
-        weight = gaussian_filter(mask, sigma, mode='constant', truncate=3.0)
-        # Smooth background and apply weight
-        with np.errstate(invalid='ignore'):
-            background = gaussian_filter(data*mask, sigma, mode='constant', truncate=3.0)/weight
+        # Smooth background
+        background = weighted_gaussian_filter(data, mask, sigma, truncate=3.0)
         residual = data-background
         # Reject outliers using MAD
         abs_residual = np.abs(residual)
@@ -115,9 +126,7 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
             with np.errstate(invalid='ignore'):
                 mask = np.where(abs_residual > reject_threshold * sigma, 0.0, mask)
     # Compute final background
-    weight = gaussian_filter(mask, spike_width, mode='constant', truncate=3.0)
-    with np.errstate(invalid='ignore'):
-        background = gaussian_filter(data*mask, spike_width, mode='constant', truncate=3.0)/weight
+    background = weighted_gaussian_filter(data, mask, spike_width, truncate=3.0)
     # Remove NaNs via linear interpolation
     background = np.apply_along_axis(linearly_interpolate_nans, 1, background)
 
