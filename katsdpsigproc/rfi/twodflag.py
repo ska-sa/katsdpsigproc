@@ -1,11 +1,13 @@
 """Library to contain 2d RFI flagging routines and other RFI related functions."""
 
 from __future__ import division, print_function, absolute_import
+import math
 import multiprocessing.pool
 
 import numpy as np
 import numba
 from scipy.ndimage import convolve1d
+import six
 
 
 def running_mean(x, N, axis=None):
@@ -58,15 +60,134 @@ def linearly_interpolate_nans(y):
     return y
 
 
-def weighted_gaussian_filter(data, weight, sigma, truncate):
-    """Filter an image using a Gaussian filter, where there are
-    additionally weights associated with each input sample. Only 'constant'
-    extrapolation with a `cval` of 0 is supported.
+@numba.guvectorize(['f4[:], int_, int_, f4[:]'], '(n),(),()->(n)', nopython=True)
+def _box_gaussian_filter1d(data, r, passes, out):
+    """Internals of :func:`box_gaussian_filter1d`.
+
+    This is a gufunc that is run along a single row.
+    """
+    K = passes
+    d = 2 * r + 1
+    # Pad on left with zeros
+    padded = np.empty(data.size + 2 * r * K, data.dtype)
+    padded[:2 * r * K] = 0
+    padded[2 * r * K:] = data
+    for p in range(K):
+        # On each pass, padded[i] is replaced by the sum of padded[i : i + d]
+        # from the previous pass. The accumulator is kept in double precision
+        # to avoid excessive accumulation of errors.
+        s = np.float64(0)
+        for i in range(0, padded.size - 2 * r):
+            s += padded[i + 2 * r]
+            prev = padded[i]
+            padded[i] = s
+            s -= prev
+        for i in range(padded.size - 2 * r, padded.size):
+            prev = padded[i]
+            padded[i] = s
+            s -= prev
+    out[:] = padded[r * K : -(r * K)] / data.dtype.type(d)**K
+
+
+def box_gaussian_filter1d(data, sigma, axis=-1, passes=4):
+    """Filter `data` with an approximate Gaussian filter, along an axis.
+
+    Refer to :func:`box_gaussian_filter` for details.
+
+    Parameters
+    ----------
+    data : ndarray
+        Input data to filter
+    sigma : float
+        Standard deviation of the Gaussian filter
+    passes : int
+        Number of boxcar filters to apply
+
+    Returns
+    -------
+    ndarray
+        Output data, with the same shape as the input
+    """
+    # Move relevant axis to the end
+    data = np.moveaxis(data, axis, -1)
+    r = int(0.5 * math.sqrt(12.0 * sigma**2 / passes + 1))
+    data = _box_gaussian_filter1d(data, r, passes)
+    # Undo the axis reordering
+    return np.moveaxis(data, -1, axis)
+
+
+def box_gaussian_filter(data, sigma, passes=4):
+    """Filter `data` with an approximate Gaussian filter.
+
+    The filter is based on repeated filtering with a boxcar function. See
+    [Get13]_ for details. It has finite support. Values outside the boundary
+    are taken as zero.
+
+    This function is not suitable when the input contains non-finite values,
+    or very large variations in magnitude, as it internally computes a rolling
+    sum. It also quantizes the requested sigma.
+
+    .. [Get13] Pascal Getreuer, A Survey of Gaussian Convolution Algorithms,
+       Image Processing On Line, 3 (2013), pp. 286-310.
+
+    Parameters
+    ----------
+    data : ndarray
+        Input data to filter
+    sigma : float or sequence of floats
+        Standard deviation of the Gaussian filter, per axis
+    passes : int
+        Number of boxcar filters to apply
+
+    Returns
+    -------
+    ndarray
+        Output data, with the same shape as the input
+    """
+    if hasattr(sigma, '__iter__') and not isinstance(sigma, six.string_types):
+        sigma = list(sigma)
+    else:
+        sigma = [sigma] * data.ndim
+    if len(sigma) != data.ndim:
+        raise ValueError('sigma has wrong number of elements')
+    for axis, s in enumerate(sigma):
+        if s > 0:
+            data = box_gaussian_filter1d(data, s, axis, passes)
+    return data
+
+
+def weighted_gaussian_filter(data, weight, sigma, passes=4):
+    """Filter an image using an approximate Gaussian filter, where there are
+    additionally weights associated with each input sample. Values outside
+    of `data` have zero weight.
+
+    See :func:`box_gaussian_filter` for a number of caveats. The result may
+    contain non-finite values where the finite support of the Gaussian
+    approximation contains no values with non-zero weight. However, this should
+    not be depended on (particularly if arbitrary, rather than zero/one weights
+    are used) due to numeric instabilities.
+
+    Parameters
+    ----------
+    data : ndarray
+        Input data to filter
+    weight : ndarray, real
+        Non-negative weights associated with the corresponding elements of
+        `data`
+    sigma : float or sequence of floats
+        Standard deviation of the Gaussian filter, per axis
+    passes : int
+        Number of boxcar filters to apply
+
+    Returns
+    -------
+    ndarray
+        Output data, with the same shape as the input
     """
     if data.shape != weight.shape:
         raise ValueError('shape mismatch')
-    filtered_weight = gaussian_filter(weight, sigma, mode='constant', truncate=truncate)
-    filtered = gaussian_filter(data * weight, sigma, mode='constant', truncate=truncate)
+    filtered_weight = box_gaussian_filter(weight, sigma, passes)
+    filtered = box_gaussian_filter(data * weight, sigma, passes)
     with np.errstate(invalid='ignore'):
         out = filtered / filtered_weight
     return out
@@ -115,7 +236,7 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
     for extend_factor in range(iterations, 0, -1):
         sigma = extend_factor*np.array(spike_width, dtype=np.float32)
         # Smooth background
-        background = weighted_gaussian_filter(data, mask, sigma, truncate=3.0)
+        background = weighted_gaussian_filter(data, mask, sigma)
         residual = data-background
         # Reject outliers using MAD
         abs_residual = np.abs(residual)
@@ -126,7 +247,7 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
             with np.errstate(invalid='ignore'):
                 mask = np.where(abs_residual > reject_threshold * sigma, 0.0, mask)
     # Compute final background
-    background = weighted_gaussian_filter(data, mask, spike_width, truncate=3.0)
+    background = weighted_gaussian_filter(data, mask, spike_width)
     # Remove NaNs via linear interpolation
     background = np.apply_along_axis(linearly_interpolate_nans, 1, background)
 
@@ -450,7 +571,7 @@ class SumThresholdFlagger(object):
             in_flags_chunk[:, spec_flags[0]] = True
             spec_background = getbackground_2d(spec_data, in_flags=spec_flags,
                                                iterations=self.background_iterations,
-                                               spike_width=(1., self.spike_width_freq),
+                                               spike_width=(0.0, self.spike_width_freq),
                                                reject_threshold=self.background_reject)
             av_dev = spec_data - spec_background
             spec_flags = self._sumthreshold(av_dev, spec_flags, 1, self.windows_freq)

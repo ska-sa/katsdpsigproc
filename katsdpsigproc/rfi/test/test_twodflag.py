@@ -4,8 +4,8 @@ from __future__ import division, print_function, absolute_import
 
 import numpy as np
 import scipy.interpolate
-from scipy.ndimage import gaussian_filter
-from nose.tools import assert_equal, assert_less
+from scipy.ndimage import gaussian_filter1d, gaussian_filter
+from nose.tools import assert_equal, assert_less, assert_raises
 from nose.plugins.skip import SkipTest
 
 from .. import twodflag
@@ -87,24 +87,91 @@ class TestLinearlyInterpolateNans(object):
         np.testing.assert_allclose(expected, out, rtol=1e-6)
 
 
-class TestWeightedGaussianFilter(object):
-    def test_basic(self):
+class TestBoxGaussianFilter(object):
+    def test_one_pass(self):
+        """Test that _box_gaussian_filter1d places the box correctly"""
+        a = np.array([50.0, 10.0, 60.0, -70.0, 30.0, 20.0, -15.0], np.float32)
+        b = twodflag._box_gaussian_filter1d(a, 2, 1)
+        assert_equal(np.float32, b.dtype)
+        np.testing.assert_equal(
+            np.array([24.0, 10.0, 16.0, 10.0, 5.0, -7.0, 7.0], np.float32), b)
+
+    def test_width(self):
+        """Impulse response must have approximately correct standard deviation,
+        and must be symmetric with sum 1."""
+        a = np.zeros(200, np.float32)
+        a[a.size // 2] = 1.0
+        sigma = 10.0
+        b = twodflag.box_gaussian_filter1d(a, sigma)
+        x = np.arange(a.size) - a.size // 2
+        total = np.sum(b)
+        np.testing.assert_allclose(1.0, total, rtol=1e-5)
+        mean = np.sum(x * b)
+        np.testing.assert_allclose(0.0, mean, atol=1e-5)
+        std = np.sqrt(np.sum(x * x * b))
+        # Very loose test, because box_gaussian_filter1d quantises
+        np.testing.assert_allclose(std, sigma, atol=1)
+
+    def test_scalar_sigma(self):
+        rs = np.random.RandomState(seed=1)
+        a = rs.uniform(size=(50, 100)).astype(np.float32)
+        b = twodflag.box_gaussian_filter(a, (5.3, 5.3))
+        c = twodflag.box_gaussian_filter(a, 5.3)
+        np.testing.assert_equal(b, c)
+
+    def test_bad_sigma_dim(self):
+        a = np.zeros((50, 50), np.float32)
+        with assert_raises(ValueError):
+            twodflag.box_gaussian_filter(a, (3,))
+
+    def test_2d(self):
         rs = np.random.RandomState(seed=1)
         shape = (77, 53)
-        sigma = (5, 2.3)
-        data = rs.uniform(size=shape)
-        weight = rs.uniform(size=shape)
-        # Ensure some NaNs in the output
-        weight[10:60, 10:30] = 0
+        sigma = (8, 2.3)
+        data = rs.uniform(size=shape).astype(np.float32)
+        expected = gaussian_filter(data, sigma, mode='constant')
+        actual = twodflag.box_gaussian_filter(data, sigma)
+        np.testing.assert_allclose(expected, actual, rtol=1e-1)
 
-        # Compute expected value
-        fweight = gaussian_filter(weight, sigma, mode='constant', truncate=3.0)
-        fdata = gaussian_filter(data * weight, sigma, mode='constant', truncate=3.0)
+
+class TestWeightedGaussianFilter(object):
+    def setup(self):
+        self.rs = np.random.RandomState(seed=1)
+        shape = (77, 53)
+        self.data = self.rs.uniform(size=shape).astype(np.float32)
+        self.weight = self.rs.uniform(size=shape).astype(np.float32)
+
+    def _get_expected(self, sigma, truncate):
+        weight = self.weight
+        data = self.data * self.weight
+        for i, (s, t) in enumerate(zip(sigma, truncate)):
+            weight = gaussian_filter1d(weight, s, axis=i, mode='constant', truncate=t)
+            data = gaussian_filter1d(data, s, axis=i, mode='constant', truncate=t)
         with np.errstate(invalid='ignore'):
-            expected = fdata / fweight
+            data /= weight
+        return data
 
-        actual = twodflag.weighted_gaussian_filter(data, weight, sigma, 3.0)
-        np.testing.assert_allclose(expected, actual, rtol=1e-4)
+    def test_basic(self):
+        sigma = (5, 2.3)
+        expected = self._get_expected(sigma, (4.0, 4.0))
+        actual = twodflag.weighted_gaussian_filter(self.data, self.weight, sigma)
+        np.testing.assert_allclose(expected, actual, rtol=1e-1)
+
+    def test_nan(self):
+        # Set weights to all 0/1 for numeric stability, with a big block of zeros
+        # to get NaNs in the result
+        self.weight[:] = 1
+        self.weight[30:70, 10:40] = 0
+        # To match NaN positions, we need to match the footprint of the kernels
+        sigma = (3, 3.3)
+        passes = 4
+        radius = [int(0.5 * np.sqrt(12.0 * s**2 / passes + 1)) for s in sigma]
+        truncate = [passes * r / s for (r, s) in zip(radius, sigma)]
+        expected = self._get_expected(sigma, truncate)
+        actual = twodflag.weighted_gaussian_filter(self.data, self.weight, sigma)
+        np.testing.assert_allclose(expected, actual, rtol=1e-1)
+        # Check that some NaNs were generated
+        assert_less(0, np.sum(np.isnan(expected)))
 
 
 class TestGetbackground2D(object):
@@ -158,13 +225,13 @@ class TestGetbackground2D(object):
 
         # The rejection threshold is adjusted, because the default doesn't do
         # well when only about half the data is noisy.
-        background = twodflag.getbackground_2d(self.data, self.flags, spike_width=(1.99, 1.99),
+        background = twodflag.getbackground_2d(self.data, self.flags, spike_width=(2.5, 2.5),
                                                reject_threshold=5.0)
         expected = np.zeros_like(self.data)
-        expected[:, :35] = 7.5
-        expected[:, 65:] = 3.0
-        expected[:, 35:65] = np.linspace(7.5, 3.0, 30)
-        np.testing.assert_allclose(expected[56:], background[56:], rtol=1e-5)
+        expected[:, :37] = 7.5
+        expected[:, 63:] = 3.0
+        expected[:, 37:63] = np.linspace(7.5, 3.0, 26)
+        np.testing.assert_allclose(expected[56:], background[56:], rtol=1e-4)
         np.testing.assert_allclose(expected[:56], background[:56], rtol=1e-2)
 
     def test_iterations(self):
