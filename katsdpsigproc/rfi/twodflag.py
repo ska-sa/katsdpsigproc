@@ -5,7 +5,7 @@ import multiprocessing.pool
 
 import numpy as np
 import numba
-from scipy.ndimage import gaussian_filter, convolve
+from scipy.ndimage import convolve1d
 
 
 def running_mean(x, N, axis=None):
@@ -478,9 +478,13 @@ class SumThresholdFlagger(object):
             out_flags = np.repeat(out_flags, self.average_freq, axis=1)[:, :orig_freq_shape]
 
         # Extend flags in time and frequency
-        if self.freq_extend > 1 or self.time_extend > 1:
-            kern = np.ones((self.time_extend, self.freq_extend), dtype=np.bool)
-            out_flags = convolve(out_flags, kern, mode='reflect')
+        # TODO: make it more efficient with something similar to _convolve_flags
+        if self.freq_extend > 1:
+            kern = np.ones((self.freq_extend,), dtype=np.bool_)
+            out_flags = convolve1d(out_flags, kern, axis=1, mode='reflect')
+        if self.time_extend > 1:
+            kern = np.ones((self.time_extend,), dtype=np.bool)
+            out_flags = convolve1d(out_flags, kern, axis=0, mode='reflect')
 
         # Flag all frequencies and times if too much is flagged.
         flag_frac_time = np.sum(out_flags, dtype=np.float32, axis=0) / out_flags.shape[0]
