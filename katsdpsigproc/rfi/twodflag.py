@@ -163,9 +163,9 @@ def weighted_gaussian_filter(data, weight, sigma, passes=4):
 
     See :func:`box_gaussian_filter` for a number of caveats. The result may
     contain non-finite values where the finite support of the Gaussian
-    approximation contains no values with non-zero weight. However, this should
-    not be depended on (particularly if arbitrary, rather than zero/one weights
-    are used) due to numeric instabilities.
+    approximation contains no values with non-zero weight. However, this is only
+    valid if weights are small integers (or more generally, if any sum of
+    weights can be exactly represented as a floating-point value).
 
     Parameters
     ----------
@@ -188,6 +188,10 @@ def weighted_gaussian_filter(data, weight, sigma, passes=4):
         raise ValueError('shape mismatch')
     filtered_weight = box_gaussian_filter(weight, sigma, passes)
     filtered = box_gaussian_filter(data * weight, sigma, passes)
+    # Numeric instability can make filtered non-zero (but tiny) even
+    # where filtered_weight is zero. To ensure that we get NaN rather
+    # than +/- Inf in this case, we force these values to zero.
+    filtered[filtered_weight == 0] = 0
     with np.errstate(invalid='ignore'):
         out = filtered / filtered_weight
     return out
