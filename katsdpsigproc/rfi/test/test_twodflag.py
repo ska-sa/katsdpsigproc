@@ -133,6 +133,16 @@ class TestBoxGaussianFilter(object):
         actual = twodflag.box_gaussian_filter(data, sigma)
         np.testing.assert_allclose(expected, actual, rtol=1e-1)
 
+    def test_edge(self):
+        """Test that values outside the boundary are handled like zeros."""
+        rs = np.random.RandomState(seed=1)
+        data = np.zeros(200, np.float32)
+        core = data[80:120]
+        core[:] = rs.uniform(size=core.shape)
+        fdata = twodflag.box_gaussian_filter(data, 3)
+        fcore = twodflag.box_gaussian_filter(core, 3)
+        np.testing.assert_allclose(fdata[80:120], fcore, rtol=1e-5)
+
 
 class TestWeightedGaussianFilter(object):
     def setup(self):

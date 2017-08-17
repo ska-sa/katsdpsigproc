@@ -68,25 +68,40 @@ def _box_gaussian_filter1d(data, r, passes, out):
     """
     K = passes
     d = 2 * r + 1
-    # Pad on left with zeros
-    padded = np.empty(data.size + 2 * r * K, data.dtype)
-    padded[:2 * r * K] = 0
-    padded[2 * r * K:] = data
-    for p in range(K):
+    if data.size == 0:
+        return
+    elif K == 0:
+        out[:] = data[:]
+        return
+    # Pad on left with zeros.
+    padding = r * K
+    padded = np.empty(data.size + padding, data.dtype)
+    padded[:padding] = 0
+    padded[padding:] = data
+    prev_start = padding   # First element with valid data
+    for p in range(1, K + 1):
         # On each pass, padded[i] is replaced by the sum of padded[i : i + d]
         # from the previous pass. The accumulator is kept in double precision
         # to avoid excessive accumulation of errors.
         s = np.float64(0)
-        for i in range(0, padded.size - 2 * r):
+        start = padding - 2 * r * p
+        stop = start + data.size + 2 * padding
+        start = max(start, 0)
+        stop = min(stop, padded.size)
+        tail = min(stop, padded.size - 2 * r)
+        for i in range(prev_start, min(start + 2 * r, padded.size)):
+            s += padded[i]
+        for i in range(start, tail):
             s += padded[i + 2 * r]
             prev = padded[i]
             padded[i] = s
             s -= prev
-        for i in range(padded.size - 2 * r, padded.size):
+        for i in range(tail, stop):
             prev = padded[i]
             padded[i] = s
             s -= prev
-    out[:] = padded[r * K : -(r * K)] / data.dtype.type(d)**K
+        prev_start = start
+    out[:] = padded[:-padding] / data.dtype.type(d)**K
 
 
 def box_gaussian_filter1d(data, sigma, axis=-1, passes=4):
