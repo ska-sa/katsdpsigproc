@@ -464,7 +464,9 @@ class TestSumThresholdFlagger(object):
         self._test_get_baseline_flags(flagger)
 
     def test_get_baseline_flags_many_chunks(self):
-        flagger = twodflag.SumThresholdFlagger(freq_chunks=30)
+        # Number of chunks can't be too high, otherwise the block of channels
+        # affected by RFI isn't detected as it mostly falls into one chunk.
+        flagger = twodflag.SumThresholdFlagger(freq_chunks=15)
         self._test_get_baseline_flags(flagger)
 
     def test_get_baseline_flags_average_freq(self):

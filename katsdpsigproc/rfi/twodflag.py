@@ -212,7 +212,8 @@ def weighted_gaussian_filter(data, weight, sigma, passes=4):
     return out
 
 
-def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), reject_threshold=2.0):
+def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), reject_threshold=2.0,
+                     freq_chunks=None):
     """Determine a smooth background over a 2d data array by
     iteratively convolving the data with elliptical Gaussians with linearly
     decreasing width from `iterations`*`spike_width` down to `spike width`. Outliers
@@ -238,6 +239,10 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
         to the axes of `data`)
     reject_threshold : float
         Multiple of sigma by which to reject outliers on each iteration
+    freq_chunks : sequence of int
+        If specified, the noise level is estimated separately over each
+        channel range given by two consecutive elements. It must be strictly
+        increasing, must start with 0 and end with the number of channels.
 
     Returns
     -------
@@ -245,6 +250,13 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
         The smooth background.
     """
 
+    # Normalise freq_chunks
+    if freq_chunks is None:
+        freq_chunks = [0, data.shape[1]]
+    if freq_chunks[0] != 0:
+        raise ValueError('freq_chunks does not start with 0')
+    if freq_chunks[-1] != data.shape[1]:
+        raise ValueError('freq_chunks does not end with number of channels')
     # Make mask array
     mask = np.ones(data.shape, dtype=np.float32)
     # Mask input flags if provided
@@ -258,13 +270,16 @@ def getbackground_2d(data, in_flags=None, iterations=1, spike_width=(10, 10), re
         background = weighted_gaussian_filter(data, mask, sigma)
         residual = data-background
         # Reject outliers using MAD
-        abs_residual = np.abs(residual)
-        nz_residuals = abs_residual[mask > 0.0]
-        if len(nz_residuals) > 0:
-            sigma = 1.4826 * np.median(nz_residuals)
-            # Some elements of abs_residual are NaN, but these are already masked
-            with np.errstate(invalid='ignore'):
-                mask = np.where(abs_residual > reject_threshold * sigma, 0.0, mask)
+        for i in range(len(freq_chunks) - 1):
+            sub = np.s_[freq_chunks[i] : freq_chunks[i + 1]]
+            sub_mask = mask[:, sub]
+            abs_residual = np.abs(residual[:, sub])
+            nz_residuals = abs_residual[sub_mask > 0.0]
+            if len(nz_residuals) > 0:
+                sigma = 1.4826 * np.median(nz_residuals)
+                # Some elements of abs_residual are NaN, but these are already masked
+                with np.errstate(invalid='ignore'):
+                    sub_mask[:] = np.where(abs_residual > reject_threshold * sigma, 0.0, sub_mask)
     # Compute final background
     background = weighted_gaussian_filter(data, mask, spike_width)
     # Remove NaNs via linear interpolation
@@ -310,61 +325,69 @@ def _convolve_flags(in_values, scale, threshold, out_flags, window):
 
 
 @numba.guvectorize(
-    ['f4[:], b1[:], i8[:], f4, f4, b1[:]'],
-    '(n),(n),(m),(),()->(n)', nopython=True)
-def _sumthreshold_1d(input_data, flags, windows, outlier_nsigma, rho,
+    ['f4[:], b1[:], i8[:], f4, f4, i8[:], b1[:]'],
+    '(n),(n),(m),(),(),(f)->(n)', nopython=True)
+def _sumthreshold_1d(input_data, flags, windows, outlier_nsigma, rho, chunks,
                      output_flags):
-    abs_input = np.empty(input_data.shape, np.float32)
-    nvalid = np.int64(0)
-    for i in range(input_data.shape[0]):
-        if not flags[i] and not np.isnan(input_data[i]):
-            abs_input[nvalid] = np.abs(input_data[i])
-            nvalid += 1
-    # Get standard deviations using MAD
-    if nvalid == 0:
-        estm_stdev = np.inf
-    else:
-        estm_stdev = 1.4826 * np.median(abs_input[:nvalid])
-    # Set up initial threshold
-    threshold = outlier_nsigma * estm_stdev
-    output_flags_pos = np.zeros(flags.shape, np.bool_)
-    output_flags_neg = np.zeros(flags.shape, np.bool_)
-    avgarray_full = np.empty(input_data.shape, np.float32)
-    for window in windows:
-        # Stop if the window is too large
-        if window > input_data.shape[0]:
-            break
-        # The threshold for this iteration is calculated from the initial threshold
-        # using the equation from Offringa (2010).
-        tf = pow(rho, np.log2(window))
-        # Get the thresholds for each element of the desired axis,
-        # with an extra exis for broadcasting.
-        thisthreshold = threshold / tf
-        # Set already flagged values to be the +/- value of the
-        # threshold if they are outside the threshold.
-        cum_data = np.empty(input_data.shape[0] + 1, np.float64)
-        cum_data[0] = 0
-        for i in range(input_data.shape[0]):
-            clamped = input_data[i]
-            if output_flags_pos[i] and clamped > thisthreshold:
-                clamped = thisthreshold
-            elif output_flags_neg[i] and clamped < -thisthreshold:
-                clamped = -thisthreshold
-            cum_data[i + 1] = cum_data[i] + clamped
-        # Calculate a rolling sum array from the data with the window for this iteration,
-        # which is later scaled by rolliing_scale to give the rolling average.
-        avgarray = cum_data[window:] - cum_data[:-window]
-        rolling_scale = np.float32(1.0 / window)
+    for ci in range(chunks.size - 1):
+        chunk_slice = slice(chunks[ci], chunks[ci + 1])
+        chunk_data = input_data[chunk_slice]
+        chunk_flags = flags[chunk_slice]
+        # Get standard deviation using MAD
+        abs_input = np.empty(chunk_data.shape, np.float32)
+        nvalid = np.int64(0)
+        for i in range(chunk_data.shape[0]):
+            if not chunk_flags[i] and not np.isnan(chunk_data[i]):
+                abs_input[nvalid] = np.abs(chunk_data[i])
+                nvalid += 1
+        if nvalid == 0:
+            estm_stdev = np.inf
+        else:
+            estm_stdev = 1.4826 * np.median(abs_input[:nvalid])
+        # Set up initial threshold
+        threshold = outlier_nsigma * estm_stdev
 
-        # Work out the flags from the average data above the current threshold,
-        # convolve them, and OR with current flags.
-        _convolve_flags(avgarray, rolling_scale, thisthreshold, output_flags_pos, window)
+        padded_slice = slice(max(chunks[ci] - np.max(windows) + 1, 0),
+                             min(chunks[ci + 1] + np.max(windows) - 1, input_data.size))
+        padded_data = input_data[padded_slice]
+        output_flags_pos = np.zeros(padded_data.shape, np.bool_)
+        output_flags_neg = np.zeros(padded_data.shape, np.bool_)
+        for window in windows:
+            # The threshold for this iteration is calculated from the initial threshold
+            # using the equation from Offringa (2010).
+            tf = pow(rho, np.log2(window))
+            # Get the thresholds for each element of the desired axis,
+            # with an extra exis for broadcasting.
+            thisthreshold = threshold / tf
+            # Set already flagged values to be the +/- value of the
+            # threshold if they are outside the threshold.
+            cum_data = np.empty(padded_data.shape[0] + 1, np.float64)
+            cum_data[0] = 0
+            for i in range(padded_data.shape[0]):
+                clamped = padded_data[i]
+                if output_flags_pos[i] and clamped > thisthreshold:
+                    clamped = thisthreshold
+                elif output_flags_neg[i] and clamped < -thisthreshold:
+                    clamped = -thisthreshold
+                cum_data[i + 1] = cum_data[i] + clamped
+            # Calculate a rolling sum array from the data with the window for this iteration,
+            # which is later scaled by rolliing_scale to give the rolling average.
+            avgarray = cum_data[window:] - cum_data[:-window]
+            rolling_scale = np.float32(1.0 / window)
 
-        # Work out the flags from the average data below the current threshold,
-        # convolve them, and OR with current flags.
-        _convolve_flags(avgarray, -rolling_scale, thisthreshold, output_flags_neg, window)
+            # Work out the flags from the average data above the current threshold,
+            # convolve them, and OR with current flags.
+            _convolve_flags(avgarray, rolling_scale, thisthreshold, output_flags_pos, window)
 
-    output_flags[:] = output_flags_pos | output_flags_neg
+            # Work out the flags from the average data below the current threshold,
+            # convolve them, and OR with current flags.
+            _convolve_flags(avgarray, -rolling_scale, thisthreshold, output_flags_neg, window)
+
+        # Extract just the portion of output_flags_pos/neg corresponding to the
+        # chunk itself, without the padding
+        rel_slice = slice(chunk_slice.start - padded_slice.start,
+                          chunk_slice.stop - padded_slice.start)
+        output_flags[chunk_slice] = output_flags_pos[rel_slice] | output_flags_neg[rel_slice]
 
 
 class SumThresholdFlagger(object):
@@ -565,61 +588,44 @@ class SumThresholdFlagger(object):
 
         # Set up frequency chunks
         freq_chunks = np.linspace(0, in_data.shape[1], self.freq_chunks+1, dtype=np.int)
-        # Number of channels to pad start and end of each chunk
-        # (factor of 3 is gaussian smoothing box size in getbackground)
-        chunk_overlap = int(np.ceil(self.spike_width_freq * self.background_iterations * 3.))
-        # Loop over chunks
-        for chunk_num in range(len(freq_chunks)-1):
-            # Chunk the input data and flags in frequency and create output chunk
-            chunk_start, chunk_end = freq_chunks[chunk_num:chunk_num + 2]
-            chunk_size = chunk_end - chunk_start
-            chunk = slice(max(chunk_start - chunk_overlap, 0),
-                          min(chunk_end + chunk_overlap, in_data.shape[1]))
-            in_data_chunk = in_data[:, chunk]
-            in_flags_chunk = np.copy(in_flags[:, chunk])
-            out_flags_chunk = np.zeros_like(in_flags_chunk, dtype=np.bool)
 
-            # Flag a 1d median frequency spectrum
-            spec_flags = np.all(in_flags_chunk, axis=0, keepdims=True)
-            # Un-flag channels that are completely flagged to avoid nans in the median
-            in_flags_chunk[:, spec_flags[0]] = False
-            # Get median spectrum
-            masked_data = np.where(in_flags_chunk, np.nan, in_data_chunk)
-            spec_data = np.nanmedian(masked_data, axis=0, keepdims=True)
-            # Re-flag channels that are completely flagged in time.
-            in_flags_chunk[:, spec_flags[0]] = True
-            spec_background = getbackground_2d(spec_data, in_flags=spec_flags,
-                                               iterations=self.background_iterations,
-                                               spike_width=(0.0, self.spike_width_freq),
-                                               reject_threshold=self.background_reject)
-            av_dev = spec_data - spec_background
-            spec_flags = self._sumthreshold(av_dev, spec_flags, 1, self.windows_freq)
-            # Broadcast spec_flags to timestamps
-            out_flags_chunk[:] = spec_flags
-            # Bootstrap the spec_flags in the mask from now on
-            in_flags_chunk |= out_flags_chunk
-            # Flag the data in 2d
-            # Get the background in the current chunk
-            spike_width = (self.spike_width_time, self.spike_width_freq)
-            background_chunk = getbackground_2d(in_data_chunk, in_flags=in_flags_chunk,
-                                                iterations=self.background_iterations,
-                                                spike_width=spike_width,
-                                                reject_threshold=self.background_reject)
-            # Subtract background
-            av_dev = in_data_chunk - background_chunk
-            # SumThreshold along time axis
-            time_flags_chunk = self._sumthreshold(av_dev, in_flags_chunk, 0, self.windows_time)
-            # SumThreshold along frequency axis- with time flags in the mask
-            freq_mask = in_flags_chunk | time_flags_chunk
-            freq_flags_chunk = self._sumthreshold(av_dev, freq_mask, 1, self.windows_freq)
-            # Combine all the flags
-            out_flags_chunk |= time_flags_chunk | freq_flags_chunk
-
-            # Copy output flags from the current chunk into the correct
-            # position in out_flags (ignoring overlap)
-            chunk_offset = min(chunk_overlap, chunk_start)
-            out_chunk = slice(chunk_offset, chunk_size+chunk_offset)
-            out_flags[:, chunk_start:chunk_end] = out_flags_chunk[:, out_chunk]
+        # Flag a 1d median frequency spectrum
+        spec_flags = np.all(in_flags, axis=0, keepdims=True)
+        # Un-flag channels that are completely flagged to avoid nans in the median
+        in_flags[:, spec_flags[0]] = False
+        # Get median spectrum
+        masked_data = np.where(in_flags, np.nan, in_data)
+        spec_data = np.nanmedian(masked_data, axis=0, keepdims=True)
+        # Re-flag channels that are completely flagged in time.
+        in_flags[:, spec_flags[0]] = True
+        spec_background = getbackground_2d(spec_data, in_flags=spec_flags,
+                                           iterations=self.background_iterations,
+                                           spike_width=(0.0, self.spike_width_freq),
+                                           reject_threshold=self.background_reject,
+                                           freq_chunks=freq_chunks)
+        av_dev = spec_data - spec_background
+        spec_flags = self._sumthreshold(av_dev, spec_flags, 1, self.windows_freq, freq_chunks)
+        # Broadcast spec_flags to timestamps
+        out_flags[:] = spec_flags
+        # Bootstrap the spec_flags in the mask from now on
+        in_flags |= out_flags
+        # Flag the data in 2d
+        # Get the background in the current chunk
+        spike_width = (self.spike_width_time, self.spike_width_freq)
+        background = getbackground_2d(in_data, in_flags=in_flags,
+                                      iterations=self.background_iterations,
+                                      spike_width=spike_width,
+                                      reject_threshold=self.background_reject,
+                                      freq_chunks=freq_chunks)
+        # Subtract background
+        av_dev = in_data - background
+        # SumThreshold along time axis
+        time_flags = self._sumthreshold(av_dev, in_flags, 0, self.windows_time)
+        # SumThreshold along frequency axis- with time flags in the mask
+        freq_mask = in_flags | time_flags
+        freq_flags = self._sumthreshold(av_dev, freq_mask, 1, self.windows_freq, freq_chunks)
+        # Combine all the flags
+        out_flags |= time_flags | freq_flags
 
         # Bring flags to correct frequency shape if the input data was averaged
         # Need to chop the end to the right shape if there was a remainder after averaging
@@ -646,7 +652,7 @@ class SumThresholdFlagger(object):
 
         return out_flags
 
-    def _sumthreshold(self, input_data, flags, axis, windows):
+    def _sumthreshold(self, input_data, flags, axis, windows, chunks=None):
         """Apply the SumThreshold method along the given axis of
         `input_data`.
 
@@ -662,6 +668,10 @@ class SumThresholdFlagger(object):
             0=time, 1=frequency
         windows : Array, int
             Window sizes to average data in each SumThreshold step
+        chunks : sequence, int
+            Boundaries between chunks in which each chunk has a separate noise
+            estimation. If provided, this list must start with 0, be strictly
+            increasing, and end with ``input_data.shape[axis]``.
 
         Returns
         -------
@@ -671,10 +681,17 @@ class SumThresholdFlagger(object):
         if axis == 0:
             input_data = input_data.T
             flags = flags.T
-        abs_input = np.empty_like(input_data[0])
+        if chunks is None:
+            chunks = [0, input_data.shape[-1]]
+        if chunks[0] != 0:
+            raise ValueError('chunks does not start with 0')
+        if chunks[-1] != input_data.shape[-1]:
+            raise ValueError('chunks does not end with number of channels')
+        chunks = np.array(chunks, np.int64)
+        windows = [window for window in windows if window <= input_data.shape[0]]
         windows = np.array(windows, np.int64)
         output_flags = _sumthreshold_1d(input_data, flags, windows,
-                                        self.outlier_nsigma, self.rho)
+                                        self.outlier_nsigma, self.rho, chunks)
         if axis == 0:
             output_flags = output_flags.T
         return output_flags
