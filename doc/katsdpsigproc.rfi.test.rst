@@ -36,6 +36,14 @@ katsdpsigproc.rfi.test.test_threshold module
     :undoc-members:
     :show-inheritance:
 
+katsdpsigproc.rfi.test.test_twodflag module
+-------------------------------------------
+
+.. automodule:: katsdpsigproc.rfi.test.test_twodflag
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 Module contents
 ---------------

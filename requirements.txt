@@ -14,8 +14,9 @@ pycparser
 pycuda
 pyopencl
 pytest
-python-dateutil==2.6.0     # Needed by Pandas
+python-dateutil            # Needed by Pandas
 pytools
 pytz                       # Needed by Pandas
+scipy
 six
 trollius
