@@ -544,31 +544,53 @@ def _get_flags(in_data, in_flags, flagger):
     """
     if in_data.shape != in_flags.shape:
         raise ValueError('Shape mismatch')
-    # Average `in_data` in frequency. This is done unconditionally, because it
-    # also does other useful steps (see the documentation).
-    data, flags = _average_freq(in_data, in_flags, flagger.average_freq)
+    out_flags = np.empty(in_data.shape, np.bool_)
+
+    averaged_channels = (in_data.shape[1] + flagger.average_freq - 1) // flagger.average_freq
 
     # Set up frequency chunks
-    freq_chunk_ends = np.linspace(0, data.shape[2], flagger.freq_chunks + 1).astype(np.int_)
+    freq_chunk_ends = np.linspace(0, averaged_channels, flagger.freq_chunks + 1).astype(np.int_)
 
     # Clip the windows to the available time and frequency range
-    windows_time = np.array([w for w in flagger.windows_time if w <= data.shape[1]], np.int_)
-    windows_freq = np.array([w for w in flagger.windows_freq if w <= data.shape[2]], np.int_)
+    windows_time = np.array([w for w in flagger.windows_time if w <= in_data.shape[1]], np.int_)
+    windows_freq = np.array([w for w in flagger.windows_freq if w <= averaged_channels], np.int_)
+
+    _get_flags_impl(
+        in_data, in_flags, out_flags,
+        flagger.outlier_nsigma, windows_time, windows_freq,
+        flagger.background_reject, flagger.background_iterations,
+        flagger.spike_width_time, flagger.spike_width_freq,
+        flagger.time_extend, flagger.freq_extend,
+        freq_chunk_ends, flagger.average_freq,
+        flagger.flag_all_time_frac, flagger.flag_all_freq_frac,
+        flagger.rho)
+    return out_flags
+
+
+@numba.jit(nopython=True, nogil=True)
+def _get_flags_impl(
+        in_data, in_flags, out_flags,
+        outlier_nsigma, windows_time, windows_freq,
+        background_reject, background_iterations,
+        spike_width_time, spike_width_freq, time_extend, freq_extend,
+        freq_chunk_ends, average_freq, flag_all_time_frac, flag_all_freq_frac,
+        rho):
+    # Average `in_data` in frequency. This is done unconditionally, because it
+    # also does other useful steps (see the documentation).
+    data, flags = _average_freq(in_data, in_flags, average_freq)
 
     # Do operations independently per baseline.
     # TODO: the accesses to out_flags will be inefficient.
-    out_flags = np.empty(in_data.shape, np.bool_)
     for i in range(data.shape[0]):
         _get_baseline_flags(
             data[i], flags[i], out_flags[:, :, i],
-            flagger.outlier_nsigma, windows_time, windows_freq,
-            flagger.background_reject, flagger.background_iterations,
-            flagger.spike_width_time, flagger.spike_width_freq,
-            flagger.time_extend, flagger.freq_extend,
-            freq_chunk_ends, flagger.average_freq,
-            flagger.flag_all_time_frac, flagger.flag_all_freq_frac,
-            flagger.rho)
-    return out_flags
+            outlier_nsigma, windows_time, windows_freq,
+            background_reject, background_iterations,
+            spike_width_time, spike_width_freq,
+            time_extend, freq_extend,
+            freq_chunk_ends, average_freq,
+            flag_all_time_frac, flag_all_freq_frac,
+            rho)
 
 
 @numba.jit(nopython=True, nogil=True)
