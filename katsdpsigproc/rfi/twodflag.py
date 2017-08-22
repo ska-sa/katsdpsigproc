@@ -450,7 +450,7 @@ class SumThresholdFlagger(object):
                  windows_freq=[1, 2, 4, 8], background_reject=2.0, background_iterations=1,
                  spike_width_time=12.5, spike_width_freq=10.0, time_extend=3, freq_extend=3,
                  freq_chunks=10, average_freq=1, flag_all_time_frac=0.6, flag_all_freq_frac=0.8,
-                 rho=0.3):
+                 rho=1.3):
         self.outlier_nsigma = outlier_nsigma
         self.windows_time = windows_time
         # Scale the frequency windows, and remove possible duplicates
@@ -467,7 +467,7 @@ class SumThresholdFlagger(object):
         self.average_freq = average_freq
         self.flag_all_time_frac = flag_all_time_frac
         self.flag_all_freq_frac = flag_all_freq_frac
-        self.rho = 1.3
+        self.rho = rho
 
     def get_flags(self, data, flags, pool=None):
         """Get flags in data array, with optional input flags of same shape
@@ -688,7 +688,7 @@ class SumThresholdFlagger(object):
         if chunks[-1] != input_data.shape[-1]:
             raise ValueError('chunks does not end with number of channels')
         chunks = np.array(chunks, np.int64)
-        windows = [window for window in windows if window <= input_data.shape[0]]
+        windows = [window for window in windows if window <= input_data.shape[-1]]
         windows = np.array(windows, np.int64)
         output_flags = _sumthreshold_1d(input_data, flags, windows,
                                         self.outlier_nsigma, self.rho, chunks)

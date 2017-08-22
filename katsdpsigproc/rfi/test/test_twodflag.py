@@ -413,14 +413,14 @@ class TestSumThresholdFlagger(object):
         expected[:, 80] = True
         data += rfi * rs.standard_normal(shape) * 3.0
         # Channel that is slightly biased, but wouldn't be picked up in a single dump
-        data[:, 260] += 0.2 * flagger.average_freq # TODO
+        data[:, 260] += 0.2 * flagger.average_freq
         expected[:, 260] = True
         in_flags = np.zeros(shape, np.bool_)
         # Pre-flag some channels, and make those values NaN (because cal
         # currently does this - but should be fixed).
         in_flags[:, 185:190] = True
         data[:, 185:190] = np.nan
-        return data, in_flags, expected
+        return np.abs(data), in_flags, expected
 
     def _test_get_baseline_flags(self, flagger):
         rs = np.random.RandomState(seed=1)
@@ -454,7 +454,7 @@ class TestSumThresholdFlagger(object):
         # plt.imshow(expected + 2 * out_flags)
         # plt.show()
         assert_equal(0, missing.sum())
-        assert_less(extra.sum() / data.size, 0.02)
+        assert_less(extra.sum() / data.size, 0.03)
 
     def test_get_baseline_flags(self):
         self._test_get_baseline_flags(self.flagger)
