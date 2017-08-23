@@ -2,6 +2,7 @@
 
 from __future__ import division, print_function, absolute_import
 
+import concurrent.futures
 import numpy as np
 import scipy.interpolate
 from scipy.ndimage import gaussian_filter1d, gaussian_filter
@@ -608,3 +609,19 @@ class TestSumThresholdFlagger(object):
         out_flags = self.flagger.get_flags(data, in_flags)
         assert_equal(True, out_flags[100, 17, 0])
         assert_equal(False, out_flags[200, 170, 0])
+
+    def _test_parallel(self, pool):
+        """Test that parallel execution gets same results as serial"""
+        rs = np.random.RandomState(seed=1)
+        data, in_flags, expected = self._make_data(self.flagger, rs, shape=(234, 512, 32))
+        out_serial = self.flagger.get_flags(data, in_flags)
+        out_parallel = self.flagger.get_flags(data, in_flags, pool=pool)
+        np.testing.assert_array_equal(out_serial, out_parallel)
+
+    def test_thread_pool(self):
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            self._test_parallel(pool)
+
+    def test_process_pool(self):
+        with concurrent.futures.ProcessPoolExecutor(4) as pool:
+            self._test_parallel(pool)

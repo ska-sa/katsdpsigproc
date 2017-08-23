@@ -7,7 +7,7 @@ import argparse
 import time
 import sys
 import json
-import multiprocessing.pool
+import concurrent.futures
 
 import numpy as np
 
@@ -95,19 +95,21 @@ def benchmark2d(args, data):
     if args.pool == 'none':
         pool = None
     elif args.pool == 'process':
-        pool = multiprocessing.Pool(args.workers)
+        pool = concurrent.futures.ProcessPoolExecutor(args.workers)
     elif args.pool == 'thread':
-        pool = multiprocessing.pool.ThreadPool(args.workers)
+        pool = concurrent.futures.ThreadPoolExecutor(args.workers)
     else:
         raise argparse.ArgumentError('unhandled value {} for --pool'.format(args.pool))
     # Warmup
-    flagger.get_flags(data[:2], in_flags[:2], pool=pool)
-    start = time.time()
-    flags = flagger.get_flags(data, in_flags, pool=pool)
-    end = time.time()
-    print("CPU time (ms):", (end - start) * 1000.0)
-    if pool is not None:
-        pool.close()
+    try:
+        flagger.get_flags(data[:2], in_flags[:2], pool=pool)
+        start = time.time()
+        flags = flagger.get_flags(data, in_flags, pool=pool)
+        end = time.time()
+        print("CPU time (ms):", (end - start) * 1000.0)
+    finally:
+        if pool is not None:
+            pool.shutdown()
     return flags
 
 

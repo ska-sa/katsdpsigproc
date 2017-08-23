@@ -4,6 +4,7 @@ from __future__ import print_function, division, absolute_import
 
 import numpy as np
 import numba
+import concurrent.futures
 
 
 def _as_min_dtype(value):
@@ -73,8 +74,8 @@ def _average_freq(in_data, in_flags, factor):
     out_shape = (n_bl, n_time, a_freq)
     avg_data = np.zeros(out_shape, np.float32)
     avg_weight = np.zeros(out_shape, factor.dtype)
-    # TODO: might need to do this in blocks to avoid
-    # cache way conflict issues in the transpose.
+    # TODO: might need to do this through a temporary buffer to avoid cache
+    # aliasing problems.
     for i in range(n_time):
         for j in range(n_freq):
             jout = j // factor
@@ -584,38 +585,6 @@ def _sum_threshold(input_data, input_flags, axis, windows, outlier_nsigma, rho, 
     return output_flags
 
 
-def _get_flags(in_data, in_flags, flagger):
-    """Top-level flag computation.
-
-    This is a free function so that it can be provided as a callback to a
-    multiprocessing pool, but should be accessed via
-    :meth:`SumThresholdFlagger.get_flags`.
-    """
-    if in_data.shape != in_flags.shape:
-        raise ValueError('Shape mismatch')
-    out_flags = np.empty(in_data.shape, np.bool_)
-
-    averaged_channels = (in_data.shape[1] + flagger.average_freq - 1) // flagger.average_freq
-
-    # Set up frequency chunks
-    freq_chunk_ends = np.linspace(0, averaged_channels, flagger.freq_chunks + 1).astype(np.int_)
-
-    # Clip the windows to the available time and frequency range
-    windows_time = np.array([w for w in flagger.windows_time if w <= in_data.shape[1]], np.int_)
-    windows_freq = np.array([w for w in flagger.windows_freq if w <= averaged_channels], np.int_)
-
-    _get_flags_impl(
-        in_data, in_flags, out_flags,
-        flagger.outlier_nsigma, windows_time, windows_freq,
-        flagger.background_reject, flagger.background_iterations,
-        flagger.spike_width_time, flagger.spike_width_freq,
-        flagger.time_extend, flagger.freq_extend,
-        freq_chunk_ends, flagger.average_freq,
-        flagger.flag_all_time_frac, flagger.flag_all_freq_frac,
-        flagger.rho)
-    return out_flags
-
-
 @numba.jit(nopython=True, nogil=True)
 def _get_flags_impl(
         in_data, in_flags, out_flags,
@@ -624,15 +593,17 @@ def _get_flags_impl(
         spike_width_time, spike_width_freq, time_extend, freq_extend,
         freq_chunk_ends, average_freq, flag_all_time_frac, flag_all_freq_frac,
         rho):
+    n_time, n_freq, n_bl = in_data.shape
     # Average `in_data` in frequency. This is done unconditionally, because it
     # also does other useful steps (see the documentation).
     data, flags = _average_freq(in_data, in_flags, average_freq)
 
+    # Output flags, in baseline-major order
+    tmp_flags = np.empty((n_bl, n_time, n_freq), np.bool_)
     # Do operations independently per baseline.
-    # TODO: the accesses to out_flags will be inefficient.
     for i in range(data.shape[0]):
         _get_baseline_flags(
-            data[i], flags[i], out_flags[:, :, i],
+            data[i], flags[i], tmp_flags[i],
             outlier_nsigma, windows_time, windows_freq,
             background_reject, background_iterations,
             spike_width_time, spike_width_freq,
@@ -640,6 +611,12 @@ def _get_flags_impl(
             freq_chunk_ends, average_freq,
             flag_all_time_frac, flag_all_freq_frac,
             rho)
+
+    # Transpose the output flags
+    for i in range(n_time):
+        for j in range(n_freq):
+            for k in range(n_bl):
+                out_flags[i, j, k] = tmp_flags[k, i, j]
 
 
 @numba.jit(nopython=True, nogil=True)
@@ -740,6 +717,15 @@ def _get_baseline_flags(
             out_flags[:, i] = True
 
 
+def _get_flags_mp(in_data, in_flags, flagger):
+    """Callback function for ProcessPoolExecutor. It allocates its own storage
+    for the output.
+    """
+    out_flags = np.empty_like(in_flags)
+    flagger._get_flags(in_data, in_flags, out_flags)
+    return out_flags
+
+
 class SumThresholdFlagger(object):
     """Flagger that uses the SumThreshold method (Offringa, A., MNRAS, 405, 155-167, 2010)
     to detect spikes in both frequency and time axes.
@@ -819,10 +805,49 @@ class SumThresholdFlagger(object):
         self.flag_all_freq_frac = flag_all_freq_frac
         self.rho = rho
 
-    def get_flags(self, data, flags, pool=None):
+    def _get_flags(self, in_data, in_flags, out_flags):
+        """Flag a batch of baselines.
+
+        The batches are doled out by :meth:`get_flags`, either to an executor
+        pool or directly. The batching is important because it affects memory
+        access patterns. The batch size should not be too large, as otherwise
+        it will overload the cache.
+
+        This function is the interface between Python code and numba code, and
+        takes care of conditioning the parameters into a form that the numba
+        code can consume. All the actual work is done in
+        :func:`_get_flags_impl`.
+        """
+        averaged_channels = (in_data.shape[1] + self.average_freq - 1) // self.average_freq
+
+        # Set up frequency chunks
+        freq_chunk_ends = np.linspace(0, averaged_channels, self.freq_chunks + 1).astype(np.int_)
+
+        # Clip the windows to the available time and frequency range
+        windows_time = np.array([w for w in self.windows_time if w <= in_data.shape[1]], np.int_)
+        windows_freq = np.array([w for w in self.windows_freq if w <= averaged_channels], np.int_)
+
+        _get_flags_impl(
+            in_data, in_flags, out_flags,
+            self.outlier_nsigma, windows_time, windows_freq,
+            self.background_reject, self.background_iterations,
+            self.spike_width_time, self.spike_width_freq,
+            self.time_extend, self.freq_extend,
+            freq_chunk_ends, self.average_freq,
+            self.flag_all_time_frac, self.flag_all_freq_frac,
+            self.rho)
+
+    def get_flags(self, data, flags, pool=None, is_multiprocess=None):
         """Get flags in data array, with optional input flags of same shape
         that denote samples in data to ignore when backgrounding and deriving
         thresholds.
+
+        This can run in parallel if given a
+        :class:`concurrent.futures.Executor`. Performance is generally better
+        with a :class:`~current.futures.ThreadPoolExecutor`. While a
+        :class:`~concurrent.futures.ProcessPoolExecutor` is supported, it is
+        usually limited by the speed at which the data can be pickled and
+        transferred to the other processes.
 
         Parameters
         ----------
@@ -831,9 +856,19 @@ class SumThresholdFlagger(object):
             also contain just the magnitudes.
         flags : 3D array, boolean
             Input flags.
-        pool : `multiprocessing.Pool` or similar
+        pool : :class:`concurrent.futures.Executor`, optional
             Worker pool for parallel computation. If not specified,
             computation will be done serially.
+        is_multiprocess : bool, optional
+            If `pool` behaves like
+            :class:`concurrent.futures.ProcessPoolExecutor` (in particular, if
+            it makes copies of its arguments) then this must be set to
+            ``True`` to invoke a slower path that ensures that results are
+            returned and reassembled. If unspecified, it defaults to true for
+            :class:`concurrent.futures.ProcessPoolExecutor` and false for all
+            other types. Thus, it only needs to be specified when using an
+            object that isn't a :class:`concurrent.futures.ProcessPoolExecutor`
+            but behaves like one.
 
         Returns
         -------
@@ -841,19 +876,38 @@ class SumThresholdFlagger(object):
             Derived flags (True=flagged)
 
         """
-
-        if pool is not None:
-            async_results = []
-            # Tuning factor for granularity of work passed to the workers
-            step = 4
-            out_flags = np.empty(data.shape, dtype=np.bool)
-            start = list(range(0, data.shape[-1], step))
-            for i in start:
-                async_results.append(
-                    pool.apply_async(_get_flags,
-                                     (data[..., i : i + step], flags[..., i : i + step], self)))
-            for i, result in zip(start, async_results):
-                out_flags[..., i : i + step] = result.get()
+        if data.shape != flags.shape:
+            raise ValueError('Shape mismatch')
+        if data.ndim != 3:
+            raise ValueError('data has wrong number of dimensions')
+        out_flags = np.empty(flags.shape, np.bool_)
+        # Tuning factor for granularity of work passed to the workers
+        step = 4
+        if pool is not None and is_multiprocess is None:
+            is_multiprocess = isinstance(pool, concurrent.futures.ProcessPoolExecutor)
+        futures = []
+        outputs = {}
+        try:
+            for i in range(0, data.shape[-1], step):
+                chunk_data = data[..., i : i + step]
+                chunk_flags = flags[..., i : i + step]
+                chunk_out = out_flags[..., i : i + step]
+                if pool is not None and is_multiprocess:
+                    future = pool.submit(_get_flags_mp, chunk_data, chunk_flags, self)
+                    outputs[future] = chunk_out
+                    futures.append(future)
+                elif pool is not None:
+                    futures.append(pool.submit(self._get_flags, chunk_data, chunk_flags, chunk_out))
+                else:
+                    self._get_flags(chunk_data, chunk_flags, chunk_out)
+            # Wait for all the futures to complete, and raise any exception.
+            # In multiprocessing mode, copy results back.
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if is_multiprocess:
+                    outputs[future][:] = result
             return out_flags
-        else:
-            return _get_flags(data, flags, self)
+        finally:
+            # If there's an exception, stop any work we can
+            for future in futures:
+                future.cancel()
