@@ -585,7 +585,7 @@ def _sum_threshold(input_data, input_flags, axis, windows, outlier_nsigma, rho, 
     return output_flags
 
 
-@numba.jit(nopython=True, nogil=True)
+@numba.jit(nopython=True, nogil=True, cache=True)
 def _get_flags_impl(
         in_data, in_flags, out_flags,
         outlier_nsigma, windows_time, windows_freq,
