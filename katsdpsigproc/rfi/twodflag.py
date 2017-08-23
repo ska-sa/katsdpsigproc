@@ -232,7 +232,7 @@ def _linearly_interpolate_nans(data):
 
 @numba.jit(nopython=True, nogil=True)
 def _box_gaussian_filter1d(data, r, out, passes):
-    """Implementation of :func:`_box_gaussian_filter1d` along the final axis of an array.
+    """Implementation of :func:`_box_gaussian_filter1d` along the first axis of an array.
 
     It is safe to use this function in-place i.e. with `out` equal to `data`.
 
@@ -248,40 +248,44 @@ def _box_gaussian_filter1d(data, r, out, passes):
         Number of boxcar filters to apply
     """
     K = passes
-    if data.shape[-1] == 0 or K == 0:
+    if data.shape[0] == 0 or K == 0:
         out[:] = data[:]
         return
     d = 2 * r + 1
     # Pad on left with zeros.
     padding = r * K
-    padded = np.empty(data.shape[-1] + padding, data.dtype)
-    for idx in np.ndindex(data.shape[:-1]):
-        padded[:padding] = 0
-        padded[padding:] = data[idx]
-        prev_start = padding   # First element with valid data
-        for p in range(1, K + 1):
-            # On each pass, padded[i] is replaced by the sum of padded[i : i + d]
-            # from the previous pass. The accumulator is kept in double precision
-            # to avoid excessive accumulation of errors.
-            s = np.float64(0)
-            start = padding - 2 * r * p
-            stop = start + data.size + 2 * padding
-            start = max(start, 0)
-            stop = min(stop, padded.size)
-            tail = min(stop, padded.size - 2 * r)
-            for i in range(prev_start, min(start + 2 * r, padded.size)):
-                s += padded[i]
-            for i in range(start, tail):
-                s += padded[i + 2 * r]
-                prev = padded[i]
-                padded[i] = s
-                s -= prev
-            for i in range(tail, stop):
-                prev = padded[i]
-                padded[i] = s
-                s -= prev
-            prev_start = start
-        out[idx] = padded[:-padding] / data.dtype.type(d)**K
+    # TODO: hoist memory allocations into caller
+    padded = np.empty((data.shape[0] + padding,) + data.shape[1:], data.dtype)
+    padded[:padding] = 0
+    padded[padding:] = data
+    prev_start = padding   # First element with valid data
+    s = np.zeros(data.shape[1:], np.float64)
+    for p in range(1, K + 1):
+        # On each pass, padded[i] is replaced by the sum of padded[i : i + d]
+        # from the previous pass. The accumulator is kept in double precision
+        # to avoid excessive accumulation of errors.
+        s[()] = 0
+        start = padding - 2 * r * p
+        stop = start + data.shape[0] + 2 * padding
+        start = max(start, 0)
+        stop = min(stop, padded.shape[0])
+        tail = min(stop, padded.shape[0] - 2 * r)
+        for i in range(prev_start, min(start + 2 * r, padded.shape[0])):
+            s += padded[i]
+        for i in range(start, tail):
+            for j in np.ndindex(data.shape[1:]):
+                s[j] += padded[(i + 2 * r,) + j]
+                prev = padded[(i,) + j]
+                padded[(i,) + j] = s[j]
+                s[j] -= prev
+        for i in range(tail, stop):
+            for j in np.ndindex(data.shape[1:]):
+                prev = padded[(i,) + j]
+                padded[(i,) + j] = s[j]
+                s[j] -= prev
+        prev_start = start
+    for idx in np.ndindex(out.shape):
+        out[idx] = padded[idx] / data.dtype.type(d)**K
 
 
 @numba.jit(nopython=True, nogil=True)
@@ -312,14 +316,20 @@ def _box_gaussian_filter(data, sigma, out, passes=4):
     """
     if len(sigma) != data.ndim:
         raise ValueError('sigma has wrong number of elements')
+    assert data.ndim == 2
     r = (0.5 * np.sqrt(12.0 * sigma**2 / passes + 1)).astype(np.int_)
     need_copy = True
     if r[0] > 0:
-        _box_gaussian_filter1d(data.T, r[0], out.T, passes)
+        # Process chunks of columns. See _sum_threshold for explanation.
+        step = 256
+        for i in range(0, data.shape[1], step):
+            sub = slice(i, min(i + step, data.shape[1]))
+            _box_gaussian_filter1d(data[:, sub], r[0], out[:, sub], passes)
         data = out       # Use out in next step
         need_copy = False
     if r[1] > 0:
-        _box_gaussian_filter1d(data, r[1], out, passes)
+        for i in range(data.shape[0]):
+            _box_gaussian_filter1d(data[i], r[1], out[i], passes)
         need_copy = False
     if need_copy:
         out[:] = data[:]
@@ -728,9 +738,6 @@ def _get_baseline_flags(
     for i in range(orig_freq):
         if flag_sum_time[i] > n_time * flag_all_time_frac:
             out_flags[:, i] = True
-
-    # TODO:
-    # - reimplement Gaussian filter on axis 0 for better coherence
 
 
 class SumThresholdFlagger(object):

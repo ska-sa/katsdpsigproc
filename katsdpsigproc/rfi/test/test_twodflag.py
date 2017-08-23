@@ -211,11 +211,11 @@ class TestLinearlyInterpolateNans(object):
 class TestBoxGaussianFilter(object):
     def test_one_pass(self):
         """Test that _box_gaussian_filter1d places the box correctly"""
-        a = np.array([[50.0, 10.0, 60.0, -70.0, 30.0, 20.0, -15.0]], np.float32)
+        a = np.array([50.0, 10.0, 60.0, -70.0, 30.0, 20.0, -15.0], np.float32)
         b = np.empty_like(a)
         twodflag._box_gaussian_filter1d(a, 2, b, 1)
         np.testing.assert_equal(
-            np.array([[24.0, 10.0, 16.0, 10.0, 5.0, -7.0, 7.0]], np.float32), b)
+            np.array([24.0, 10.0, 16.0, 10.0, 5.0, -7.0, 7.0], np.float32), b)
 
     def test_width(self):
         """Impulse response must have approximately correct standard deviation,
@@ -248,6 +248,17 @@ class TestBoxGaussianFilter(object):
         actual = np.zeros_like(data)
         twodflag._box_gaussian_filter(data, sigma, actual)
         np.testing.assert_allclose(expected, actual, rtol=1e-1)
+
+    def test_axes(self):
+        """Test that the axes are handled consistently"""
+        rs = np.random.RandomState(seed=1)
+        shape = (77, 53)
+        data = rs.uniform(size=shape).astype(np.float32)
+        out0 = np.zeros_like(data)
+        out1 = np.zeros_like(data)
+        twodflag._box_gaussian_filter(data, np.array([8.0, 0.0]), out0)
+        twodflag._box_gaussian_filter(data.T, np.array([0.0, 8.0]), out1.T)
+        np.testing.assert_array_equal(out0, out1)
 
     def test_edge(self):
         """Test that values outside the boundary are handled like zeros."""
