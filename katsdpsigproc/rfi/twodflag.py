@@ -153,6 +153,29 @@ def _median_abs(data, flags):
 
 
 @numba.jit(nopython=True, nogil=True)
+def _median_abs_axis0(data, flags):
+    """Compute median of absolute values of non-flagged values in `data`, along axis 0.
+
+    The first dimension is kept in the output as a dimension of size 1 (to
+    avoid issues with numba converting 0d arrays to scalars.
+    """
+    values = np.empty(data.shape[1:] + data.shape[:1], data.dtype)
+    counts = np.zeros(data.shape[1:], np.uint32)
+    out_data = np.empty((1,) + data.shape[1:], data.dtype)
+    for i in range(data.shape[0]):
+        for j in np.ndindex(data.shape[1:]):
+            if not flags[(i,) + j]:
+                values[j + (counts[j],)] = np.abs(data[(i,) + j])
+                counts[j] += 1
+    for j in np.ndindex(data.shape[1:]):
+        if counts[j] == 0:
+            out_data[(0,) + j] = np.nan
+        else:
+            out_data[(0,) + j] = np.median(values[j + (slice(0, counts[j]),)])
+    return out_data
+
+
+@numba.jit(nopython=True, nogil=True)
 def _linearly_interpolate_nans1d(data):
     """Replace NaNs in `data` by linear interpolation in-place.
 
@@ -422,77 +445,82 @@ def _convolve_flags(in_values, scale, threshold, out_flags, window):
     """
     cum_size = in_values.shape[0] + 2 * window - 1
     # TODO: could preallocate this externally
-    cum = np.empty(cum_size, np.uint32)     # Cumulative flagged values
+    cum = np.empty((cum_size,) + (in_values.shape[1:]), np.uint32)     # Cumulative flagged values
     cum[:window] = 0
     for i in range(in_values.shape[0]):
-        cum[window + i] = cum[window + i - 1] + (in_values[i] * scale > threshold)
+        for j in np.ndindex(in_values.shape[1:]):
+            flag = in_values[(i,) + j] * scale > threshold[(0,) + j]
+            cum[(window + i,) + j] = cum[(window + i - 1,) + j] + flag
     # numba doesn't seem to fully support negative indices, hence
     # the addition of cum_size.
     cum[cum_size - (window - 1):] = cum[cum_size - window]
     for i in range(out_flags.shape[0]):
-        out_flags[i] |= (cum[i + window] - cum[i] != 0)
+        for j in np.ndindex(out_flags.shape[1:]):
+            out_flags[(i,) + j] |= (cum[(i + window,) + j] - cum[(i,) + j] != 0)
 
 
 @numba.jit(nopython=True, nogil=True)
-def _sum_threshold1d(input_data, input_flags, windows, outlier_nsigma, rho, chunks):
-    """Implementation of :func:`_sum_threshold`. It operates on the last axis."""
-    output_flags = np.empty(input_data.shape, np.bool_)
-    for t in range(input_data.shape[0]):
-        for ci in range(chunks.size - 1):
-            chunk_slice = slice(chunks[ci], chunks[ci + 1])
-            chunk_data = input_data[t, chunk_slice]
-            chunk_flags = input_flags[t, chunk_slice]
+def _sum_threshold1d(input_data, input_flags, output_flags, windows, outlier_nsigma, rho, chunks):
+    """Implementation of :func:`_sum_threshold`. It operates along the first axis."""
+    for ci in range(chunks.size - 1):
+        chunk_slice = slice(chunks[ci], chunks[ci + 1])
+        chunk_data = input_data[chunk_slice]
+        chunk_flags = input_flags[chunk_slice]
 
-            # Get standard deviation using MAD
-            estm_stdev = 1.4826 * _median_abs(chunk_data, chunk_flags)
-            if np.isnan(estm_stdev):
-                estm_stdev = np.inf
-            # Set up initial threshold
-            threshold = outlier_nsigma * estm_stdev
+        # Get standard deviation using MAD and set up initial threshold
+        threshold = _median_abs_axis0(chunk_data, chunk_flags)
+        threshold_scale = outlier_nsigma * 1.4826
+        for idx in np.ndindex(threshold.shape):
+            if np.isnan(threshold[idx]):
+                threshold[idx] = np.inf
+            else:
+                threshold[idx] *= threshold_scale
 
-            padded_slice = slice(max(chunks[ci] - np.max(windows) + 1, 0),
-                                 min(chunks[ci + 1] + np.max(windows) - 1, input_data.size))
-            padded_data = input_data[t, padded_slice]
-            # TODO: can pre-allocate these outside the loop (but will need resizing)
-            output_flags_pos = np.zeros(padded_data.shape, np.bool_)
-            output_flags_neg = np.zeros(padded_data.shape, np.bool_)
-            for window in windows:
-                # The threshold for this iteration is calculated from the initial threshold
-                # using the equation from Offringa (2010).
-                tf = pow(rho, np.log2(window))
-                # Get the thresholds
-                thisthreshold = threshold / tf
-                # Set already flagged values to be the +/- value of the
-                # threshold if they are outside the threshold, and take
-                # a cumulative sum.
-                cum_data = np.empty(padded_data.shape[0] + 1, np.float64)
-                cum_data[0] = 0
-                for i in range(padded_data.shape[0]):
-                    clamped = padded_data[i]
-                    if output_flags_pos[i] and clamped > thisthreshold:
-                        clamped = thisthreshold
-                    elif output_flags_neg[i] and clamped < -thisthreshold:
-                        clamped = -thisthreshold
-                    cum_data[i + 1] = cum_data[i] + clamped
-                # Calculate a rolling sum array from the data with the window for this iteration,
-                # which is later scaled by rolliing_scale to give the rolling average.
-                avgarray = cum_data[window:] - cum_data[:-window]
-                rolling_scale = np.float32(1.0 / window)
+        padded_slice = slice(max(chunks[ci] - np.max(windows) + 1, 0),
+                             min(chunks[ci + 1] + np.max(windows) - 1, input_data.size))
+        padded_data = input_data[padded_slice]
+        # TODO: can pre-allocate these outside the loop (but will need resizing)
+        output_flags_pos = np.zeros(padded_data.shape, np.bool_)
+        output_flags_neg = np.zeros(padded_data.shape, np.bool_)
+        for window in windows:
+            # The threshold for this iteration is calculated from the initial threshold
+            # using the equation from Offringa (2010).
+            tf = pow(rho, np.log2(window))
+            # Get the thresholds
+            thisthreshold = threshold / tf
+            # Set already flagged values to be the +/- value of the
+            # threshold if they are outside the threshold, and take
+            # a cumulative sum.
+            cum_data = np.empty((padded_data.shape[0] + 1,) + padded_data.shape[1:], np.float64)
+            cum_data[0] = 0
+            for i in range(padded_data.shape[0]):
+                for j in np.ndindex(padded_data.shape[1:]):
+                    idx = (i,) + j
+                    clamped = padded_data[idx]
+                    limit = thisthreshold[(0,) + j]
+                    if output_flags_pos[idx] and clamped > limit:
+                        clamped = limit
+                    elif output_flags_neg[idx] and clamped < -limit:
+                        clamped = -limit
+                    cum_data[(i + 1,) + j] = cum_data[idx] + clamped
+            # Calculate a rolling sum array from the data with the window for this iteration,
+            # which is later scaled by rolliing_scale to give the rolling average.
+            avgarray = cum_data[window:] - cum_data[:-window]
+            rolling_scale = np.float32(1.0 / window)
 
-                # Work out the flags from the average data above the current threshold,
-                # convolve them, and combine with current flags.
-                _convolve_flags(avgarray, rolling_scale, thisthreshold, output_flags_pos, window)
+            # Work out the flags from the average data above the current threshold,
+            # convolve them, and combine with current flags.
+            _convolve_flags(avgarray, rolling_scale, thisthreshold, output_flags_pos, window)
 
-                # Work out the flags from the average data below the current threshold,
-                # convolve them, and OR with current flags.
-                _convolve_flags(avgarray, -rolling_scale, thisthreshold, output_flags_neg, window)
+            # Work out the flags from the average data below the current threshold,
+            # convolve them, and OR with current flags.
+            _convolve_flags(avgarray, -rolling_scale, thisthreshold, output_flags_neg, window)
 
-            # Extract just the portion of output_flags_pos/neg corresponding to the
-            # chunk itself, without the padding
-            rel_slice = slice(chunk_slice.start - padded_slice.start,
-                              chunk_slice.stop - padded_slice.start)
-            output_flags[t, chunk_slice] = output_flags_pos[rel_slice] | output_flags_neg[rel_slice]
-    return output_flags
+        # Extract just the portion of output_flags_pos/neg corresponding to the
+        # chunk itself, without the padding
+        rel_slice = slice(chunk_slice.start - padded_slice.start,
+                          chunk_slice.stop - padded_slice.start)
+        output_flags[chunk_slice] = output_flags_pos[rel_slice] | output_flags_neg[rel_slice]
 
 
 @numba.jit(nopython=True, nogil=True)
@@ -528,11 +556,22 @@ def _sum_threshold(input_data, input_flags, axis, windows, outlier_nsigma, rho, 
     """
     if chunks is None:
         chunks = np.array([0, input_data.shape[axis]])
+    output_flags = np.empty(input_data.shape, np.bool_)
     if axis == 1:
-        return _sum_threshold1d(input_data, input_flags, windows, outlier_nsigma, rho, chunks)
+        for i in range(input_data.shape[0]):
+            _sum_threshold1d(input_data[i], input_flags[i], output_flags[i],
+                             windows, outlier_nsigma, rho, chunks)
     else:
-        out = _sum_threshold1d(input_data.T, input_flags.T, windows, outlier_nsigma, rho, chunks)
-        return out.T.copy()   # Force C order (TODO: write different version of _sum_threshold1d)
+        # Each frequency is independent, but we process a group of frequencies
+        # at a time to be cache-friendly. The step size should be big enough
+        # that whole cache lines are used (even if the alignment is poor),
+        # but small enough that multiple rows fit in L1.
+        step = 256
+        for i in range(0, input_data.shape[1], step):
+            sub = slice(i, min(i + step, input_data.shape[1]))
+            _sum_threshold1d(input_data[:, sub], input_flags[:, sub], output_flags[:, sub],
+                             windows, outlier_nsigma, rho, chunks)
+    return output_flags
 
 
 def _get_flags(in_data, in_flags, flagger):
@@ -692,7 +731,6 @@ def _get_baseline_flags(
 
     # TODO:
     # - reimplement Gaussian filter on axis 0 for better coherence
-    # - reimplement _sum_threshold on axis 0 for better coherence
 
 
 class SumThresholdFlagger(object):

@@ -136,16 +136,35 @@ def test_time_median():
     out_data, out_flags = twodflag._time_median(data, flags)
     expected_data = np.array([[3.0, 0.0, 3.0, 6.0]], np.float32)
     expected_flags = np.array([[0, 1, 0, 0]], np.bool_)
-    np.testing.assert_equal(expected_data, out_data)
-    np.testing.assert_equal(expected_flags, out_flags)
+    np.testing.assert_array_equal(expected_data, out_data)
+    np.testing.assert_array_equal(expected_flags, out_flags)
 
 
-def test_median_abs():
-    """Test for :func:`katsdpsigproc.rfi.twodflag._median`."""
-    data = np.array([[-2.0, -6.0, 4.5], [1.5, 3.3, 0.5]], np.float32)
-    flags = np.array([[0, 0, 0], [0, 1, 0]], np.uint8)
-    out = twodflag._median_abs(data, flags)
-    assert_equal(2.0, out)
+class TestMedianAbs(object):
+    """Tests for :func:`katsdpsigproc.rfi.twodflag._median_abs` and
+    :func:`katsdpsigproc.rfi.twodflag._median_abs_axis0`."""
+    def setup(self):
+        self.data = np.array([[-2.0, -6.0, 4.5], [1.5, 3.3, 0.5]], np.float32)
+        self.flags = np.array([[0, 0, 0], [0, 1, 0]], np.uint8)
+
+    def test(self):
+        out = twodflag._median_abs(self.data, self.flags)
+        assert_equal(2.0, out)
+
+    def test_all_flagged(self):
+        out = twodflag._median_abs(self.data, np.ones_like(self.flags))
+        assert np.isnan(out)
+
+    def test_axis0(self):
+        out = twodflag._median_abs_axis0(self.data, self.flags)
+        expected = np.array([[1.75, 6.0, 2.5]])
+        np.testing.assert_array_equal(expected, out)
+
+    def test_axis0_all_flagged(self):
+        self.flags[:, 1] = True
+        out = twodflag._median_abs_axis0(self.data, self.flags)
+        expected = np.array([[1.75, np.nan, 2.5]])
+        np.testing.assert_array_equal(expected, out)
 
 
 class TestLinearlyInterpolateNans(object):
