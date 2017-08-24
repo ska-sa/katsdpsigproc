@@ -2,9 +2,11 @@
 
 from __future__ import print_function, division, absolute_import
 
+import multiprocessing
+
+import concurrent.futures
 import numpy as np
 import numba
-import concurrent.futures
 
 
 def _as_min_dtype(value):
@@ -837,7 +839,7 @@ class SumThresholdFlagger(object):
             self.flag_all_time_frac, self.flag_all_freq_frac,
             self.rho)
 
-    def get_flags(self, data, flags, pool=None, is_multiprocess=None):
+    def get_flags(self, data, flags, pool=None, chunk_size=None, is_multiprocess=None):
         """Get flags in data array, with optional input flags of same shape
         that denote samples in data to ignore when backgrounding and deriving
         thresholds.
@@ -859,6 +861,11 @@ class SumThresholdFlagger(object):
         pool : :class:`concurrent.futures.Executor`, optional
             Worker pool for parallel computation. If not specified,
             computation will be done serially.
+        chunk_size : int, optional
+            Number of baselines to process at a time. If not specified,
+            heuristics are used to pick a reasonable value. Values above 16
+            give diminishing returns and much larger values may actually reduce
+            performance. Power-of-two sizes are likely to perform best.
         is_multiprocess : bool, optional
             If `pool` behaves like
             :class:`concurrent.futures.ProcessPoolExecutor` (in particular, if
@@ -881,17 +888,27 @@ class SumThresholdFlagger(object):
         if data.ndim != 3:
             raise ValueError('data has wrong number of dimensions')
         out_flags = np.empty(flags.shape, np.bool_)
-        # Tuning factor for granularity of work passed to the workers
-        step = 4
+
+        n_bl = data.shape[-1]
+        if not chunk_size:
+            chunk_size = 16
+            if pool is not None:
+                # Make sure there is enough parallelism. There is no way to
+                # query the number of workers in a pool, so we'll just assume
+                # it is equal to cpu_count. We want at least 4 tasks per CPU
+                # to avoid load imbalances.
+                workers = multiprocessing.cpu_count()
+                while chunk_size > 1 and chunk_size * workers * 4 > n_bl:
+                    chunk_size //= 2
         if pool is not None and is_multiprocess is None:
             is_multiprocess = isinstance(pool, concurrent.futures.ProcessPoolExecutor)
         futures = []
         outputs = {}
         try:
-            for i in range(0, data.shape[-1], step):
-                chunk_data = data[..., i : i + step]
-                chunk_flags = flags[..., i : i + step]
-                chunk_out = out_flags[..., i : i + step]
+            for i in range(0, n_bl, chunk_size):
+                chunk_data = data[..., i : i + chunk_size]
+                chunk_flags = flags[..., i : i + chunk_size]
+                chunk_out = out_flags[..., i : i + chunk_size]
                 if pool is not None and is_multiprocess:
                     future = pool.submit(_get_flags_mp, chunk_data, chunk_flags, self)
                     outputs[future] = chunk_out
