@@ -20,9 +20,13 @@ import katsdpsigproc.accel as accel
 def generate_data(times, channels, baselines):
     rs = np.random.RandomState(seed=1)
     shape = (channels, baselines) if times is None else (times, channels, baselines)
-    real = rs.standard_normal(size=shape)
-    imag = rs.standard_normal(size=shape)
-    return (real + 1j * imag).astype(np.complex64)
+    # This is done a row at a time to keep memory usage low
+    out = np.empty(shape, np.complex64)
+    for i in range(shape[0]):
+        real = rs.standard_normal(size=shape[1:]).astype(np.float32)
+        imag = rs.standard_normal(size=shape[1:]).astype(np.float32)
+        out[i] = real + 1j * imag
+    return out
 
 
 def benchmark1d(args, data):
