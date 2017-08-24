@@ -158,7 +158,7 @@ def main():
                 raise argparse.ArgumentError('Unexpected value for preset')
         if args.baselines is None:
             # Note: * 2 not / 2 because there are 4 polarisations
-            args.baselines = args.antennas * (2 * args.antennas + 1)
+            args.baselines = args.antennas * (args.antennas + 1) * 2
         data = generate_data(args.times, args.channels, args.baselines)
 
     if args.times is None:
