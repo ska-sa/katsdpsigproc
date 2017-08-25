@@ -18,9 +18,10 @@ import katsdpsigproc.accel as accel
 
 
 def generate_data(times, channels, baselines):
+    rs = np.random.RandomState(seed=1)
     shape = (channels, baselines) if times is None else (times, channels, baselines)
-    real = np.random.randn(*shape)
-    imag = np.random.randn(*shape)
+    real = rs.standard_normal(size=shape)
+    imag = rs.standard_normal(size=shape)
     return (real + 1j * imag).astype(np.complex64)
 
 
