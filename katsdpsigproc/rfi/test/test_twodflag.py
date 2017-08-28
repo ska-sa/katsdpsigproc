@@ -2,92 +2,321 @@
 
 from __future__ import division, print_function, absolute_import
 
+import concurrent.futures
 import numpy as np
 import scipy.interpolate
-from nose.tools import assert_equal, assert_less
+from scipy.ndimage import gaussian_filter1d, gaussian_filter
+from nose.tools import assert_equal, assert_less, assert_raises
 from nose.plugins.skip import SkipTest
 
 from .. import twodflag
 
 
-class TestRunningMean(object):
-    """Tests for :func:`katsdpsigproc.rfi.twodflag.running_mean`."""
+class TestAsbool(object):
+    def _test(self, dtype, expect_view):
+        a = np.array([0, 1, 1, 0, 1, 0, 0, 1], dtype)
+        expected = a.astype(np.bool_)
+        out = twodflag._asbool(a)
+        assert_equal(np.bool_, out.dtype)
+        np.testing.assert_array_equal(expected, out)
+        if expect_view:
+            # Change a, out must change because it is a view
+            a[0] = not a[0]
+            assert_equal(bool(a[0]), out[0])
 
+    def test_uint8(self):
+        self._test(np.uint8, True)
+
+    def test_uint16(self):
+        self._test(np.uint16, False)
+
+    def test_bool(self):
+        self._test(np.bool_, True)
+
+
+class TestAverageFreq(object):
     def setup(self):
-        self.a = np.array([[2.0, 5.0, 4.0, 4.5],
-                           [3.2, 3.0, 2.0, 1.5],
-                           [-1.0, 0.0, 5.0, 5.0]])
+        self.small_data = np.arange(30, dtype=np.float32).reshape(5, 6, 1).repeat(2, axis=2)
+        self.small_flags = np.zeros(self.small_data.shape, np.bool_)
+        self.small_flags[3, :, 0] = 1
+        self.small_flags[:, 4, 0] = 1
+        self.small_flags[2, 0, :] = 1
+        self.small_flags[2, 5, :] = 1
 
-    def test_flat(self):
-        expected = np.array([11, 13.5, 11.7, 10.7, 8.2, 6.5, 2.5, 0.5, 4, 10]) / 3
-        out = twodflag.running_mean(self.a, 3)
-        np.testing.assert_allclose(expected, out, rtol=1e-9)
+    def test_one(self):
+        """_average_freq with 1 channel must have no effect on unflagged data"""
+        avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
+                                                     twodflag._as_min_dtype(1))
+        expected = self.small_data.copy()
+        expected[self.small_flags] = 0
+        assert_equal(np.float32, avg_data.dtype)
+        assert_equal(np.bool_, avg_flags.dtype)
+        np.testing.assert_array_equal(np.moveaxis(expected, -1, 0), avg_data)
+        np.testing.assert_array_equal(np.moveaxis(self.small_flags, -1, 0), avg_flags)
+
+    def test_divides(self):
+        """Test _average_freq when averaging factor divides in exactly"""
+        expected_data = np.array([
+            [
+                [0.5, 2.5, 5.0],
+                [6.5, 8.5, 11.0],
+                [13.0, 14.5, 0.0],
+                [0.0, 0.0, 0.0],
+                [24.5, 26.5, 29.0]
+            ],
+            [
+                [0.5, 2.5, 4.5],
+                [6.5, 8.5, 10.5],
+                [13.0, 14.5, 16.0],
+                [18.5, 20.5, 22.5],
+                [24.5, 26.5, 28.5]
+            ]], np.float32)
+        expected_flags = np.array([
+            [
+                [False, False, False],
+                [False, False, False],
+                [False, False, True],
+                [True, True, True],
+                [False, False, False]
+            ],
+            [[False, False, False]] * 5])
+        avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
+                                                     twodflag._as_min_dtype(2))
+        assert_equal(np.float32, avg_data.dtype)
+        assert_equal(np.bool_, avg_flags.dtype)
+        np.testing.assert_array_equal(expected_data, avg_data)
+        np.testing.assert_array_equal(expected_flags, avg_flags)
+
+    def test_uneven(self):
+        """Test _average_freq when averaging factor does not divide number of channels"""
+        expected_data = np.array([
+            [
+                [1.5, 5.0],
+                [7.5, 11.0],
+                [14.0, 0.0],
+                [0.0, 0.0],
+                [25.5, 29.0],
+            ],
+            [
+                [1.5, 4.5],
+                [7.5, 10.5],
+                [14.0, 16.0],
+                [19.5, 22.5],
+                [25.5, 28.5]
+            ]], np.float32)
+        expected_flags = np.array([
+            [
+                [False, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False]
+            ], [[False, False]] * 5], np.bool_)
+        avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
+                                                     twodflag._as_min_dtype(4))
+        assert_equal(np.float32, avg_data.dtype)
+        assert_equal(np.bool_, avg_flags.dtype)
+        np.testing.assert_array_equal(expected_data, avg_data)
+        np.testing.assert_array_equal(expected_flags, avg_flags)
+
+
+def test_time_median():
+    """Test for :func:`katsdpsigproc.rfi.twodflag._time_median`."""
+    data = np.array([
+        [2.0, 1.0, 2.0, 5.0],
+        [3.0, 1.0, 8.0, 6.0],
+        [4.0, 1.0, 4.0, 7.0],
+        [5.0, 1.0, 5.0, 6.5],
+        [1.5, 1.0, 1.5, 5.5]], np.float32)
+    flags = np.array([
+        [0, 1, 0, 1],
+        [0, 1, 1, 0],
+        [0, 1, 0, 1],
+        [0, 1, 0, 1],
+        [0, 1, 0, 1]], np.bool_)
+    out_data, out_flags = twodflag._time_median(data, flags)
+    expected_data = np.array([[3.0, 0.0, 3.0, 6.0]], np.float32)
+    expected_flags = np.array([[0, 1, 0, 0]], np.bool_)
+    np.testing.assert_array_equal(expected_data, out_data)
+    np.testing.assert_array_equal(expected_flags, out_flags)
+
+
+class TestMedianAbs(object):
+    """Tests for :func:`katsdpsigproc.rfi.twodflag._median_abs` and
+    :func:`katsdpsigproc.rfi.twodflag._median_abs_axis0`."""
+    def setup(self):
+        self.data = np.array([[-2.0, -6.0, 4.5], [1.5, 3.3, 0.5]], np.float32)
+        self.flags = np.array([[0, 0, 0], [0, 1, 0]], np.uint8)
+
+    def test(self):
+        out = twodflag._median_abs(self.data, self.flags)
+        assert_equal(2.0, out)
+
+    def test_all_flagged(self):
+        out = twodflag._median_abs(self.data, np.ones_like(self.flags))
+        assert np.isnan(out)
 
     def test_axis0(self):
-        expected = np.array([[5.2, 8, 6, 6], [2.2, 3, 7, 6.5]]) / 2
-        out = twodflag.running_mean(self.a, 2, axis=0)
-        np.testing.assert_allclose(expected, out, rtol=1e-9)
+        out = twodflag._median_abs_axis0(self.data, self.flags)
+        expected = np.array([[1.75, 6.0, 2.5]])
+        np.testing.assert_array_equal(expected, out)
 
-    def test_axis1(self):
-        expected = np.array([[11, 13.5], [8.2, 6.5], [4, 10]]) / 3
-        out = twodflag.running_mean(self.a, 3, axis=1)
-        np.testing.assert_allclose(expected, out, rtol=1e-9)
-
-    def test_float32(self):
-        expected = (np.array([[11, 13.5], [8.2, 6.5], [4, 10]]) / 3).astype(np.float32)
-        out = twodflag.running_mean(self.a.astype(np.float32), 3, axis=1)
-        assert_equal(np.float32, out.dtype)
-        np.testing.assert_allclose(expected, out, rtol=1e-6)
-
-    def test_precision(self):
-        """Must avoid loss of precision due to cumulative sum"""
-        x = np.array([1e9, 4, 7, 8], np.float32)
-        expected = np.array([0.5e9 + 2, 5.5, 7.5])
-        out = twodflag.running_mean(x, 2)
-        np.testing.assert_allclose(expected, out, rtol=1e-6)
-
-    def test_too_wide(self):
-        """Return empty array if window size larger than array dim"""
-        expected = np.empty((0, 4))
-        out = twodflag.running_mean(self.a, 5, axis=0)
+    def test_axis0_all_flagged(self):
+        self.flags[:, 1] = True
+        out = twodflag._median_abs_axis0(self.data, self.flags)
+        expected = np.array([[1.75, np.nan, 2.5]])
         np.testing.assert_array_equal(expected, out)
 
 
 class TestLinearlyInterpolateNans(object):
-    """Tests for :func:`katsdpsigproc.rfi.twodflag.linearly_interpolate_nans`."""
+    """Tests for :func:`katsdpsigproc.rfi.twodflag._linearly_interpolate_nans`."""
 
     def setup(self):
         self.y = np.array([np.nan, np.nan, 4.0, np.nan, np.nan, 10.0, np.nan, -2.0, np.nan, np.nan])
         self.expected = np.array([4.0, 4.0, 4.0, 6.0, 8.0, 10.0, 4.0, -2.0, -2.0, -2.0])
 
     def test_basic(self):
-        orig = self.y[:]
-        out = twodflag.linearly_interpolate_nans(self.y)
-        np.testing.assert_allclose(self.expected, out)
-        # Check that the input isn't being overwritten
-        np.testing.assert_array_equal(orig, self.y)
+        twodflag._linearly_interpolate_nans1d(self.y)
+        np.testing.assert_allclose(self.expected, self.y)
 
     def test_no_nans(self):
-        out = twodflag.linearly_interpolate_nans(self.expected)
-        np.testing.assert_allclose(self.expected, out)
+        y = self.expected[:]
+        twodflag._linearly_interpolate_nans1d(y)
+        np.testing.assert_allclose(self.expected, y)
 
     def test_all_nans(self):
-        orig = self.y[:]
         self.y[:] = np.nan
-        out = twodflag.linearly_interpolate_nans(self.expected)
-        np.testing.assert_allclose(self.expected, out)
-        # Check that the input isn't being overwritten
-        np.testing.assert_array_equal(orig, self.y)
+        self.expected[:] = 0
+        twodflag._linearly_interpolate_nans1d(self.y)
+        np.testing.assert_array_equal(self.expected, self.y)
 
     def test_float32(self):
         expected = self.expected.astype(np.float32)
-        out = twodflag.linearly_interpolate_nans(self.y.astype(np.float32))
-        assert_equal(np.float32, out.dtype)
-        np.testing.assert_allclose(expected, out, rtol=1e-6)
+        y = self.y.astype(np.float32)
+        twodflag._linearly_interpolate_nans1d(y)
+        np.testing.assert_allclose(expected, y, rtol=1e-6)
+
+    def test_2d(self):
+        y = np.zeros((3, self.y.size))
+        y[0, :] = self.y
+        y[1, :] = self.expected
+        y[2, :] = np.nan
+        expected = np.zeros_like(y)
+        expected[0, :] = self.expected
+        expected[1, :] = self.expected
+        expected[2, :] = 0
+        twodflag._linearly_interpolate_nans(y)
+        np.testing.assert_allclose(expected, y)
 
 
-class TestGetbackground2D(object):
-    """Tests for :func:`katsdpsigproc.rfi.twodflag.getbackground_2d`.
+class TestBoxGaussianFilter(object):
+    def test_one_pass(self):
+        """Test that _box_gaussian_filter1d places the box correctly"""
+        a = np.array([50.0, 10.0, 60.0, -70.0, 30.0, 20.0, -15.0], np.float32)
+        b = np.empty_like(a)
+        twodflag._box_gaussian_filter1d(a, 2, b, 1)
+        np.testing.assert_equal(
+            np.array([24.0, 10.0, 16.0, 10.0, 5.0, -7.0, 7.0], np.float32), b)
+
+    def test_width(self):
+        """Impulse response must have approximately correct standard deviation,
+        and must be symmetric with sum 1."""
+        a = np.zeros((1, 200), np.float32)
+        a[:, a.size // 2] = 1.0
+        sigma = np.array([0.0, 10.0])
+        b = np.empty_like(a)
+        twodflag._box_gaussian_filter(a, sigma, b)
+        x = np.arange(a.size) - a.size // 2
+        total = np.sum(b)
+        np.testing.assert_allclose(1.0, total, rtol=1e-5)
+        mean = np.sum(x * b)
+        np.testing.assert_allclose(0.0, mean, atol=1e-5)
+        std = np.sqrt(np.sum(x * x * b))
+        # Very loose test, because box_gaussian_filter1d quantises
+        np.testing.assert_allclose(std, sigma[1], atol=1)
+
+    def test_bad_sigma_dim(self):
+        a = np.zeros((50, 50), np.float32)
+        with assert_raises(ValueError):
+            twodflag._box_gaussian_filter(a, np.array([3.0]), a)
+
+    def test_2d(self):
+        rs = np.random.RandomState(seed=1)
+        shape = (77, 53)
+        sigma = np.array([8, 2.3])
+        data = rs.uniform(size=shape).astype(np.float32)
+        expected = gaussian_filter(data, sigma, mode='constant')
+        actual = np.zeros_like(data)
+        twodflag._box_gaussian_filter(data, sigma, actual)
+        np.testing.assert_allclose(expected, actual, rtol=1e-1)
+
+    def test_axes(self):
+        """Test that the axes are handled consistently"""
+        rs = np.random.RandomState(seed=1)
+        shape = (77, 53)
+        data = rs.uniform(size=shape).astype(np.float32)
+        out0 = np.zeros_like(data)
+        out1 = np.zeros_like(data)
+        twodflag._box_gaussian_filter(data, np.array([8.0, 0.0]), out0)
+        twodflag._box_gaussian_filter(data.T, np.array([0.0, 8.0]), out1.T)
+        np.testing.assert_array_equal(out0, out1)
+
+    def test_edge(self):
+        """Test that values outside the boundary are handled like zeros."""
+        rs = np.random.RandomState(seed=1)
+        data = np.zeros((1, 200), np.float32)
+        core = data[:, 80:120]
+        core[:] = rs.uniform(size=core.shape)
+        fdata = np.ones_like(data)
+        fcore = np.ones_like(core)
+        twodflag._box_gaussian_filter(data, np.array([0.0, 3.0]), fdata)
+        twodflag._box_gaussian_filter(core, np.array([0.0, 3.0]), fcore)
+        np.testing.assert_allclose(fdata[:, 80:120], fcore, rtol=1e-5)
+
+
+class TestMaskedGaussianFilter(object):
+    def setup(self):
+        self.rs = np.random.RandomState(seed=1)
+        shape = (77, 53)
+        self.data = self.rs.uniform(size=shape).astype(np.float32)
+        self.flags = self.rs.uniform(size=shape) >= 0.5
+
+    def _get_expected(self, sigma, truncate):
+        weight = 1.0 - self.flags
+        data = self.data * weight
+        for i, (s, t) in enumerate(zip(sigma, truncate)):
+            weight = gaussian_filter1d(weight, s, axis=i, mode='constant', truncate=t)
+            data = gaussian_filter1d(data, s, axis=i, mode='constant', truncate=t)
+        with np.errstate(invalid='ignore'):
+            data /= weight
+        return data
+
+    def test_basic(self):
+        sigma = np.array([5, 2.3])
+        expected = self._get_expected(sigma, (4.0, 4.0))
+        actual = np.ones_like(expected)
+        twodflag.masked_gaussian_filter(self.data, self.flags, sigma, actual)
+        np.testing.assert_allclose(expected, actual, rtol=1e-1)
+
+    def test_nan(self):
+        # Set a big block of zeros to get NaNs in the result
+        self.flags[:] = False
+        self.flags[30:70, 10:40] = True
+        # To match NaN positions, we need to match the footprint of the kernels
+        sigma = np.array([3, 3.3])
+        passes = 4
+        radius = [int(0.5 * np.sqrt(12.0 * s**2 / passes + 1)) for s in sigma]
+        truncate = [passes * r / s for (r, s) in zip(radius, sigma)]
+        expected = self._get_expected(sigma, truncate)
+        actual = np.ones_like(self.data)
+        twodflag.masked_gaussian_filter(self.data, self.flags, sigma, actual)
+        np.testing.assert_allclose(expected, actual, rtol=1e-1)
+        # Check that some NaNs were generated
+        assert_less(0, np.sum(np.isnan(expected)))
+
+
+class TestGetBackground2D(object):
+    """Tests for :func:`katsdpsigproc.rfi.twodflag._get_background2d`.
 
     This is a difficult function to test, because it's not really practical to
     determine expected results by hand. The tests mainly check corner cases
@@ -97,19 +326,29 @@ class TestGetbackground2D(object):
     def setup(self):
         self.shape = (95, 86)
         self.data = np.ones(self.shape, np.float32) * 7.5
-        self.flags = np.zeros(self.shape, np.bool_)
+        self.flags = np.zeros(self.shape, np.uint8)
+
+    def _get_background2d(self, data, flags=None, iterations=1, spike_width=(10.0, 10.0),
+                          reject_threshold=2.0, freq_chunks=None):
+        if flags is None:
+            flags = np.zeros(data.shape, np.uint8)
+        if freq_chunks is None:
+            freq_chunks = np.array([0, data.shape[1]])
+        spike_width = np.array(spike_width, np.float32)
+        return twodflag._get_background2d(data, flags, iterations, spike_width, reject_threshold,
+                                          freq_chunks)
 
     def test_no_flags(self):
-        background = twodflag.getbackground_2d(self.data)
+        background = self._get_background2d(self.data)
         assert_equal(np.float32, background.dtype)
         # It's all constant, so background and output should match.
         # It won't be exact though, because the Gaussian filter accumulates
         # errors as it sums.
         np.testing.assert_allclose(self.data, background, rtol=1e-5)
 
-    def test_all_masked(self):
-        self.flags.fill(True)
-        background = twodflag.getbackground_2d(self.data, self.flags)
+    def test_all_flagged(self):
+        self.flags[:] = True
+        background = self._get_background2d(self.data, self.flags)
         assert_equal(np.float32, background.dtype)
         np.testing.assert_array_equal(np.zeros(self.shape, np.float32), background)
 
@@ -118,8 +357,8 @@ class TestGetbackground2D(object):
         # internal masking on outliers too. We give every 3rd time a higher
         # power and flag it.
         self.data[::3] = 20.0
-        self.flags[::3] = 1
-        background = twodflag.getbackground_2d(self.data, self.flags)
+        self.flags[::3] = True
+        background = self._get_background2d(self.data, self.flags)
         expected = np.ones_like(self.data) * 7.5
         np.testing.assert_allclose(expected, background, rtol=1e-5)
 
@@ -128,7 +367,7 @@ class TestGetbackground2D(object):
         # Block of channels is 7.5, then a block is flagged (still 7.5), then
         # a block is 3.0.
         self.data[:, 70:] = 3.0
-        self.flags[:, 30:70] = 1
+        self.flags[:, 30:70] = True
         # The setup above has no deviation from the background, which makes the
         # outlier rejection unstable, so we add noise to half the timesteps, and test
         # them at lower precision. We use uniform noise to guarantee no outliers.
@@ -137,13 +376,13 @@ class TestGetbackground2D(object):
 
         # The rejection threshold is adjusted, because the default doesn't do
         # well when only about half the data is noisy.
-        background = twodflag.getbackground_2d(self.data, self.flags, spike_width=(1.99, 1.99),
-                                               reject_threshold=5.0)
+        background = self._get_background2d(self.data, self.flags, spike_width=(2.5, 2.5),
+                                            reject_threshold=5.0)
         expected = np.zeros_like(self.data)
-        expected[:, :35] = 7.5
-        expected[:, 65:] = 3.0
-        expected[:, 35:65] = np.linspace(7.5, 3.0, 30)
-        np.testing.assert_allclose(expected[56:], background[56:], rtol=1e-5)
+        expected[:, :37] = 7.5
+        expected[:, 63:] = 3.0
+        expected[:, 37:63] = np.linspace(7.5, 3.0, 26)
+        np.testing.assert_allclose(expected[56:], background[56:], rtol=1e-4)
         np.testing.assert_allclose(expected[:56], background[:56], rtol=1e-2)
 
     def test_iterations(self):
@@ -155,79 +394,29 @@ class TestGetbackground2D(object):
         # that it gets masked out.
         self.data[20:50, 30:80] += 15
 
-        background = twodflag.getbackground_2d(self.data, iterations=3)
+        background = self._get_background2d(self.data, iterations=3)
         np.testing.assert_allclose(expected, background, rtol=1e-2)
 
 
-class TestSumThresholdFlagger(object):
-    """Tests for :class:`katsdpsigproc.rfi.twodflag.SumThresholdFlagger`."""
-
+class TestSumThreshold(object):
     def setup(self):
-        self.flagger = twodflag.SumThresholdFlagger()
         self.small_data = np.arange(30, dtype=np.float32).reshape(5, 6)
         self.small_flags = np.zeros(self.small_data.shape, np.bool_)
         self.small_flags[3, :] = 1
         self.small_flags[:, 4] = 1
         self.small_flags[2, 0] = 1
         self.small_flags[2, 5] = 1
+        self.outlier_nsigma = 4.5
+        self.rho = 1.3
+        self.windows = np.array([1, 2, 4, 8])
 
-    def test_average_freq_one(self):
-        """_average_freq with 1 channel must have no effect on unflagged data"""
-        avg_data, avg_flags = self.flagger._average_freq(self.small_data, self.small_flags)
-        expected = self.small_data.copy()
-        expected[self.small_flags] = 0
-        assert_equal(np.float32, avg_data.dtype)
-        assert_equal(np.bool_, avg_flags.dtype)
-        np.testing.assert_array_equal(expected, avg_data)
-        np.testing.assert_array_equal(self.small_flags, avg_flags)
-
-    def test_average_freq_divides(self):
-        """Test _average_freq when averaging factor divides in exactly"""
-        expected_data = np.array([
-            [0.5, 2.5, 5.0],
-            [6.5, 8.5, 11.0],
-            [13.0, 14.5, 0.0],
-            [0.0, 0.0, 0.0],
-            [24.5, 26.5, 29.0]], np.float32)
-        expected_flags = np.array([
-            [False, False, False],
-            [False, False, False],
-            [False, False, True],
-            [True, True, True],
-            [False, False, False]])
-        flagger = twodflag.SumThresholdFlagger(average_freq=2)
-        avg_data, avg_flags = flagger._average_freq(self.small_data, self.small_flags)
-        assert_equal(np.float32, avg_data.dtype)
-        assert_equal(np.bool_, avg_flags.dtype)
-        np.testing.assert_array_equal(expected_data, avg_data)
-        np.testing.assert_array_equal(expected_flags, avg_flags)
-
-    def test_average_freq_uneven(self):
-        """Test _average_freq when averaging factor does not divide number of channels"""
-        expected_data = np.array([
-            [1.5, 5.0],
-            [7.5, 11.0],
-            [14.0, 0.0],
-            [0.0, 0.0],
-            [25.5, 29.0]], np.float32)
-        expected_flags = np.array([
-            [False, False],
-            [False, False],
-            [False, True],
-            [True, True],
-            [False, False]], np.bool_)
-        flagger = twodflag.SumThresholdFlagger(average_freq=4)
-        avg_data, avg_flags = flagger._average_freq(self.small_data, self.small_flags)
-        assert_equal(np.float32, avg_data.dtype)
-        assert_equal(np.bool_, avg_flags.dtype)
-        np.testing.assert_array_equal(expected_data, avg_data)
-        np.testing.assert_array_equal(expected_flags, avg_flags)
-
-    def test_sumthreshold_all_flagged(self):
-        out_flags = self.flagger._sumthreshold(self.small_data, self.small_flags, 0, [1, 2, 4])
+    def test_sum_threshold_all_flagged(self):
+        self.small_flags[:] = True
+        out_flags = twodflag._sum_threshold(self.small_data, self.small_flags, 0,
+                                            np.array([1, 2, 4]), self.outlier_nsigma, self.rho)
         np.testing.assert_array_equal(np.zeros_like(self.small_flags), out_flags)
 
-    def _test_sumthreshold_basic(self, axis):
+    def _test_sum_threshold_basic(self, axis):
         rs = np.random.RandomState(seed=1)
         data = rs.standard_normal((100, 90)).astype(np.float32) * 3.0
         rfi = np.zeros_like(data)
@@ -247,7 +436,8 @@ class TestSumThresholdFlagger(object):
             rfi = rfi.T.copy()
             data = data.T.copy()
             in_flags = in_flags.T.copy()
-        out_flags = self.flagger._sumthreshold(data, in_flags, axis, self.flagger.windows_freq)
+        out_flags = twodflag._sum_threshold(data, in_flags, axis,
+                                            self.windows, self.outlier_nsigma, self.rho)
         if axis == 0:
             out_flags = out_flags.T
         # Due to random data, won't get perfect agreement, but should get close
@@ -257,15 +447,14 @@ class TestSumThresholdFlagger(object):
         for region in (np.s_[8:13, 18:23], np.s_[78:83, 78:83]):
             np.testing.assert_equal(expected_flags[region], out_flags[region])
 
-    def test_sumthreshold_time(self):
-        self._test_sumthreshold_basic(axis=0)
+    def test_sum_threshold_time(self):
+        self._test_sum_threshold_basic(axis=0)
 
-    def test_sumthreshold_frequency(self):
-        self._test_sumthreshold_basic(axis=1)
+    def test_sum_threshold_frequency(self):
+        self._test_sum_threshold_basic(axis=1)
 
-    def test_sumthreshold_existing(self):
+    def test_sum_threshold_existing(self):
         rs = np.random.RandomState(seed=1)
-        flagger = twodflag.SumThresholdFlagger(outlier_nsigma=5)
         data = rs.standard_normal((100, 90)).astype(np.float32) * 3.0
         in_flags = np.zeros(data.shape, np.bool_)
         # Corrupt but pre-flag just under half the data, which will skew the
@@ -279,23 +468,29 @@ class TestSumThresholdFlagger(object):
         data[70, 2] = 20.0
         data[70, 3] = -20.0
         # Test it
-        out_flags = flagger._sumthreshold(data, in_flags, 0, flagger.windows_freq)
+        out_flags = twodflag._sum_threshold(data, in_flags, 0, self.windows, 5, self.rho)
         np.testing.assert_array_equal([False, False, True, True], out_flags[70, :4])
+
+
+class TestSumThresholdFlagger(object):
+    """Tests for :class:`katsdpsigproc.rfi.twodflag.SumThresholdFlagger`."""
+
+    def setup(self):
+        self.flagger = twodflag.SumThresholdFlagger()
 
     def _make_background(self, shape, rs):
         """Simulate a bandpass with some smooth variation."""
-        ntime, nfreq = shape
+        ntime, nfreq, n_bl = shape
         nx = 10
         x = np.linspace(0.0, nfreq, nx)
-        y = np.ones((ntime, nx)) * 2.34
-        y[:, 0] = 0.1
-        y[:, -1] = 0.1
+        y = np.ones((ntime, nx, n_bl)) * 2.34
+        y[:, 0, :] = 0.1
+        y[:, -1, :] = 0.1
         y[:] += rs.uniform(0.0, 0.1, y.shape)
-        f = scipy.interpolate.interp1d(x, y, kind='cubic', assume_sorted=True)
+        f = scipy.interpolate.interp1d(x, y, axis=1, kind='cubic', assume_sorted=True)
         return f(np.arange(nfreq))
 
-    def _make_data(self, flagger, rs):
-        shape = (234, 345)
+    def _make_data(self, flagger, rs, shape=(234, 345, 1)):
         background = self._make_background(shape, rs).astype(np.float32)
         data = background + (rs.standard_normal(shape) * 0.1).astype(np.float32)
         rfi = np.zeros(shape, np.float32)
@@ -316,22 +511,22 @@ class TestSumThresholdFlagger(object):
         expected[:, 80] = True
         data += rfi * rs.standard_normal(shape) * 3.0
         # Channel that is slightly biased, but wouldn't be picked up in a single dump
-        data[:, 260] += 0.2 * flagger.average_freq # TODO
+        data[:, 260] += 0.2 * flagger.average_freq
         expected[:, 260] = True
         in_flags = np.zeros(shape, np.bool_)
         # Pre-flag some channels, and make those values NaN (because cal
         # currently does this - but should be fixed).
         in_flags[:, 185:190] = True
         data[:, 185:190] = np.nan
-        return data, in_flags, expected
+        return np.abs(data), in_flags, expected
 
-    def _test_detect_spikes_sumthreshold(self, flagger):
+    def _test_get_flags(self, flagger):
         rs = np.random.RandomState(seed=1)
         data, in_flags, expected = self._make_data(flagger, rs)
 
         orig_data = data.copy()
         orig_in_flags = in_flags.copy()
-        out_flags = flagger.detect_spikes_sumthreshold(data, in_flags)
+        out_flags = flagger.get_flags(data, in_flags)
         # Check that the original values aren't disturbed
         np.testing.assert_equal(orig_data, data)
         np.testing.assert_equal(orig_in_flags, in_flags)
@@ -341,7 +536,7 @@ class TestSumThresholdFlagger(object):
         # flagged. A small number of values outside this may be flagged.
         # The backgrounding doesn't currently handle the edges of the band
         # well, so for now we also allow the edges to be flagged too.
-        # TODO: improve getbackground_2d so that it better fits a slope
+        # TODO: improve _get_background2d so that it better fits a slope
         # at the edges of the passband.
         allowed = expected | in_flags
         allowed[:-1] |= allowed[1:]
@@ -354,61 +549,79 @@ class TestSumThresholdFlagger(object):
         extra = out_flags & ~allowed
         # Uncomment for debugging failures
         # import matplotlib.pyplot as plt
-        # plt.imshow(expected + 2 * out_flags)
+        # plt.imshow(expected[..., 0] + 2 * out_flags[..., 0] + 4 * allowed[..., 0])
         # plt.show()
         assert_equal(0, missing.sum())
-        assert_less(extra.sum() / data.size, 0.02)
+        assert_less(extra.sum() / data.size, 0.03)
 
-    def test_detect_spikes_sumthreshold_defaults(self):
-        self._test_detect_spikes_sumthreshold(self.flagger)
+    def test_get_flags(self):
+        self._test_get_flags(self.flagger)
 
-    def test_detect_spikes_sumthreshold_single_chunk(self):
+    def test_get_flags_single_chunk(self):
         flagger = twodflag.SumThresholdFlagger(freq_chunks=1)
-        self._test_detect_spikes_sumthreshold(flagger)
+        self._test_get_flags(flagger)
 
-    def test_detect_spikes_sumthreshold_many_chunks(self):
-        flagger = twodflag.SumThresholdFlagger(freq_chunks=30)
-        self._test_detect_spikes_sumthreshold(flagger)
+    def test_get_flags_many_chunks(self):
+        # Number of chunks can't be too high, otherwise the block of channels
+        # affected by RFI isn't detected as it mostly falls into one chunk.
+        flagger = twodflag.SumThresholdFlagger(freq_chunks=15)
+        self._test_get_flags(flagger)
 
-    def test_detect_spikes_sumthreshold_average_freq(self):
+    def test_get_flags_average_freq(self):
         flagger = twodflag.SumThresholdFlagger(average_freq=2)
-        self._test_detect_spikes_sumthreshold(flagger)
+        self._test_get_flags(flagger)
 
-    def test_detect_spikes_sumthreshold_iterations(self):
+    def test_get_flags_iterations(self):
         # TODO: fix up the overflagging of the background in the flagger,
         # which currently causes this to fail.
         raise SkipTest('Backgrounder overflags edges of the slope')
         # flagger = twodflag.SumThresholdFlagger(background_iterations=3)
-        # self._test_detect_spikes_sumthreshold(flagger)
+        # self._test_get_flags(flagger)
 
-    def _test_detect_spikes_sum_threshold_all_flagged(self, flagger):
-        data = np.zeros((100, 80), np.float32)
+    def _test_get_flags_all_flagged(self, flagger):
+        data = np.zeros((100, 80, 4), np.float32)
         in_flags = np.ones(data.shape, np.bool_)
-        out_flags = flagger.detect_spikes_sumthreshold(data, in_flags)
+        out_flags = flagger.get_flags(data, in_flags)
         np.testing.assert_array_equal(np.zeros_like(in_flags), out_flags)
 
-    def test_detect_spikes_sum_threshold_all_flagged(self):
-        self._test_detect_spikes_sum_threshold_all_flagged(self.flagger)
+    def test_get_flags_all_flagged(self):
+        self._test_get_flags_all_flagged(self.flagger)
 
-    def test_detect_spikes_sum_threshold_all_flagged_average_freq(self):
+    def test_get_flags_all_flagged_average_freq(self):
         flagger = twodflag.SumThresholdFlagger(average_freq=4)
-        self._test_detect_spikes_sum_threshold_all_flagged(self.flagger)
+        self._test_get_flags_all_flagged(flagger)
 
     def test_variable_noise(self):
         """Noise level that varies across the band."""
         rs = np.random.RandomState(seed=1)
-        shape = (234, 345)
+        shape = (234, 345, 1)
         # For this test we use a flat background, to avoid the issues with
         # bandpass estimation in sloped regions.
         background = np.ones(shape, np.float32) * 11
         # Noise level that varies from 0 to 1 across the band
-        noise = rs.standard_normal(shape) * (np.arange(shape[1]) / shape[1])
+        noise = rs.standard_normal(shape)
+        noise *= np.arange(shape[1])[np.newaxis, :, np.newaxis] / shape[1]
         noise = noise.astype(np.float32)
         noise[100, 17] = 1.0    # About 20 sigma - must be detected
         noise[200, 170] = 1.0   # About 2 sigma -  must not be detected
-        data = background + noise
+        data = np.abs(background + noise)
         in_flags = np.zeros(shape, np.bool_)
-        expected = np.zeros_like(in_flags)
-        out_flags = self.flagger.detect_spikes_sumthreshold(data, in_flags)
-        assert_equal(True, out_flags[100, 17])
-        assert_equal(False, out_flags[200, 170])
+        out_flags = self.flagger.get_flags(data, in_flags)
+        assert_equal(True, out_flags[100, 17, 0])
+        assert_equal(False, out_flags[200, 170, 0])
+
+    def _test_parallel(self, pool):
+        """Test that parallel execution gets same results as serial"""
+        rs = np.random.RandomState(seed=1)
+        data, in_flags, expected = self._make_data(self.flagger, rs, shape=(234, 512, 32))
+        out_serial = self.flagger.get_flags(data, in_flags)
+        out_parallel = self.flagger.get_flags(data, in_flags, pool=pool)
+        np.testing.assert_array_equal(out_serial, out_parallel)
+
+    def test_thread_pool(self):
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            self._test_parallel(pool)
+
+    def test_process_pool(self):
+        with concurrent.futures.ProcessPoolExecutor(4) as pool:
+            self._test_parallel(pool)

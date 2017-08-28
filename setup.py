@@ -13,7 +13,7 @@ setup(
     url="https://github.com/ska-sa/katsdpsigproc",
     setup_requires=["katversion"],
     install_requires=[
-        "numpy>=1.10", "scipy", "pandas",
+        "numpy>=1.10", "scipy", "pandas", "numba", "futures",
         "decorator", "mako", "appdirs", "futures", "trollius", "six"
     ],
     extras_require={

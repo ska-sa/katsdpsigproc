@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 from six.moves import range, zip
 
+from . import MAD_NORMAL
+
+
 class BackgroundMedianFilterHost(object):
     """Host backgrounder that applies a median filter to each baseline
     (by amplitude).
@@ -59,7 +62,7 @@ class NoiseEstMADHost(object):
         for i in range(baselines):
             abs_dev = np.abs(deviations[:, i])
             out[i] = np.median(abs_dev[abs_dev > 0])
-        return out * 1.4826
+        return out * MAD_NORMAL
 
 class ThresholdSimpleHost(object):
     """Threshold each element independently.

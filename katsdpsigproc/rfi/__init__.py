@@ -13,3 +13,9 @@ A backgrounding, a noise estimation and a thresholding algorithm are combined
 in either :class:`host.FlaggerHost`, :class:`device.FlaggerDevice`, or
 :class:`device.FlaggerHostFromDevice`.
 """
+
+MAD_NORMAL = 1.4826
+"""Ratio between `median absolute deviation`_ and standard deviation of a Gaussian distribution.
+
+.. _median absolute deviation: https://en.wikipedia.org/wiki/Median_absolute_deviation
+"""
