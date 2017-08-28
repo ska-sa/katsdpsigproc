@@ -8,6 +8,8 @@ import concurrent.futures
 import numpy as np
 import numba
 
+from . import MAD_NORMAL
+
 
 def _as_min_dtype(value):
     """Convert a non-negative integer into a numpy scalar of the narrowest
@@ -61,7 +63,7 @@ def _average_freq(in_data, in_flags, factor):
     Parameters
     ----------
     in_data : ndarray, real or complex
-        Visibilities or their magnitudes, with axes time, frequency, baseline.
+        Visibilities or their magnitudes, with shape (time, frequency, baseline).
     in_flags : ndarray, bool
         Flags corresponding to the visibilities. This can safely be a type
         other than bool, where non-zero values indicate flagged data.
@@ -110,7 +112,7 @@ def _time_median(data, flags):
     Parameters
     ----------
     data : ndarray, real
-        Visibilities, with axes for time and frequency
+        Visibilities, with shape (time, frequency)
     flags : ndarray, bool
         Flags corresponding to `data`
 
@@ -126,17 +128,17 @@ def _time_median(data, flags):
     counts = np.zeros(n_freq, np.uint32)
     out_data = np.empty((1, n_freq), data.dtype)
     out_flags = np.zeros((1, n_freq), np.bool_)
-    for i in range(n_time):
-        for j in range(n_freq):
-            if not flags[i, j]:
-                values[j, counts[j]] = data[i, j]
-                counts[j] += 1
-    for j in range(n_freq):
-        if counts[j] == 0:
-            out_data[0, j] = 0     # No data
-            out_flags[0, j] = True
+    for t in range(n_time):
+        for f in range(n_freq):
+            if not flags[t, f]:
+                values[f, counts[f]] = data[t, f]
+                counts[f] += 1
+    for f in range(n_freq):
+        if counts[f] == 0:
+            out_data[0, f] = 0     # No data
+            out_flags[0, f] = True
         else:
-            out_data[0, j] = np.median(values[j, :counts[j]])
+            out_data[0, f] = np.median(values[f, :counts[f]])
     return out_data, out_flags
 
 
@@ -227,7 +229,7 @@ def _linearly_interpolate_nans(data):
     Parameters
     ----------
     data : ndarray, real
-        Data to interpolate, with axes for time and frequency.
+        Data to interpolate, with shape (time, frequency).
     """
     for i in range(data.shape[0]):
         _linearly_interpolate_nans1d(data[i])
@@ -235,7 +237,7 @@ def _linearly_interpolate_nans(data):
 
 @numba.jit(nopython=True, nogil=True)
 def _box_gaussian_filter1d(data, r, out, passes):
-    """Implementation of :func:`_box_gaussian_filter1d` along the first axis of an array.
+    """Implementation of :func:`_box_gaussian_filter` along the first axis of an array.
 
     It is safe to use this function in-place i.e. with `out` equal to `data`.
 
@@ -403,7 +405,7 @@ def _get_background2d(data, flags, iterations, spike_width, reject_threshold, fr
     Parameters
     ----------
     data : 2D ndarray, float
-        The input data array to be smoothed
+        The input data array to be smoothed, with shape (time, frequency).
     flags : 2D ndarray, boolean
         Flags corresponding to `data`
     spike_width : ndarray, float
@@ -423,22 +425,22 @@ def _get_background2d(data, flags, iterations, spike_width, reject_threshold, fr
     for extend_factor in range(iterations, 0, -1):
         sigma = extend_factor * spike_width
         masked_gaussian_filter(data, flags, sigma, background)
-        for i in range(freq_chunk_ends.size - 1):
-            sub = (slice(None, None), slice(freq_chunk_ends[i], freq_chunk_ends[i + 1]))
+        for c in range(freq_chunk_ends.size - 1):
+            sub = (slice(None, None), slice(freq_chunk_ends[c], freq_chunk_ends[c + 1]))
             sub_data = data[sub]
             sub_flags = flags[sub]
             # Convert background to an absolute value residual, in-place
             sub_residual = background[sub]
-            for j in range(n_time):
-                for k in range(sub_data.shape[1]):
-                    sub_residual[j, k] = np.abs(sub_data[j, k] - sub_residual[j, k])
+            for t in range(n_time):
+                for f in range(sub_data.shape[1]):
+                    sub_residual[t, f] = np.abs(sub_data[t, f] - sub_residual[t, f])
             threshold = _median_abs(sub_residual, sub_flags)
-            threshold *= 1.4826 * reject_threshold
-            for j in range(n_time):
-                for k in range(sub_data.shape[1]):
+            threshold *= MAD_NORMAL * reject_threshold
+            for t in range(n_time):
+                for f in range(sub_data.shape[1]):
                     # sub_residual can contain NaNs, but only where the flags already apply
-                    if sub_residual[j, k] > threshold:
-                        sub_flags[j, k] = True
+                    if sub_residual[t, f] > threshold:
+                        sub_flags[t, f] = True
     # Compute final background
     masked_gaussian_filter(data, flags, spike_width, background)
     # Remove NaNs via linear interpolation
@@ -482,7 +484,7 @@ def _sum_threshold1d(input_data, input_flags, output_flags, windows, outlier_nsi
 
         # Get standard deviation using MAD and set up initial threshold
         threshold = _median_abs_axis0(chunk_data, chunk_flags)
-        threshold_scale = outlier_nsigma * 1.4826
+        threshold_scale = outlier_nsigma * MAD_NORMAL
         for idx in np.ndindex(threshold.shape):
             if np.isnan(threshold[idx]):
                 threshold[idx] = np.inf
@@ -543,14 +545,16 @@ def _sum_threshold(input_data, input_flags, axis, windows, outlier_nsigma, rho, 
 
     Parameters
     ----------
-    input_data : 2D ndarray, real
-        Deviations from the background, with shape (time,frequency)
-    input_flags : 2D ndarray, bool
+    input_data : ndarray, real
+        Deviations from the background. The implementation is optimised for
+        2D (and does not currently work in 1D), but higher dimensions are
+        supported.
+    input_flags : ndarray, bool
         Input flags. Used as a mask when computing the initial
         standard deviations of the input data.
     axis : int
-        The axis to apply the SumThreshold operation
-        0=time, 1=frequency
+        The axis on which to apply the SumThreshold operation. In the current
+        implementation, must be 0 or 1.
     windows : ndarray, int
         Window sizes to average data in each SumThreshold step
     outlier_nsigma : float
@@ -564,26 +568,31 @@ def _sum_threshold(input_data, input_flags, axis, windows, outlier_nsigma, rho, 
 
     Returns
     -------
-    output_flags : 2D ndarray, bool
+    output_flags : ndarray, bool
         The derived flags
     """
     if chunks is None:
         chunks = np.array([0, input_data.shape[axis]])
     output_flags = np.empty(input_data.shape, np.bool_)
-    if axis == 1:
+    if axis < 0 or axis >= input_data.ndim:
+        raise ValueError('axis is out of range')
+    elif axis == 1:
         for i in range(input_data.shape[0]):
             _sum_threshold1d(input_data[i], input_flags[i], output_flags[i],
                              windows, outlier_nsigma, rho, chunks)
-    else:
-        # Each frequency is independent, but we process a group of frequencies
-        # at a time to be cache-friendly. The step size should be big enough
-        # that whole cache lines are used (even if the alignment is poor),
-        # but small enough that multiple rows fit in L1.
+    elif axis == 0:
+        # The operation is independent of the other dimensions, but we process
+        # them in chunks to be cache friendly. The step size should be big
+        # enough that whole cache lines are used (even if the alignment is
+        # poor), but small enough that multiple rows fit in L1. This heuristic
+        # value assumes a 2D input.
         step = 256
         for i in range(0, input_data.shape[1], step):
             sub = slice(i, min(i + step, input_data.shape[1]))
             _sum_threshold1d(input_data[:, sub], input_flags[:, sub], output_flags[:, sub],
                              windows, outlier_nsigma, rho, chunks)
+    else:
+        raise ValueError('axis must be 0 or 1')
     return output_flags
 
 
@@ -603,9 +612,9 @@ def _get_flags_impl(
     # Output flags, in baseline-major order
     tmp_flags = np.empty((n_bl, n_time, n_freq), np.bool_)
     # Do operations independently per baseline.
-    for i in range(data.shape[0]):
+    for bl in range(data.shape[0]):
         _get_baseline_flags(
-            data[i], flags[i], tmp_flags[i],
+            data[bl], flags[bl], tmp_flags[bl],
             outlier_nsigma, windows_time, windows_freq,
             background_reject, background_iterations,
             spike_width_time, spike_width_freq,
@@ -615,10 +624,86 @@ def _get_flags_impl(
             rho)
 
     # Transpose the output flags
+    for t in range(n_time):
+        for f in range(n_freq):
+            for bl in range(n_bl):
+                out_flags[t, f, bl] = tmp_flags[bl, t, f]
+
+
+@numba.jit(nopython=True, nogil=True)
+def _combine_flags(spec_flags, time_flags, freq_flags, time_extend, out):
+    """Combine several sources of flags and smear them in time.
+
+    Parameters
+    ----------
+    spec_flags : 1D ndarray, bool
+        Flags with shape (frequency)
+    time_flags, freq_flags : 2D ndarray, bool
+        Flags with shape (time, frequency)
+    time_extend : int
+        Width of the convolution kernel for time smearing (should be odd)
+    out : 2D ndarray, bool
+        Output flags
+    """
+    n_time, n_freq = time_flags.shape
+    # Combine spec_flags, time_flags and freq_flags, and take a cumulative sum
+    # along the time axis for the purposes of convolution.
+    flag_sum = np.empty((n_time + 1, n_freq), time_extend.dtype)
+    flag_sum[0] = 0
     for i in range(n_time):
         for j in range(n_freq):
-            for k in range(n_bl):
-                out_flags[i, j, k] = tmp_flags[k, i, j]
+            f = spec_flags[0, j] or time_flags[i, j] or freq_flags[i, j]
+            flag_sum[i + 1, j] = flag_sum[i, j] + f
+    # Difference the cumulative sums to get time-smeared flags.
+    time_delta_lo = -(time_extend // 2)
+    time_delta_hi = time_delta_lo + time_extend
+    for i in range(n_time):
+        # Rows to difference, clamping to the data limits
+        i0 = max(i + time_delta_lo, 0)
+        i1 = min(i + time_delta_hi, n_time)
+        for j in range(n_freq):
+            out[i, j] = (flag_sum[i0, j] != flag_sum[i1, j])
+
+
+@numba.jit(nopython=True, nogil=True)
+def _unaverage_freq(flags, freq_extend, average_freq, flag_all_time_frac, flag_all_freq_frac, out):
+    """Final processing for a single baseline:
+    1. Flags are replicated to undo the effect of frequency averaging.
+    2. Flags are smeared, using a kernel of width `flag_all_freq_frac`.
+    3. Times and frequencies where more than `flag_all_freq_frac` or
+       `flag_all_time_frac` of the values are already flagged become fully
+       flagged.
+    """
+    # Frequency replication and smearing
+    n_time, n_freq = flags.shape
+    orig_freq = out.shape[-1]
+    flag_sum = np.empty(orig_freq + 1, np.int32)
+    flag_sum_time = np.zeros(orig_freq, np.int32)
+    freq_delta_lo = -(freq_extend // 2)
+    freq_delta_hi = freq_delta_lo + freq_extend
+    for i in range(n_time):
+        flag_sum[0] = 0
+        for j in range(orig_freq):
+            flag_sum[j + 1] = flag_sum[j] + flags[i, j // average_freq]
+        # Take differences of the cumulative sums to get smearing
+        tot = 0
+        for j in range(orig_freq):
+            j0 = max(j + freq_delta_lo, 0)
+            j1 = min(j + freq_delta_hi, orig_freq)
+            f = (flag_sum[j1] != flag_sum[j0])
+            out[i, j] = f
+            tot += f
+            flag_sum_time[j] += f
+        # If too much is flagged, flag the entire time
+        if tot > flag_all_freq_frac * orig_freq:
+            out[i, :] = True
+
+    # Flag all times if too much is flagged. This should be rare, so we
+    # write in columns even though that's normally an unfriendly access
+    # pattern.
+    for i in range(orig_freq):
+        if flag_sum_time[i] > n_time * flag_all_time_frac:
+            out[:, i] = True
 
 
 @numba.jit(nopython=True, nogil=True)
@@ -635,7 +720,7 @@ def _get_baseline_flags(
     Parameters
     ----------
     data : ndarray, real
-        Visibility magnitudes, with axes for time and frequency
+        Visibility magnitudes, with shape (time, frequency)
     flags : ndarray, bool
         User-input flags corresponding to `data`
     out_flags : ndarray, bool
@@ -669,54 +754,12 @@ def _get_baseline_flags(
     freq_flags = _sum_threshold(data, flags, 1, windows_freq,
                                 outlier_nsigma, rho, freq_chunk_ends)
 
-    # Combine spec_flags, time_flags and freq_flags, and take a cumulative sum
-    # along the time axis for the purposes of convolution.
-    flag_sum = np.empty((n_time + 1, n_freq), time_extend.dtype)
-    flag_sum[0] = 0
-    for i in range(n_time):
-        for j in range(n_freq):
-            f = spec_flags[0, j] or time_flags[i, j] or freq_flags[i, j] or np.isnan(data[i, j])
-            flag_sum[i + 1, j] = flag_sum[i, j] + f
-    # Difference the cumulative sums to get time-smeared flags. We overwrite
-    # 'flags' since the previous value is no longer needed.
-    time_delta_lo = -(time_extend // 2)
-    time_delta_hi = time_delta_lo + time_extend
-    for i in range(n_time):
-        # Rows to difference, clamping to the data limits
-        i0 = max(i + time_delta_lo, 0)
-        i1 = min(i + time_delta_hi, n_time)
-        for j in range(n_freq):
-            flags[i, j] = (flag_sum[i0, j] != flag_sum[i1, j])
+    # Combine flag sources and do time smearing. We overwrite 'flags' since the
+    # previous result is no longer needed.
+    _combine_flags(spec_flags, time_flags, freq_flags, time_extend, flags)
 
-    # Frequency replication and smearing
-    orig_freq = out_flags.shape[-1]
-    flag_sum2 = np.empty(orig_freq + 1, np.int32)
-    flag_sum_time = np.zeros(orig_freq, np.int32)
-    freq_delta_lo = -(freq_extend // 2)
-    freq_delta_hi = freq_delta_lo + freq_extend
-    for i in range(n_time):
-        flag_sum2[0] = 0
-        for j in range(orig_freq):
-            flag_sum2[j + 1] = flag_sum2[j] + flags[i, j // average_freq]
-        # Take differences of the cumulative sums to get smearing
-        tot = 0
-        for j in range(orig_freq):
-            j0 = max(j + freq_delta_lo, 0)
-            j1 = min(j + freq_delta_hi, orig_freq)
-            f = (flag_sum2[j1] != flag_sum2[j0])
-            out_flags[i, j] = f
-            tot += f
-            flag_sum_time[j] += f
-        # If too much is flagged, flag the entire time
-        if tot > flag_all_freq_frac * orig_freq:
-            out_flags[i, :] = True
-
-    # Flag all times if too much is flagged. This should be rare, so we
-    # write in columns even though that's normally an unfriendly access
-    # pattern.
-    for i in range(orig_freq):
-        if flag_sum_time[i] > n_time * flag_all_time_frac:
-            out_flags[:, i] = True
+    _unaverage_freq(flags, freq_extend, average_freq,
+                    flag_all_time_frac, flag_all_freq_frac, out_flags)
 
 
 def _get_flags_mp(in_data, in_flags, flagger):
