@@ -650,19 +650,19 @@ def _combine_flags(spec_flags, time_flags, freq_flags, time_extend, out):
     # along the time axis for the purposes of convolution.
     flag_sum = np.empty((n_time + 1, n_freq), time_extend.dtype)
     flag_sum[0] = 0
-    for i in range(n_time):
-        for j in range(n_freq):
-            f = spec_flags[0, j] or time_flags[i, j] or freq_flags[i, j]
-            flag_sum[i + 1, j] = flag_sum[i, j] + f
+    for t in range(n_time):
+        for f in range(n_freq):
+            flag = spec_flags[0, f] or time_flags[t, f] or freq_flags[t, f]
+            flag_sum[t + 1, f] = flag_sum[t, f] + flag
     # Difference the cumulative sums to get time-smeared flags.
     time_delta_lo = -(time_extend // 2)
     time_delta_hi = time_delta_lo + time_extend
-    for i in range(n_time):
+    for t in range(n_time):
         # Rows to difference, clamping to the data limits
-        i0 = max(i + time_delta_lo, 0)
-        i1 = min(i + time_delta_hi, n_time)
-        for j in range(n_freq):
-            out[i, j] = (flag_sum[i0, j] != flag_sum[i1, j])
+        t0 = max(t + time_delta_lo, 0)
+        t1 = min(t + time_delta_hi, n_time)
+        for f in range(n_freq):
+            out[t, f] = (flag_sum[t0, f] != flag_sum[t1, f])
 
 
 @numba.jit(nopython=True, nogil=True)
@@ -681,29 +681,29 @@ def _unaverage_freq(flags, freq_extend, average_freq, flag_all_time_frac, flag_a
     flag_sum_time = np.zeros(orig_freq, np.int32)
     freq_delta_lo = -(freq_extend // 2)
     freq_delta_hi = freq_delta_lo + freq_extend
-    for i in range(n_time):
+    for t in range(n_time):
         flag_sum[0] = 0
-        for j in range(orig_freq):
-            flag_sum[j + 1] = flag_sum[j] + flags[i, j // average_freq]
+        for f in range(orig_freq):
+            flag_sum[f + 1] = flag_sum[f] + flags[t, f // average_freq]
         # Take differences of the cumulative sums to get smearing
         tot = 0
-        for j in range(orig_freq):
-            j0 = max(j + freq_delta_lo, 0)
-            j1 = min(j + freq_delta_hi, orig_freq)
-            f = (flag_sum[j1] != flag_sum[j0])
-            out[i, j] = f
-            tot += f
-            flag_sum_time[j] += f
+        for f in range(orig_freq):
+            f0 = max(f + freq_delta_lo, 0)
+            f1 = min(f + freq_delta_hi, orig_freq)
+            flag = (flag_sum[f1] != flag_sum[f0])
+            out[t, f] = flag
+            tot += flag
+            flag_sum_time[f] += flag
         # If too much is flagged, flag the entire time
         if tot > flag_all_freq_frac * orig_freq:
-            out[i, :] = True
+            out[t, :] = True
 
     # Flag all times if too much is flagged. This should be rare, so we
     # write in columns even though that's normally an unfriendly access
     # pattern.
-    for i in range(orig_freq):
-        if flag_sum_time[i] > n_time * flag_all_time_frac:
-            out[:, i] = True
+    for f in range(orig_freq):
+        if flag_sum_time[f] > n_time * flag_all_time_frac:
+            out[:, f] = True
 
 
 @numba.jit(nopython=True, nogil=True)
