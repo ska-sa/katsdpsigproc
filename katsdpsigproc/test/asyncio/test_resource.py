@@ -60,7 +60,7 @@ class TestWaitUntil(object):
 
     @async_test
     def test_timeout(self):
-        """wait_until throws `trollius.TimeoutError` if it times out, and cancels the future"""
+        """wait_until throws `asyncio.TimeoutError` if it times out, and cancels the future"""
         future = asyncio.Future(loop=self.loop)
         with assert_raises(asyncio.TimeoutError):
             yield from(resource.wait_until(future, self.loop.time() + 0.01, loop=self.loop))

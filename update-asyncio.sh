@@ -12,4 +12,5 @@ function fixup() {
 fixup katsdpsigproc/resource.py katsdpsigproc/asyncio/resource.py
 fixup katsdpsigproc/test/test_resource.py katsdpsigproc/test/asyncio/test_resource.py
 trollius2asyncio -n -w --no-diffs katsdpsigproc/asyncio/*.py katsdpsigproc/test/asyncio/*.py
-sed -i 's/katsdpsigproc\.resource/katsdpsigproc.asyncio.resource/' katsdpsigproc/test/asyncio/*.py
+sed -i 's/katsdpsigproc\.resource/katsdpsigproc.asyncio.resource/g' katsdpsigproc/test/asyncio/*.py
+sed -i 's/trollius/asyncio/g' katsdpsigproc/asyncio/*.py katsdpsigproc/test/asyncio/*.py
