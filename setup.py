@@ -29,8 +29,17 @@ setup(
     cmdclass={'build_py': BuildPy},
     setup_requires=["katversion"],
     install_requires=[
-        "numpy>=1.10", "scipy", "pandas", "numba", "futures",
-        "decorator", "mako", "appdirs", "futures", "trollius; python_version<'3.4'", "six"
+        "numpy>=1.10",
+        "scipy",
+        "pandas",
+        "numba>=0.36.1",   # Older versions have bugs in median functions
+        "futures",
+        "decorator",
+        "mako",
+        "appdirs",
+        "futures",
+        "trollius; python_version<'3.4'",
+        "six"
     ],
     extras_require={
         "CUDA": ["pycuda>=2015.1.3"],
