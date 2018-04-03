@@ -1,27 +1,17 @@
 from __future__ import division, print_function, absolute_import
 import sys
 import traceback
-from nose.tools import assert_equal
-import unittest2 as unittest
+from nose.tools import assert_equal, assert_raises
 import mock
 import sqlite3
 import threading
 from .. import tune
 
-# nose.tools uses unittest rather than unittest2 for assertRaises, which
-# means that it doesn't get the context manager version on Python 2.6
-# (see https://github.com/nose-devs/nose/issues/25)
-# We import from unittest2 directly to fix this, using the same trick
-# as nose does.
-class Dummy(unittest.TestCase):
-    def nop():
-        pass
-_dummy = Dummy('nop')
-assert_raises = _dummy.assertRaises
 
 def test_autotune_basic():
     received = []
     received_lock = threading.Lock()
+
     def generate(a, b):
         with received_lock:
             received.append((a, b))
@@ -32,17 +22,21 @@ def test_autotune_basic():
     assert_equal([(1, 3), (1, 7), (2, 3), (2, 7)], sorted(received))
     assert_equal({'a': 1, 'b': 3}, best)
 
+
 def test_autotune_empty():
     with assert_raises(ValueError):
         tune.autotune(lambda x, y: lambda iters: 0, x=[1, 2], y=[])
 
+
 class CustomError(RuntimeError):
     pass
+
 
 def test_autotune_some_raise():
     def generate(x):
         if x == 1:
             raise CustomError('x = 1')
+
         def measure(iters):
             if x == 3:
                 raise CustomError('x = 3')
@@ -51,8 +45,10 @@ def test_autotune_some_raise():
     best = tune.autotune(generate, x=[0, 1, 2, 3])
     assert_equal({'x': 2}, best)
 
+
 def generate_raise(x):
     raise CustomError('x = {0}'.format(x))
+
 
 def test_autotune_all_raise():
     exc_value = None
@@ -71,6 +67,7 @@ def test_autotune_all_raise():
     # where it was re-raised
     frames = traceback.extract_tb(exc_info[2])
     assert_equal('generate_raise', frames[-1][2])
+
 
 class TestAutotuner(object):
     """Tests for the `autotuner` decorator. We use mocking to substitute an

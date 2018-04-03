@@ -23,23 +23,27 @@ The database is stored in the user cache directory.
 """
 
 from __future__ import division, print_function, absolute_import
-from decorator import decorator
+
 import itertools
 import inspect
-import appdirs
-import sqlite3
 import os
 import os.path
 import sys
-import numpy as np
 import time
 import logging
 import multiprocessing
 import concurrent.futures
+
+import appdirs
+import sqlite3
+import numpy as np
+from decorator import decorator
 import six
 from six.moves import zip, range
 
+
 _logger = logging.getLogger(__name__)
+
 
 def adapt_value(value):
     """Converts `value` to a type that can be used in sqlite3. This is
@@ -50,6 +54,7 @@ def adapt_value(value):
     if isinstance(value, type) or isinstance(value, np.dtype):
         return repr(value)
     return value
+
 
 def _db_keys(fn, args, kwargs):
     """Uses the arguments passed to an autotuning function (see
@@ -68,6 +73,7 @@ def _db_keys(fn, args, kwargs):
     keys['device_platform'] = device.platform_name
     keys['device_version'] = device.driver_version
     return keys
+
 
 def _query(conn, tablename, keys):
     """Fetch a cached record from the database. If the record is not found,
@@ -108,12 +114,14 @@ def _query(conn, tablename, keys):
         pass
     return None
 
+
 def _create_table(conn, tablename, keys, values):
     command = 'CREATE TABLE IF NOT EXISTS {0} ('.format(tablename)
     for name in itertools.chain(keys.keys(), values.keys()):
         command += name + ' NOT NULL, '
     command += 'PRIMARY KEY ({0}) ON CONFLICT REPLACE)'.format(', '.join(keys.keys()))
     conn.execute(command)
+
 
 def _save(conn, tablename, keys, values):
     """Write cached result into the table, creating it if it does not already
@@ -124,13 +132,14 @@ def _save(conn, tablename, keys, values):
     entries = dict(keys)
     entries.update(values)
     command = 'INSERT OR REPLACE INTO {0}({1}) VALUES ({2})'.format(
-            tablename,
-            ', '.join(entries.keys()),
-            ', '.join(['?' for x in entries.keys()]))
+        tablename,
+        ', '.join(entries.keys()),
+        ', '.join(['?' for x in entries.keys()]))
     # Start transaction
     with conn:
         cursor = conn.cursor()
         cursor.execute(command, list(entries.values()))
+
 
 def _open_db():
     cache_dir = appdirs.user_cache_dir('katsdpsigproc', 'ska-sa')
@@ -145,11 +154,13 @@ def _open_db():
     conn = sqlite3.connect(cache_file)
     return conn
 
+
 def _close_db(conn):
     """Close a database. This is split into a separate function for the benefit
     of testing, because the close member of the object itself is read-only and
     hence cannot be patched."""
     conn.close()
+
 
 def autotuner_impl(test, fn, *args, **kwargs):
     """Implementation of :func:`autotuner`. It is split into a separate
@@ -175,6 +186,7 @@ def autotuner_impl(test, fn, *args, **kwargs):
     finally:
         _close_db(conn)
     return ans
+
 
 def autotuner(test):
     r"""Decorator that marks a function as an autotuning function and caches
@@ -203,17 +215,20 @@ def autotuner(test):
         return autotuner_impl(test, fn, *args, **kwargs)
     return autotuner
 
+
 def force_autotuner(test, fn, *args, **kwargs):
     """Drop-in replacement for :func:`autotuner_impl` that does not do any
     caching. It is intended to be used with a mocking framework.
     """
     return fn(*args, **kwargs)
 
+
 def stub_autotuner(test, fn, *args, **kwargs):
     """Drop-in replacement for :func:`autotuner_impl` that does not do
     any tuning, but instead returns the provided value. It is intended to be
     used with a mocking framework."""
     return test
+
 
 def make_measure(queue, function):
     """Generates a measurement function that can be returned by the
@@ -226,6 +241,7 @@ def make_measure(queue, function):
             function()
         return queue.stop_tuning() / iters
     return measure
+
 
 def autotune(generate, time_limit=0.1, threads=None, **kwargs):
     """Run a number of tuning experiments and find the optimal combination
@@ -295,13 +311,15 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
                     # Guess how many iterations we can do in the allotted time
                     iters = max(3, int(time_limit / elapsed))
                     score = measure(iters)
-                    _logger.debug("Configuration %s scored %f in %d iterations", keywords, score, iters)
+                    _logger.debug("Configuration %s scored %f in %d iterations",
+                                  keywords, score, iters)
                     if best_score is None or score < best_score:
                         best = keywords
                         best_score = score
-                except Exception as e:
+                except Exception:
                     exc_info = sys.exc_info()
-                    _logger.debug("Caught exception while testing configuration %s", keywords, exc_info=True)
+                    _logger.debug("Caught exception while testing configuration %s",
+                                  keywords, exc_info=True)
     if best is None:
         if exc_info is not None:
             six.reraise(*exc_info)

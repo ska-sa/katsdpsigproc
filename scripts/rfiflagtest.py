@@ -54,9 +54,9 @@ def benchmark1d(args, data):
     else:
         command_queue = context.create_command_queue(profile=True)
         background = katsdpsigproc.rfi.device.BackgroundMedianFilterDeviceTemplate(
-                context, args.width)
+            context, args.width)
         noise_est = katsdpsigproc.rfi.device.NoiseEstMADTDeviceTemplate(
-                context, 10240)
+            context, 10240)
         threshold = katsdpsigproc.rfi.device.ThresholdSumDeviceTemplate(context)
         template = katsdpsigproc.rfi.device.FlaggerDeviceTemplate(background, noise_est, threshold)
         flagger = template.instantiate(command_queue, data.shape[0], data.shape[1],
@@ -82,7 +82,7 @@ def benchmark1d(args, data):
         print("Host time (ms):  ", (end_time - start_time) * 1000.0)
         try:
             device_time = end_event.time_since(start_event) * 1000.0
-        except:
+        except Exception:
             # AMD CPU device doesn't seem to support profiling on marker events
             device_time = 'unknown'
         print("Device time (ms):", device_time)

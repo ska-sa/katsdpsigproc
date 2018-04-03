@@ -12,25 +12,24 @@ have_cuda : boolean
     True if PyCUDA could be imported (does not guarantee any CUDA devices)
 have_opencl : boolean
     True if PyOpenCL could be imported (does not guarantee any OpenCL devices)
+
+.. include:: macros.rst
 """
 
 from __future__ import division, print_function, absolute_import
+import re
+import os
+import sys
+import itertools
+from collections import OrderedDict
+
 import numpy as np
 import mako.lexer
 from mako.template import Template
 from mako.lookup import TemplateLookup
 import six
 from six.moves import filter, range, zip, input
-try:
-    from collections import OrderedDict
-except ImportError:
-    from ordereddict import OrderedDict
 import pkg_resources
-import re
-import os
-import sys
-import itertools
-from . import tune
 
 try:
     import pycuda.driver
@@ -38,21 +37,22 @@ try:
     have_cuda = True
 except ImportError:
     have_cuda = False
-
 try:
-    import pyopencl
     from . import opencl
     have_opencl = True
 except ImportError:
     have_opencl = False
 
+
 def divup(x, y):
     """Divide x by y and round the result upwards"""
     return (x + y - 1) // y
 
+
 def roundup(x, y):
     """Rounds x up to the next multiple of y"""
     return divup(x, y) * y
+
 
 class LinenoLexer(mako.lexer.Lexer):
     """A wrapper that inserts #line directives into the source code. It
@@ -86,19 +86,22 @@ class LinenoLexer(mako.lexer.Lexer):
             out.append(line + '\n')
         return ''.join(out)
 
+
 def _make_lookup(extra_dirs):
     dirs = extra_dirs + [pkg_resources.resource_filename(__name__, '')]
     return TemplateLookup(dirs, lexer_cls=LinenoLexer, strict_undefined=True)
 
+
 # Cached for convenience
 _lookup = _make_lookup([])
+
 
 def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None, source=None):
     """Build a source module from a mako template.
 
     Parameters
     ----------
-    context : :class:`cuda.Context` or `opencl.Context`
+    context : |Context|
         Context for which to compile the code
     name : str
         Source file name, relative to the katsdpsigproc module
@@ -129,9 +132,10 @@ def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None, sou
     else:
         template = lookup.get_template(name)
     rendered_source = template.render(
-            simd_group_size=context.device.simd_group_size,
-            **render_kws)
+        simd_group_size=context.device.simd_group_size,
+        **render_kws)
     return context.compile(rendered_source, extra_flags)
+
 
 def all_devices():
     """Return a list of all discovered devices"""
@@ -142,6 +146,7 @@ def all_devices():
     if have_opencl:
         devices.extend(opencl.Device.get_devices())
     return devices
+
 
 def create_some_context(interactive=True, device_filter=None):
     """Create a single-device context, selecting a device automatically. This
@@ -272,6 +277,7 @@ def create_some_context(interactive=True, device_filter=None):
 
     return device.make_context()
 
+
 class HostArray(np.ndarray):
     """A restricted array class that can be used to initialise a
     :class:`DeviceArray`. It uses C ordering and allows padding, which
@@ -296,7 +302,7 @@ class HostArray(np.ndarray):
         Data type for the array
     padded_shape : tuple, optional
         Total size of memory allocation (defaults to `shape`)
-    context : :class:`cuda.Context` or :class:`opencl.Context`, optional
+    context : |Context|, optional
         If specified, the memory will be allocated in a way that allows
         efficient copies to and from this context.
     """
@@ -346,6 +352,7 @@ class HostArray(np.ndarray):
             else:
                 self.padded_shape = None
 
+
 class DeviceArray(object):
     """A light-weight array-like wrapper around a device buffer, that
     handles padding better than PyCUDA (which
@@ -358,7 +365,7 @@ class DeviceArray(object):
 
     Parameters
     ----------
-    context : :class:`cuda.Context` or :class:`opencl.Context`
+    context : |Context|
         Context in which to allocate the memory
     shape : tuple
         Shape for the usable data
@@ -442,14 +449,14 @@ class DeviceArray(object):
         """Asynchronous copy from `ary` to self"""
         ary = self.asarray_like(ary)
         command_queue.enqueue_write_buffer(
-                self.buffer, self._contiguous(ary), blocking=False)
+            self.buffer, self._contiguous(ary), blocking=False)
 
     def get_async(self, command_queue, ary=None):
         """Asynchronous copy from self to `ary` (see `get`)."""
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
         command_queue.enqueue_read_buffer(
-                self.buffer, self._contiguous(ary), blocking=False)
+            self.buffer, self._contiguous(ary), blocking=False)
         return ary
 
     @classmethod
@@ -566,9 +573,9 @@ class DeviceArray(object):
         if src.dtype != dest.dtype:
             raise TypeError('dtypes do not match ({} and {})'.format(src.dtype, dest.dtype))
         src_origin, src_shape, src_strides = cls._canonical_slice(
-                src_region, src.shape, src.strides)
+            src_region, src.shape, src.strides)
         dest_origin, dest_shape, dest_strides = cls._canonical_slice(
-                dest_region, dest.shape, dest.strides)
+            dest_region, dest.shape, dest.strides)
         if src_shape != dest_shape:
             raise ValueError('Source and destination shapes for the copy do not match')
         # Search for axes that can be collapsed together
@@ -578,8 +585,8 @@ class DeviceArray(object):
         for axis in range(len(src_shape) - 1, -1, -1):
             if src_shape[axis] == 1:
                 continue    # Can just ignore this axis
-            if (src_strides[axis] == new_shape[-1] * new_src_strides[-1] and
-                dest_strides[axis] == new_shape[-1] * new_dest_strides[-1]):
+            if (src_strides[axis] == new_shape[-1] * new_src_strides[-1]
+                    and dest_strides[axis] == new_shape[-1] * new_dest_strides[-1]):
                 new_shape[-1] *= src_shape[axis]
             else:
                 new_shape.append(src_shape[axis])
@@ -596,10 +603,10 @@ class DeviceArray(object):
         if len(shape) > 3:
             for i in range(shape[-1]):
                 cls._transfer_region(
-                        func, buffer1, buffer2,
-                        origin1 + strides1[-1] * i,
-                        origin2 + strides2[-1] * i,
-                        shape[:-1], strides1[:-1], strides2[:-1], **kwargs)
+                    func, buffer1, buffer2,
+                    origin1 + strides1[-1] * i,
+                    origin2 + strides2[-1] * i,
+                    shape[:-1], strides1[:-1], strides2[:-1], **kwargs)
         else:
             func(buffer1, buffer2, origin1, origin2, shape, strides1, strides2, **kwargs)
 
@@ -612,7 +619,7 @@ class DeviceArray(object):
 
         Parameters
         ----------
-        command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        command_queue : |CommandQueue|
             Command queue for the asynchronous operation.
         dest : :class:`DeviceArray`
             Target of the copy
@@ -629,11 +636,11 @@ class DeviceArray(object):
             if the source or destination regions are unsupported or out-of-range
         """
         src_origin, dest_origin, shape, src_strides, dest_strides = \
-                self._region_transfer_params(self, dest, src_region, dest_region)
+            self._region_transfer_params(self, dest, src_region, dest_region)
         self._transfer_region(
-                command_queue.enqueue_copy_buffer_rect,
-                self.buffer, dest.buffer, src_origin, dest_origin,
-                shape, src_strides, dest_strides)
+            command_queue.enqueue_copy_buffer_rect,
+            self.buffer, dest.buffer, src_origin, dest_origin,
+            shape, src_strides, dest_strides)
 
     def get_region(self, command_queue, ary, device_region, ary_region, blocking=True):
         """Perform a device-to-host copy of a subregion of `self` to `ary`.
@@ -643,7 +650,7 @@ class DeviceArray(object):
 
         Parameters
         ----------
-        command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        command_queue : |CommandQueue|
             Command queue for the operation.
         ary : :class:`DeviceArray`
             Target of the copy
@@ -667,11 +674,11 @@ class DeviceArray(object):
         if not HostArray.safe(ary):
             raise ValueError('Target region is not suitable for device-to-host copy')
         device_origin, ary_origin, shape, device_strides, ary_strides = \
-                self._region_transfer_params(self, ary, device_region, ary_region)
+            self._region_transfer_params(self, ary, device_region, ary_region)
         self._transfer_region(
-                command_queue.enqueue_read_buffer_rect,
-                self.buffer, self._contiguous(ary), device_origin, ary_origin,
-                shape, device_strides, ary_strides, blocking=blocking)
+            command_queue.enqueue_read_buffer_rect,
+            self.buffer, self._contiguous(ary), device_origin, ary_origin,
+            shape, device_strides, ary_strides, blocking=blocking)
 
     def set_region(self, command_queue, ary, device_region, ary_region, blocking=True):
         """Perform a host-to-device copy of a subregion `ary` to `self`.
@@ -681,7 +688,7 @@ class DeviceArray(object):
 
         Parameters
         ----------
-        command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+        command_queue : |CommandQueue|
             Command queue for the operation.
         ary : :class:`DeviceArray`
             Source of the copy
@@ -706,11 +713,11 @@ class DeviceArray(object):
             ary = tmp
             ary_region = np.s_[()]
         ary_origin, device_origin, shape, ary_strides, device_strides = \
-                self._region_transfer_params(ary, self, ary_region, device_region)
+            self._region_transfer_params(ary, self, ary_region, device_region)
         self._transfer_region(
-                command_queue.enqueue_write_buffer_rect,
-                self.buffer, self._contiguous(ary), device_origin, ary_origin,
-                shape, device_strides, ary_strides, blocking=blocking)
+            command_queue.enqueue_write_buffer_rect,
+            self.buffer, self._contiguous(ary), device_origin, ary_origin,
+            shape, device_strides, ary_strides, blocking=blocking)
 
     def zero(self, command_queue):
         """Memset with zeros (asynchronously)"""
@@ -729,7 +736,7 @@ class SVMArray(HostArray, DeviceArray):
 
     Parameters
     ----------
-    context : :class:`cuda.Context` or :class:`opencl.Context`
+    context : |Context|
         Context in which to allocate the memory
     shape : tuple
         Shape for the array
@@ -1001,6 +1008,7 @@ class Dimension(object):
         """Prevent further modifications"""
         self._root()._frozen = True
 
+
 class IOSlotBase(object):
     """An input/output slot of an operation. A slot can be bound to storage,
     or can allocate storage itself. This base class is untyped and unshaped,
@@ -1054,6 +1062,7 @@ class IOSlotBase(object):
         """
         self.check_root()
         return self._allocate(allocator, raw)
+
 
 class IOSlot(IOSlotBase):
     """An input/output slot with type and shape information. It contains a
@@ -1160,6 +1169,7 @@ class IOSlot(IOSlotBase):
         self._bind(buffer)
         return buffer
 
+
 class CompoundIOSlot(IOSlot):
     """IO slot that owns multiple child slots, and presents the combined
     requirement. The children must all have the same type and shape. This
@@ -1210,6 +1220,7 @@ class CompoundIOSlot(IOSlot):
         for child in self.children:
             child._bind(buffer)
 
+
 class AliasIOSlot(IOSlotBase):
     """Slot that aggregates multiple child slots (which need not have the same
     type or shape), and allocates a single low-level buffer to back all of them.
@@ -1252,6 +1263,7 @@ class AliasIOSlot(IOSlotBase):
         self.raw = raw
         return raw
 
+
 class Operation(object):
     """An instance of a device operation. Typically one first creates a
     template (which contains the program code, and is expensive to create) and
@@ -1273,7 +1285,7 @@ class Operation(object):
 
     Parameters
     ----------
-    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+    command_queue : |CommandQueue|
         Command queue for the operation
     allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
         Allocator used to allocate unbound slots
@@ -1362,6 +1374,7 @@ class Operation(object):
         self.ensure_all_bound()
         return self._run()
 
+
 class OperationSequence(Operation):
     """Convenience class for setting up an operation that is built up of
     smaller named operations, with mappings of slots to share data.
@@ -1376,7 +1389,7 @@ class OperationSequence(Operation):
 
     Parameters
     ----------
-    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+    command_queue : |CommandQueue|
         Command queue for the operation
     operations : sequence of 2-tuples
         Name, operation pairs to add. Calling the operation executes them in order

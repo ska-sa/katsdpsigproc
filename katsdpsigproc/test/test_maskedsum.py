@@ -1,9 +1,11 @@
 from __future__ import division, print_function, absolute_import
+
 import numpy as np
-from . import test_accel
+
 from .test_accel import device_test, force_autotune
 from .. import accel
 from .. import maskedsum
+
 
 class TestMaskedSum(object):
     def test_maskedsum(self):
@@ -27,7 +29,7 @@ class TestMaskedSum(object):
         # Force some padding, to check that stride calculation works
         self.pad_dimension(fn.slots['src'].dimensions[0], 1)
         self.pad_dimension(fn.slots['src'].dimensions[1], 4)
-        ary = np.random.randn(R, C, 2).astype(np.float32).view(dtype=np.complex64)[...,0]
+        ary = np.random.randn(R, C, 2).astype(np.float32).view(dtype=np.complex64)[..., 0]
         msk = np.ones((R,)).astype(np.float32)
         src = fn.slots['src'].allocate(fn.allocator)
         mask = fn.slots['mask'].allocate(fn.allocator)

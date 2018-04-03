@@ -1,10 +1,13 @@
 """Tests for wg_reduce.mako and reduce.py"""
 
 from __future__ import division, print_function, absolute_import
+
 import numpy as np
+
 from .test_accel import device_test, force_autotune
 from ..accel import DeviceArray, build
 from .. import reduce
+
 
 class Fixture(object):
     def __init__(self, context, rs, size, allow_shuffle, broadcast):
@@ -17,6 +20,7 @@ class Fixture(object):
             'broadcast': broadcast,
             'rows': rows})
 
+
 @device_test
 def setup(context, queue):
     global _fixtures
@@ -25,6 +29,7 @@ def setup(context, queue):
                  for size in [1, 4, 12, 16, 32, 87, 97, 160, 256]
                  for allow_shuffle in [True, False]
                  for broadcast in [True, False]]
+
 
 def check_reduce(context, queue, kernel_name, op):
     for fixture in _fixtures:
@@ -35,7 +40,7 @@ def check_reduce(context, queue, kernel_name, op):
         out_d = DeviceArray(context=context, shape=data.shape, dtype=data.dtype)
         dims = tuple(reversed(data.shape))
         queue.enqueue_kernel(
-                kernel, [data_d.buffer, out_d.buffer], local_size=dims, global_size=dims)
+            kernel, [data_d.buffer, out_d.buffer], local_size=dims, global_size=dims)
         out = out_d.get(queue)
         expected = op.reduce(data, axis=1, keepdims=True)
         if fixture.broadcast:
@@ -44,13 +49,16 @@ def check_reduce(context, queue, kernel_name, op):
             out = out[:, 0:1]
         np.testing.assert_array_equal(expected, out)
 
+
 @device_test
 def test_reduce_add(context, queue):
     check_reduce(context, queue, 'test_reduce_add', np.add)
 
+
 @device_test
 def test_reduce_max(context, queue):
     check_reduce(context, queue, 'test_reduce_max', np.maximum)
+
 
 class TestHReduce(object):
     """Tests for :class:`katsdpsigproc.reduce.HReduce`"""
@@ -62,7 +70,7 @@ class TestHReduce(object):
         device_src = fn.buffer('src')
         device_dest = fn.buffer('dest')
         src = device_src.empty_like()
-        rs = np.random.RandomState(seed=1) # To be reproducible
+        rs = np.random.RandomState(seed=1)  # To be reproducible
         src[:] = rs.randint(0, 100000, (rows, columns))
         device_src.set(queue, src)
         fn()

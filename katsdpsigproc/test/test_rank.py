@@ -8,6 +8,7 @@ from .test_accel import device_test
 from nose.tools import assert_equal
 from six.moves import range
 
+
 @device_test
 def setup(context, queue):
     global _program, _wgs, _data, _expected, _N, _M
@@ -21,29 +22,33 @@ def setup(context, queue):
     for i in range(_M):
         _expected[i] = np.sum(np.less(_data, i))
 
+
 def check_rank(context, queue, kernel_name, wgs):
     data_d = DeviceArray(context, shape=_data.shape, dtype=_data.dtype)
     data_d.set(queue, _data)
     out_d = DeviceArray(context, shape=_expected.shape, dtype=_expected.dtype)
     kernel = _program.get_kernel(kernel_name)
     queue.enqueue_kernel(
-            kernel, [
-                data_d.buffer,
-                out_d.buffer,
-                np.int32(_N),
-                np.int32(_M)
-            ],
-            global_size=(wgs,), local_size=(wgs,))
+        kernel, [
+            data_d.buffer,
+            out_d.buffer,
+            np.int32(_N),
+            np.int32(_M)
+        ],
+        global_size=(wgs,), local_size=(wgs,))
     out = out_d.get(queue)
     np.testing.assert_equal(_expected, out)
+
 
 @device_test
 def test_rank_serial(context, queue):
     check_rank(context, queue, 'test_rank_serial', 1)
 
+
 @device_test
 def test_rank_parallel(context, queue):
     check_rank(context, queue, 'test_rank_parallel', _wgs)
+
 
 def run_float_func(context, queue, kernel_name, data, output_size):
     """Common code for testing find_min_float, find_max_float, median_non_zero_float"""
@@ -55,13 +60,14 @@ def run_float_func(context, queue, kernel_name, data, output_size):
     data_d.set(queue, data)
     out_d = accel.DeviceArray(context, shape=(output_size,), dtype=np.float32)
     queue.enqueue_kernel(
-            kernel,
-            [data_d.buffer, out_d.buffer, np.int32(N)],
-            global_size=(size,),
-            local_size=(size,))
+        kernel,
+        [data_d.buffer, out_d.buffer, np.int32(N)],
+        global_size=(size,),
+        local_size=(size,))
     out = out_d.empty_like()
     out_d.get(queue, out)
     return out
+
 
 class TestFindMinMaxFloat(object):
     def check_array(self, context, queue, data):
@@ -97,6 +103,7 @@ class TestFindMinMaxFloat(object):
     def test_random(self, context, queue):
         data = np.random.uniform(-10.0, 10.0, 1000)
         self.check_array(context, queue, data)
+
 
 class TestMedianNonZero(object):
     def check_array(self, context, queue, data):

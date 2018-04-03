@@ -5,14 +5,18 @@ interfaces.
 """
 
 from __future__ import division, print_function, absolute_import
+
+import numpy as np
+from six.moves import range
+
 import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
 import pycuda.characterize
-import numpy as np
-from six.moves import range
+
 
 NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
+
 
 class Program(object):
     def __init__(self, pycuda_module):
@@ -21,9 +25,11 @@ class Program(object):
     def get_kernel(self, name):
         return Kernel(self, name)
 
+
 class Kernel(object):
     def __init__(self, program, name):
         self._pycuda_kernel = program._pycuda_program.get_function(name)
+
 
 class Event(object):
     def __init__(self, pycuda_event):
@@ -39,6 +45,7 @@ class Event(object):
 
     def time_till(self, next_event):
         return next_event.time_since(self)
+
 
 class Device(object):
     def __init__(self, pycuda_device):
@@ -62,7 +69,7 @@ class Device(object):
     @property
     def driver_version(self):
         return 'CUDA:{0[0]}{0[1]}{0[2]} Driver:{1}'.format(
-                pycuda.driver.get_version(), pycuda.driver.get_driver_version())
+            pycuda.driver.get_version(), pycuda.driver.get_driver_version())
 
     @property
     def is_cuda(self):
@@ -89,6 +96,7 @@ class Device(object):
         num_devices = pycuda.driver.Device.count()
         return [Device(pycuda.driver.Device(i)) for i in range(num_devices)]
 
+
 class _RawManaged(object):
     """Wraps a PyCUDA managed allocation into an opaque object.
 
@@ -105,6 +113,7 @@ class _RawManaged(object):
         size = int(np.product(shape)) * np.dtype(dtype).itemsize
         return self._wrapped[:size].view(dtype).reshape(shape)
 
+
 class Context(object):
     def __init__(self, pycuda_context):
         self._pycuda_context = pycuda_context
@@ -116,8 +125,7 @@ class Context(object):
 
     def compile(self, source, extra_flags=None):
         with self:
-            module = pycuda.compiler.SourceModule(source,
-                    options=NVCC_FLAGS + extra_flags)
+            module = pycuda.compiler.SourceModule(source, options=NVCC_FLAGS + extra_flags)
             return Program(module)
 
     def allocate_raw(self, n_bytes):
@@ -135,13 +143,13 @@ class Context(object):
     def allocate_svm_raw(self, n_bytes):
         with self:
             return _RawManaged(pycuda.driver.managed_empty(
-                    (n_bytes,), np.uint8, mem_flags=pycuda.driver.mem_attach_flags.GLOBAL))
+                (n_bytes,), np.uint8, mem_flags=pycuda.driver.mem_attach_flags.GLOBAL))
 
     def allocate_svm(self, shape, dtype, raw=None):
         with self:
             if raw is None:
                 return pycuda.driver.managed_empty(
-                        shape, dtype, mem_flags=pycuda.driver.mem_attach_flags.GLOBAL)
+                    shape, dtype, mem_flags=pycuda.driver.mem_attach_flags.GLOBAL)
             else:
                 return raw.get_array(shape, dtype)
 
@@ -158,6 +166,7 @@ class Context(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._pycuda_context.pop()
         return False
+
 
 class CommandQueue(object):
     def __init__(self, context, pycuda_stream=None, profile=False):
@@ -202,10 +211,10 @@ class CommandQueue(object):
             assert len(shape) > 0 and len(shape) <= 3
             if len(shape) == 1:
                 pycuda.driver.memcpy_dtod_async(
-                        self._get_device_pointer(dest_buffer) + dest_origin,
-                        self._get_device_pointer(src_buffer) + src_origin,
-                        shape[0],
-                        self._pycuda_stream)
+                    self._get_device_pointer(dest_buffer) + dest_origin,
+                    self._get_device_pointer(src_buffer) + src_origin,
+                    shape[0],
+                    self._pycuda_stream)
             else:
                 if len(shape) == 3:
                     copy = pycuda.driver.Memcpy3D()
@@ -242,9 +251,9 @@ class CommandQueue(object):
             data = self._byte_buffer(data)
             if len(shape) == 1:
                 pycuda.driver.memcpy_dtoh_async(
-                        data[data_origin : data_origin + shape[0]],
-                        self._get_device_pointer(buffer) + buffer_origin,
-                        self._pycuda_stream)
+                    data[data_origin : data_origin + shape[0]],
+                    self._get_device_pointer(buffer) + buffer_origin,
+                    self._pycuda_stream)
             else:
                 if len(shape) == 3:
                     copy = pycuda.driver.Memcpy3D()
@@ -276,9 +285,9 @@ class CommandQueue(object):
             data = self._byte_buffer(data)
             if len(shape) == 1:
                 pycuda.driver.memcpy_htod_async(
-                        self._get_device_pointer(buffer) + buffer_origin,
-                        data[data_origin : data_origin + shape[0]],
-                        self._pycuda_stream)
+                    self._get_device_pointer(buffer) + buffer_origin,
+                    data[data_origin : data_origin + shape[0]],
+                    self._pycuda_stream)
             else:
                 if len(shape) == 3:
                     copy = pycuda.driver.Memcpy3D()
@@ -306,7 +315,8 @@ class CommandQueue(object):
                 pycuda.driver.memset_d8(buffer.gpudata, 0, buffer.mem_size * buffer.dtype.itemsize)
             else:
                 # managed memory
-                pycuda.driver.memset_d8(buffer.base.get_device_pointer(), 0, buffer.size * buffer.dtype.itemsize)
+                pycuda.driver.memset_d8(buffer.base.get_device_pointer(), 0,
+                                        buffer.size * buffer.dtype.itemsize)
 
     def enqueue_kernel(self, kernel, args, global_size, local_size):
         assert len(global_size) == len(local_size)
@@ -318,7 +328,7 @@ class CommandQueue(object):
             grid[i] = global_size[i] // local_size[i]
         with self.context:
             kernel._pycuda_kernel(*args, block=tuple(block), grid=tuple(grid),
-                    stream=self._pycuda_stream)
+                                  stream=self._pycuda_stream)
 
     def enqueue_marker(self):
         with self.context:
@@ -339,6 +349,7 @@ class CommandQueue(object):
     def finish(self):
         with self.context:
             self._pycuda_stream.synchronize()
+
 
 class TuningCommandQueue(CommandQueue):
     def __init__(self, *args, **kwargs):

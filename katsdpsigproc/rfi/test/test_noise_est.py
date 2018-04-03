@@ -1,23 +1,27 @@
 """Tests for RFI noise estimation algorithms"""
 
 from __future__ import division, print_function, absolute_import
+
 import numpy as np
+
 from .. import host, device
 from ...test.test_accel import device_test, force_autotune
+
 
 _deviations = None
 _deviations_big = None
 _expected = None
 
+
 def setup():
     global _deviations, _deviations_big, _expected
     _deviations = np.array(
-            [
-                [0.0, 3.0, 2.4],
-                [1.5, -1.4, 4.6],
-                [0.0, 1.1, 3.3],
-                [5.0, 0.0, -3.1]
-            ]).astype(np.float32)
+        [
+            [0.0, 3.0, 2.4],
+            [1.5, -1.4, 4.6],
+            [0.0, 1.1, 3.3],
+            [5.0, 0.0, -3.1]
+        ]).astype(np.float32)
     _expected = np.array([3.25, 1.4, 3.2]) * 1.4826
     shape = (117, 273)
 
@@ -25,10 +29,12 @@ def setup():
     rs = np.random.RandomState(seed=1)
     _deviations_big = rs.standard_normal(shape).astype(np.float32)
 
+
 def test_NoiseEstMADHost():
     noise_est = host.NoiseEstMADHost()
     actual = noise_est(_deviations)
     np.testing.assert_allclose(_expected, actual)
+
 
 class BaseTestNoiseEstDeviceClass(object):
     @device_test
@@ -45,9 +51,11 @@ class BaseTestNoiseEstDeviceClass(object):
     def test_autotune(self, context, queue):
         self.factory(context)
 
+
 class TestNoiseEstMADDevice(BaseTestNoiseEstDeviceClass):
     def factory(self, context):
         return device.NoiseEstMADDeviceTemplate(context)
+
 
 class TestNoiseEstMADTDevice(BaseTestNoiseEstDeviceClass):
     def factory(self, context):

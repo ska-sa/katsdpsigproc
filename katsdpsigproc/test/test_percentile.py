@@ -1,9 +1,11 @@
 from __future__ import division, print_function, absolute_import
+
 import numpy as np
-from . import test_accel
+
 from .test_accel import device_test, force_autotune
 from .. import accel
 from .. import percentile
+
 
 class TestPercentile5(object):
     def test_percentile(self):
@@ -21,7 +23,8 @@ class TestPercentile5(object):
 
     @device_test
     def check_percentile5(self, R, C, is_amplitude, column_range, context, queue):
-        template = percentile.Percentile5Template(context, max_columns=5000, is_amplitude=is_amplitude)
+        template = percentile.Percentile5Template(context, max_columns=5000,
+                                                  is_amplitude=is_amplitude)
         fn = template.instantiate(queue, (R, C), column_range)
         # Force some padded, to check that stride calculation works
         self.pad_dimension(fn.slots['src'].dimensions[0], 1)
@@ -30,7 +33,7 @@ class TestPercentile5(object):
         self.pad_dimension(fn.slots['dest'].dimensions[1], 3)
         rs = np.random.RandomState(seed=1)
         if is_amplitude:
-            ary = np.abs(rs.randn(R, C)).astype(np.float32) #note positive numbers required
+            ary = np.abs(rs.randn(R, C)).astype(np.float32)  # note positive numbers required
         else:
             ary = (rs.randn(R, C) + 1j * rs.randn(R, C)).astype(np.complex64)
         src = fn.slots['src'].allocate(fn.allocator)
@@ -40,7 +43,9 @@ class TestPercentile5(object):
         out = dest.get(queue)
         if column_range is None:
             column_range = (0, C)
-        expected=np.percentile(np.abs(ary[:, column_range[0]:column_range[1]]),[0,100,25,75,50],axis=1,interpolation='lower').astype(dtype=np.float32)
+        expected = np.percentile(np.abs(ary[:, column_range[0]:column_range[1]]),
+                                 [0, 100, 25, 75, 50], axis=1, interpolation='lower')
+        expected = expected.astype(dtype=np.float32)
         # When amplitudes are being computed, we won't get a bit-exact match
         if is_amplitude:
             np.testing.assert_equal(expected, out)

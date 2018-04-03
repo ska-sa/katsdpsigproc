@@ -1,10 +1,16 @@
-#coding: utf-8
-"""Reduction algorithms"""
+# coding: utf-8
+"""Reduction algorithms
+
+.. include:: macros.rst
+"""
 
 from __future__ import division, print_function, absolute_import
+
 import numpy as np
+
 from . import accel
 from . import tune
+
 
 class HReduceTemplate(object):
     """Performs reduction along rows in a 2D array. Only commutative reduction
@@ -12,7 +18,7 @@ class HReduceTemplate(object):
 
     Parameters
     ----------
-    context : :class:`cuda.Context` or :class:`opencl.Context`
+    context : |Context|
         Context for which kernels will be compiled
     dtype : numpy dtype
         Type of data elements
@@ -54,21 +60,24 @@ class HReduceTemplate(object):
         shape = (2048, 1024)
         src = accel.DeviceArray(context, shape, dtype=dtype)
         dest = accel.DeviceArray(context, (shape[0],), dtype=dtype)
+
         def generate(**kwargs):
             wgs = kwargs['wgsx'] * kwargs['wgsy']
             if wgs < 32 or wgs > 1024:
                 raise RuntimeError('Skipping work group size {wgsx}x{wgsy}'.format(**kwargs))
-            fn = cls(context, dtype, ctype, op, identity, extra_code, kwargs).instantiate(queue, shape)
+            template = cls(context, dtype, ctype, op, identity, extra_code, kwargs)
+            fn = template.instantiate(queue, shape)
             fn.bind(src=src, dest=dest)
             fn.ensure_all_bound()
             return tune.make_measure(queue, fn)
 
         return tune.autotune(generate,
-                wgsx=[32, 64, 128],
-                wgsy=[1, 2, 4, 8, 16])
+                             wgsx=[32, 64, 128],
+                             wgsy=[1, 2, 4, 8, 16])
 
     def instantiate(self, *args, **kwargs):
         return HReduce(self, *args, **kwargs)
+
 
 class HReduce(accel.Operation):
     """
@@ -87,7 +96,7 @@ class HReduce(accel.Operation):
     ----------
     template : :class:`FillTemplate`
         Operation template
-    command_queue : :class:`katsdpsigproc.cuda.CommandQueue` or :class:`katsdpsigproc.opencl.CommandQueue`
+    command_queue : |CommandQueue|
         Command queue for the operation
     shape : 2-tuple of int
         Shape for the source slot
@@ -111,11 +120,11 @@ class HReduce(accel.Operation):
         self.kernel = template.program.get_kernel('hreduce')
         self.column_range = column_range
         self.slots['src'] = accel.IOSlot(
-                (accel.Dimension(shape[0], self.template.wgsy), shape[1]),
-                self.template.dtype)
+            (accel.Dimension(shape[0], self.template.wgsy), shape[1]),
+            self.template.dtype)
         self.slots['dest'] = accel.IOSlot(
-                (accel.Dimension(shape[0], self.template.wgsy),),
-                self.template.dtype)
+            (accel.Dimension(shape[0], self.template.wgsy),),
+            self.template.dtype)
 
     def _run(self):
         src = self.buffer('src')
@@ -123,14 +132,14 @@ class HReduce(accel.Operation):
         rows_padded = accel.roundup(src.shape[0], self.template.wgsy)
         n_columns = self.column_range[1] - self.column_range[0]
         self.command_queue.enqueue_kernel(
-                self.kernel,
-                [
-                    src.buffer, dest.buffer,
-                    np.int32(self.column_range[0]), np.int32(n_columns),
-                    np.int32(src.padded_shape[1])
-                ],
-                global_size=(self.template.wgsx, rows_padded),
-                local_size=(self.template.wgsx, self.template.wgsy))
+            self.kernel,
+            [
+                src.buffer, dest.buffer,
+                np.int32(self.column_range[0]), np.int32(n_columns),
+                np.int32(src.padded_shape[1])
+            ],
+            global_size=(self.template.wgsx, rows_padded),
+            local_size=(self.template.wgsx, self.template.wgsy))
 
     def parameters(self):
         return {

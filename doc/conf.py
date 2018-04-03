@@ -35,6 +35,11 @@ extensions = [
     'sphinx.ext.napoleon'
 ]
 
+# From numpy code: these warnings are harmless
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+
 # Prevents thousands of "toctree contains reference to nonexisting document" warnings
 numpydoc_class_members_toctree = False
 
