@@ -4,12 +4,13 @@
 
 from __future__ import division, print_function, absolute_import
 import functools
-import decorator
-import trollius
 import time
+
 from six.moves import queue, range
+import trollius
 from trollius import From
-from nose.tools import *
+from nose.tools import (assert_equal, assert_true, assert_false,
+                        assert_in, assert_not_in, assert_raises, nottest)
 import mock
 
 # Do not rewrite as 'from katsdpsigproc import resource': this line
@@ -20,6 +21,7 @@ import katsdpsigproc.resource as resource
 @nottest
 def async_test(func):
     func = trollius.coroutine(func)
+
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         self.loop.run_until_complete(func(self, *args, **kwargs))
@@ -70,7 +72,8 @@ class TestWaitUntil(object):
         """wait_until does not cancel the future if it is wrapped in shield"""
         future = trollius.Future(loop=self.loop)
         with assert_raises(trollius.TimeoutError):
-            yield From(resource.wait_until(trollius.shield(future), self.loop.time() + 0.01, loop=self.loop))
+            yield From(resource.wait_until(trollius.shield(future),
+                                           self.loop.time() + 0.01, loop=self.loop))
         assert_false(future.cancelled())
 
 
@@ -154,7 +157,7 @@ class TestResource(object):
         with a0:
             pass
         mock_logging.warn.assert_called_once_with(
-                'Resource allocation was not explicitly made ready')
+            'Resource allocation was not explicitly made ready')
 
 
 class TestJobQueue(object):

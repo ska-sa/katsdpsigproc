@@ -1,14 +1,17 @@
 from __future__ import division, print_function, absolute_import
 import sys
+import functools
+from textwrap import dedent
+
 import numpy as np
 from decorator import decorator
-import functools
 from mako.template import Template
-from nose.tools import assert_equal
-from .test_tune import assert_raises
+from six.moves import zip
+
+from nose.tools import assert_equal, assert_raises
 from nose.plugins.skip import SkipTest
 import mock
-from six.moves import zip
+
 from .. import accel, tune
 from ..accel import HostArray, DeviceArray, SVMArray, LinenoLexer
 if accel.have_cuda:
@@ -16,9 +19,11 @@ if accel.have_cuda:
 if accel.have_opencl:
     import pyopencl
 
+
 _test_context = None
 _test_command_queue = None
 _test_initialized = False
+
 
 def device_test(test):
     """Decorator that causes a test to be skipped if a compute device is not
@@ -50,6 +55,7 @@ def device_test(test):
                 return test(*args, **kwargs)
     return wrapper
 
+
 def cuda_test(test):
     """Decorator that causes a test to be skipped if the device is not a CUDA
     device. Put this *after* :meth:`device_test`."""
@@ -61,6 +67,7 @@ def cuda_test(test):
         return test(*args, **kwargs)
     return wrapper
 
+
 @decorator
 def force_autotune(test, *args, **kw):
     """Decorator that disables autotuning for a test. Instead, the test
@@ -68,20 +75,31 @@ def force_autotune(test, *args, **kw):
     with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.force_autotuner):
         return test(*args, **kw)
 
+
 # Prevent nose from treating it as a test
 device_test.__test__ = False
 cuda_test.__test__ = False
 
+
 class TestLinenoLexer(object):
     def test_escape_filename(self):
         assert_equal(
-                r'"abc\"def\\ghi"',
-                LinenoLexer._escape_filename(r'abc"def\ghi'))
+            r'"abc\"def\\ghi"',
+            LinenoLexer._escape_filename(r'abc"def\ghi'))
 
     def test_render(self):
         source = "line 1\nline 2\nline 3"
         out = Template(source, lexer_cls=LinenoLexer).render()
-        assert_equal("""#line 1 "<string>"\nline 1\n#line 2 "<string>"\nline 2\n#line 3 "<string>"\nline 3\n""", out)
+        assert_equal(dedent(
+            """\
+            #line 1 "<string>"
+            line 1
+            #line 2 "<string>"
+            line 2
+            #line 3 "<string>"
+            line 3
+            """), out)
+
 
 class TestHostArray(object):
     cls = HostArray
@@ -102,6 +120,7 @@ class TestHostArray(object):
         assert not self.cls.safe(self.sliced)
         assert not self.cls.safe(np.zeros(self.shape))
 
+
 class TestDeviceArray(object):
     cls = DeviceArray
 
@@ -111,10 +130,10 @@ class TestDeviceArray(object):
         self.padded_shape = (32, 16)
         self.strides = (64, 4)
         self.array = self.cls(
-                context=context,
-                shape=self.shape,
-                dtype=np.int32,
-                padded_shape=self.padded_shape)
+            context=context,
+            shape=self.shape,
+            dtype=np.int32,
+            padded_shape=self.padded_shape)
 
     @device_test
     def test_strides(self, context, queue):
@@ -140,8 +159,8 @@ class TestDeviceArray(object):
                 pycuda.driver.memcpy_dtoh(buf, self.array.buffer.gpudata)
         else:
             pyopencl.enqueue_copy(
-                    queue._pyopencl_command_queue,
-                    buf, self.array.buffer.data)
+                queue._pyopencl_command_queue,
+                buf, self.array.buffer.data)
         buf = buf[0:self.shape[0], 0:self.shape[1]]
         np.testing.assert_equal(ary, buf)
         # Check that it matches get
@@ -266,11 +285,11 @@ class TestDeviceArray(object):
     def test_raw(self, context, queue):
         raw = self._allocate_raw(context, 2048)
         ary = self.cls(
-                context=context,
-                shape=self.shape,
-                dtype=np.int32,
-                padded_shape=self.padded_shape,
-                raw=raw)
+            context=context,
+            shape=self.shape,
+            dtype=np.int32,
+            padded_shape=self.padded_shape,
+            raw=raw)
         actual_raw = None
         try:
             # CUDA
@@ -284,6 +303,7 @@ class TestDeviceArray(object):
             actual_raw = ary.buffer.data
         assert actual_raw is raw
 
+
 class TestPinnedAMD(TestDeviceArray):
     """Run DeviceArray tests forcing `_PinnedAMD` class for pinned memory."""
     @device_test
@@ -294,6 +314,7 @@ class TestPinnedAMD(TestDeviceArray):
     @device_test
     def teardown(self, context, device):
         context._force_pinned_amd = False
+
 
 class TestSVMArrayHost(TestHostArray):
     """Tests SVMArray using the HostArray tests"""
@@ -307,6 +328,7 @@ class TestSVMArrayHost(TestHostArray):
     def setup(self, context, queue):
         self.context = context
         super(TestSVMArrayHost, self).setup()
+
 
 class TestSVMArray(TestDeviceArray):
     """Tests SVMArray using the DeviceArray tests, plus some new ones"""
@@ -338,6 +360,7 @@ class TestSVMArray(TestDeviceArray):
         queue.enqueue_kernel(kernel, [ary.buffer], (128,), (64,))
         queue.finish()
         np.testing.assert_equal(np.arange(369, step=3, dtype=np.uint32), ary)
+
 
 class TestSVMAllocator(object):
     @device_test
@@ -475,6 +498,7 @@ class TestDimension(object):
         dim = accel.Dimension(18, alignment=8, align_dtype=np.uint8)
         assert_equal(24, dim.required_padded_size())
 
+
 class TestIOSlot(object):
     """Tests for :class:`katsdpsigproc.accel.IOSlot`"""
     @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
@@ -502,7 +526,7 @@ class TestIOSlot(object):
         assert_equal(ary, ret)
         assert_equal(ary, slot.buffer)
         DeviceArray.assert_called_once_with(
-                mock.sentinel.context, shape, dtype, padded_shape, None)
+            mock.sentinel.context, shape, dtype, padded_shape, None)
         # Check that the inner dimension had a type hint set
         assert dims[1].alignment_hint == accel.Dimension.ALIGN_BYTES
 
@@ -527,7 +551,7 @@ class TestIOSlot(object):
         # Validation
         assert_equal(ary, slot.buffer)
         DeviceArray.assert_called_once_with(
-                mock.sentinel.context, shape, dtype, shape, raw)
+            mock.sentinel.context, shape, dtype, shape, raw)
 
     def test_validate_shape(self):
         """IOSlot.validate must check that the shape matches"""
@@ -579,8 +603,8 @@ class TestIOSlot(object):
 
     def test_required_bytes(self):
         slot = accel.IOSlot(
-                (accel.Dimension(27, alignment=4), accel.Dimension(33, alignment=32)),
-                np.float32)
+            (accel.Dimension(27, alignment=4), accel.Dimension(33, alignment=32)),
+            np.float32)
         assert_equal(4 * 28 * 64, slot.required_bytes())
 
     def test_bind_none(self):
@@ -595,18 +619,19 @@ class TestIOSlot(object):
         slot.bind(None)
         assert slot.buffer is None
 
+
 class TestCompoundIOSlot(object):
     """Tests for :class:`katsdpsigproc.accel.CompoundIOSlot`"""
 
     def setup(self):
         self.dims1 = [
             accel.Dimension(13, min_padded_size=17, alignment=1),
-            accel.Dimension(7,  min_padded_size=8,  alignment=8),
+            accel.Dimension(7, min_padded_size=8, alignment=8),
             accel.Dimension(22, min_padded_size=25, alignment=4)
         ]
         self.dims2 = [
             accel.Dimension(13, min_padded_size=14, alignment=4),
-            accel.Dimension(7,  min_padded_size=10, alignment=4),
+            accel.Dimension(7, min_padded_size=10, alignment=4),
             accel.Dimension(22, min_padded_size=22, alignment=1)
         ]
         self.slot1 = accel.IOSlot(self.dims1, np.float32)
@@ -676,6 +701,7 @@ class TestCompoundIOSlot(object):
         assert slot.buffer is None
         assert self.slot1.buffer is None
         assert self.slot2.buffer is None
+
 
 class TestAliasIOSlot(object):
     """Tests for :class:`katsdpsigproc.accel.AliasIOSlot`"""

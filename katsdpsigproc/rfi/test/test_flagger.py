@@ -3,10 +3,13 @@ separate tests - this module just tests that they can be glued together
 properly."""
 
 from __future__ import division, print_function, absolute_import
+
 import numpy as np
+
 from .. import host
 from ...test.test_accel import device_test
 from .. import device
+
 
 def setup():
     global _vis, _spikes, _channel_flags
@@ -25,6 +28,7 @@ def setup():
     _vis = _vis.astype(np.complex64)
     _channel_flags = (rs.random_sample(shape[0]) < 1.0 / 16.0).astype(np.uint8) * 2
 
+
 def test_flagger_host():
     background = host.BackgroundMedianFilterHost(13)
     noise_est = host.NoiseEstMADHost()
@@ -38,14 +42,15 @@ def test_flagger_host():
     expected = np.where(channel_flags, 0, _spikes)
     np.testing.assert_equal(expected, flags)
 
+
 def check_flagger_device(use_flags, transpose_noise_est, transpose_threshold, context, queue):
     background = device.BackgroundMedianFilterDeviceTemplate(context, 13, use_flags=use_flags)
     if transpose_noise_est:
         noise_est = device.NoiseEstMADTDeviceTemplate(context, 1024)
     else:
         noise_est = device.NoiseEstMADDeviceTemplate(context, tuning={'wgsx': 8, 'wgsy': 8})
-    threshold = device.ThresholdSimpleDeviceTemplate(context,
-            transpose_threshold, tuning={'wgsx': 8, 'wgsy': 8})
+    threshold = device.ThresholdSimpleDeviceTemplate(
+        context, transpose_threshold, tuning={'wgsx': 8, 'wgsy': 8})
     flagger_device = device.FlaggerDeviceTemplate(background, noise_est, threshold)
     flagger = device.FlaggerHostFromDevice(flagger_device, queue, threshold_args=dict(n_sigma=11.0))
     if use_flags:
@@ -57,19 +62,23 @@ def check_flagger_device(use_flags, transpose_noise_est, transpose_threshold, co
         flags = flagger(_vis)
         np.testing.assert_equal(_spikes, flags)
 
+
 @device_test
 def test_flagger_device(context, queue):
     check_flagger_device(False, False, False, context, queue)
+
 
 @device_test
 def test_flagger_device_transpose_noise_est(context, queue):
     """Test device flagger with a transposed noise estimator"""
     check_flagger_device(True, True, False, context, queue)
 
+
 @device_test
 def test_flagger_device_transpose_threshold(context, queue):
     """Test device flagger with a transposed thresholder"""
     check_flagger_device(True, False, True, context, queue)
+
 
 @device_test
 def test_flagger_device_transpose_both(context, queue):

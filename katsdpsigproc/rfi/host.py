@@ -2,6 +2,7 @@
 """RFI flagging algorithms that run on the CPU."""
 
 from __future__ import division, print_function, absolute_import
+
 import numpy as np
 import pandas as pd
 from six.moves import range, zip
@@ -40,6 +41,7 @@ class BackgroundMedianFilterHost(object):
         deviation.fillna(0, inplace=True)
         return deviation.values
 
+
 class NoiseEstMADHost(object):
     """Estimate noise using the median of non-zero absolute deviations."""
 
@@ -63,6 +65,7 @@ class NoiseEstMADHost(object):
             abs_dev = np.abs(deviations[:, i])
             out[i] = np.median(abs_dev[abs_dev > 0])
         return out * MAD_NORMAL
+
 
 class ThresholdSimpleHost(object):
     """Threshold each element independently.
@@ -96,6 +99,7 @@ class ThresholdSimpleHost(object):
         """
         flags = (deviations > self.n_sigma * noise).astype(np.uint8)
         return flags * self.flag_value
+
 
 class ThresholdSumHost(object):
     """Thresholding using the Offringa Sum-Threshold algorithm, with
@@ -174,6 +178,7 @@ class ThresholdSumHost(object):
             bl_flags = self.apply_baseline(deviations[:, i], self.n_sigma * noise[i])
             flags[:, i] = bl_flags * np.uint8(self.flag_value)
         return flags
+
 
 class FlaggerHost(object):
     """Combine host background and thresholding implementations

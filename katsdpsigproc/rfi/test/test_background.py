@@ -66,7 +66,7 @@ class TestBackgroundMedianFilterDevice(BaseTestBackgroundDeviceClass):
 
     def factory(self, context, width):
         return device.BackgroundMedianFilterDeviceTemplate(
-                context, width, self.amplitudes, self.use_flags)
+            context, width, self.amplitudes, self.use_flags)
 
 
 class TestBackgroundMedianFilterDeviceAmplitudes(TestBackgroundMedianFilterDevice):

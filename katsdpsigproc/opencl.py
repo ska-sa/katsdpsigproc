@@ -5,6 +5,7 @@ functionality can be added, but should be kept in sync with
 """
 
 from __future__ import division, print_function, absolute_import
+
 import pyopencl
 import pyopencl.array
 import numpy as np
@@ -29,14 +30,14 @@ class _PinnedAMD(np.ndarray):
         # Do not add READ or WRITE to the flags: doing so seems to cause AMD
         # drivers to allocate GPU memory.
         buffer = pyopencl.Buffer(
-                context,
-                pyopencl.mem_flags.ALLOC_HOST_PTR,
-                n_bytes)
+            context,
+            pyopencl.mem_flags.ALLOC_HOST_PTR,
+            n_bytes)
         array = pyopencl.enqueue_map_buffer(
-                queue,
-                buffer,
-                pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
-                0, shape, dtype)[0]
+            queue,
+            buffer,
+            pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
+            0, shape, dtype)[0]
         mapping = array.base
         array = array.view(_PinnedAMD)
         array._buffer = buffer
@@ -53,9 +54,9 @@ class _PinnedAMD(np.ndarray):
         # because we're going to throw away the array wrapper and just keep the
         # MemoryMap object.
         array = pyopencl.enqueue_map_buffer(
-                queue._pyopencl_command_queue,
-                self._buffer, pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
-                0, (self._buffer.size,), np.uint8, is_blocking=blocking)[0]
+            queue._pyopencl_command_queue,
+            self._buffer, pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
+            0, (self._buffer.size,), np.uint8, is_blocking=blocking)[0]
         self._mapping = array.base
 
     def enqueue_write_buffer(self, queue, buffer, blocking):
@@ -126,6 +127,7 @@ class Program(object):
         """
         return Kernel(self, name)
 
+
 class Kernel(object):
     """Abstraction of a kernel object. The object can be enqueued using
     :meth:`CommandQueue.enqueue_kernel`.
@@ -135,6 +137,7 @@ class Kernel(object):
     """
     def __init__(self, program, name):
         self._pyopencl_kernel = pyopencl.Kernel(program._pyopencl_program, name)
+
 
 class Event(object):
     """Abstraction of an event. This is more akin to a CUDA event than an
@@ -163,6 +166,7 @@ class Event(object):
         :meth:`time_since`.
         """
         return next_event.time_since(self)
+
 
 class Device(object):
     """Abstraction of an OpenCL device"""
@@ -244,6 +248,7 @@ class Device(object):
             ans.append([Device(device) for device in platform.get_devices()])
         return ans
 
+
 class Context(object):
     """Abstraction of an OpenCL context"""
     def __init__(self, pyopencl_context):
@@ -304,23 +309,23 @@ class Context(object):
             Type for the data
         """
         device = self._pyopencl_context.devices[0]
-        if (((device.type & pyopencl.device_type.GPU)
-                and device.platform.name == 'AMD Accelerated Parallel Processing')
-            or self._force_pinned_amd):
+        if (self._force_pinned_amd
+            or ((device.type & pyopencl.device_type.GPU)
+                and device.platform.name == 'AMD Accelerated Parallel Processing')):
             return _PinnedAMD(self._pyopencl_context, self._internal_queue, shape, dtype)
         elif device.platform.name == 'NVIDIA CUDA':
             # Based on NVIDIA's recommendation: create a device buffer and
             # leave it mapped permanently.
             n_bytes = int(np.product(shape)) * dtype.itemsize
             buf = pyopencl.Buffer(
-                    self._pyopencl_context,
-                    pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
-                    n_bytes)
+                self._pyopencl_context,
+                pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
+                n_bytes)
             return pyopencl.enqueue_map_buffer(
-                    self._internal_queue,
-                    buf,
-                    pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
-                    0, shape, dtype)[0]
+                self._internal_queue,
+                buf,
+                pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
+                0, shape, dtype)[0]
         else:
             return np.empty(shape, dtype)
 
@@ -373,8 +378,8 @@ class CommandQueue(object):
             if profile:
                 properties |= pyopencl.command_queue_properties.PROFILING_ENABLE
             pyopencl_command_queue = pyopencl.CommandQueue(
-                    context._pyopencl_context, pyopencl_device,
-                    properties)
+                context._pyopencl_context, pyopencl_device,
+                properties)
         self._pyopencl_command_queue = pyopencl_command_queue
 
     def enqueue_read_buffer(self, buffer, data, blocking=True):
@@ -572,7 +577,7 @@ class CommandQueue(object):
         assert local_size is not None
         assert len(local_size) == len(global_size)
         return kernel._pyopencl_kernel(self._pyopencl_command_queue,
-                global_size, local_size, *args)
+                                       global_size, local_size, *args)
 
     def enqueue_kernel(self, kernel, args, global_size, local_size):
         """Enqueue a kernel to the command queue.
@@ -605,7 +610,7 @@ class CommandQueue(object):
         # OpenCL has some odd semantics for an empty wait list, hence the check
         if events:
             pyopencl.enqueue_barrier(self._pyopencl_command_queue,
-                [x._pyopencl_event for x in events])
+                                     [x._pyopencl_event for x in events])
 
     def flush(self):
         """Start enqueued work running, but do not wait for it to complete"""
@@ -614,6 +619,7 @@ class CommandQueue(object):
     def finish(self):
         """Block until all enqueued work has completed"""
         self._pyopencl_command_queue.finish()
+
 
 class TuningCommandQueue(CommandQueue):
     """Command queue with extra facilities for autotuning. It keeps
