@@ -623,10 +623,12 @@ def _get_flags_impl(
             flag_all_time_frac, flag_all_freq_frac,
             rho)
 
-    # Transpose the output flags
+    # Transpose the output flags and explicitly flag nans from input
     for t in range(n_time):
         for f in range(n_freq):
             for bl in range(n_bl):
+                if np.isnan(in_data[t, f, bl]):
+                    tmp_flags[bl, t, f] = True
                 out_flags[t, f, bl] = tmp_flags[bl, t, f]
 
 
