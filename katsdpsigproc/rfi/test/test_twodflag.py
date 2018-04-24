@@ -513,7 +513,7 @@ class TestSumThresholdFlagger(object):
         # Channel that is slightly biased, but wouldn't be picked up in a single dump
         data[:, 260] += 0.2 * flagger.average_freq
         expected[:, 260] = True
-        #Test input NaN value flagged on output
+        # Test input NaN value flagged on output
         data[225, 225] = np.nan
         expected[225, 225] = True
         in_flags = np.zeros(shape, np.bool_)
