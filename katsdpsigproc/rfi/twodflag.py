@@ -627,9 +627,7 @@ def _get_flags_impl(
     for t in range(n_time):
         for f in range(n_freq):
             for bl in range(n_bl):
-                if np.isnan(in_data[t, f, bl]):
-                    tmp_flags[bl, t, f] = True
-                out_flags[t, f, bl] = tmp_flags[bl, t, f]
+                out_flags[t, f, bl] = tmp_flags[bl, t, f] or np.isnan(in_data[t, f, bl])
 
 
 @numba.jit(nopython=True, nogil=True)
