@@ -30,7 +30,7 @@ typedef struct ${scratch_type}
 #endif
 
 #if SHUFFLE_AVAILABLE && ${use_shuffle}
-    static __device__ ${type} shfl_xor(${type} value, int laneMask, int size)
+    static __device__ ${type} shfl_xor_sync(unsigned mask, ${type} value, int laneMask, int size)
     {
         union
         {
@@ -40,7 +40,11 @@ typedef struct ${scratch_type}
         transfer.v = value;
         for (int j = 0; j < sizeof(${type}) / sizeof(int); j++)
         {
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 9000
+            transfer.a[j] = __shfl_xor_sync(mask, transfer.a[j], laneMask, size);
+#else
             transfer.a[j] = __shfl_xor(transfer.a[j], laneMask, size);
+#endif
         }
         return transfer.v;
     }
@@ -50,7 +54,9 @@ typedef struct ${scratch_type}
 
 /**
  * Cooperative reduction operation amongst @a size workitems. Only commutative
- * operations are currently supported.
+ * operations are currently supported. All workitems in the workgroup must
+ * call this (non-divergently), but the workitems can be partitioned into
+ * separate sets of @a size workitems.
  *
  * If @a allow_shuffle is True, the caller guarantees that
  * - the @a idx passed to the generated function is the linear thread ID modulo
@@ -60,7 +66,7 @@ typedef struct ${scratch_type}
  * will prevent this fast path from being used
  * - not compiling for CUDA
  * - not compiling for Compute Capability 3.0 or higher
- * - size is not a power of 2
+ * - size is not a power of 2 and is not a multiple of the warp size
  *
  * @param type         The type of items to reduce.
  * @param size         Number of cooperating work-items
@@ -82,6 +88,7 @@ if rake_width is None:
     rake_width = simd_group_size
 rake_width = min(rake_width, size)
 use_shuffle = int(allow_shuffle and ((size & (size - 1)) == 0 or size % simd_group_size == 0))
+shuffle_mask = (1 << simd_group_size) - 1
 %>
 
 ## This is horrifically confusing because it is handling 8 cases:
@@ -121,7 +128,7 @@ DEVICE_FN ${type} ${function}(${type} value, int idx, LOCAL ${scratch_type} *scr
 #if SHUFFLE_AVAILABLE && ${use_shuffle}
         for (int i = ${rake_width} / 2; i >= 1; i /= 2)
         {
-            ${type} other = ${scratch_type}::shfl_xor(value, i, ${rake_width});
+            ${type} other = ${scratch_type}::shfl_xor_sync(${hex(shuffle_mask)}, value, i, ${rake_width});
             value = ${op('value', 'other', type)};
         }
 #else
