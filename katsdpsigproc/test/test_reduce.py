@@ -19,6 +19,10 @@ class Fixture(object):
             'allow_shuffle': allow_shuffle,
             'broadcast': broadcast,
             'rows': rows})
+        self._description = "Fixture(..., {}, {}, {})".format(size, allow_shuffle, broadcast)
+
+    def __str__(self):
+        return self._description
 
 
 @device_test
