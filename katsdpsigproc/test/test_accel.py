@@ -1,6 +1,7 @@
 from __future__ import division, print_function, absolute_import
 import sys
 import functools
+import inspect
 from textwrap import dedent
 
 import numpy as np
@@ -25,27 +26,27 @@ _test_command_queue = None
 _test_initialized = False
 
 
-def device_test(test):
-    """Decorator that causes a test to be skipped if a compute device is not
-    available, and which disables autotuning. If autotuning is desired, use
-    :func:`force_autotune` inside (hence, afterwards on the decorator list)
-    this one."""
+def _prepare_device_test():
+    global _test_initialized, _test_context, _test_command_queue
+    if not _test_initialized:
+        try:
+            _test_context = accel.create_some_context(False)
+            _test_command_queue = _test_context.create_command_queue()
+            print("Testing on {0} ({1})".format(
+                _test_context.device.name, _test_context.device.platform_name),
+                file=sys.stderr)
+        except RuntimeError:
+            pass  # No devices available
+        _test_initialized = True
+
+    if not _test_context:
+        raise SkipTest('CUDA/OpenCL not found')
+
+
+def _device_test_sync(test):
     @functools.wraps(test)
     def wrapper(*args, **kwargs):
-        global _test_initialized, _test_context, _test_command_queue
-        if not _test_initialized:
-            try:
-                _test_context = accel.create_some_context(False)
-                _test_command_queue = _test_context.create_command_queue()
-                print("Testing on {0} ({1})".format(
-                    _test_context.device.name, _test_context.device.platform_name),
-                    file=sys.stderr)
-            except RuntimeError:
-                pass  # No devices available
-            _test_initialized = True
-
-        if not _test_context:
-            raise SkipTest('CUDA/OpenCL not found')
+        _prepare_device_test()
         with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.stub_autotuner):
             args += (_test_context, _test_command_queue)
             # Make the context current (for CUDA contexts). Ideally the test
@@ -54,6 +55,34 @@ def device_test(test):
             with _test_context:
                 return test(*args, **kwargs)
     return wrapper
+
+
+# This version has Python 3.5-specific syntax, so to protect against a SyntaxError
+# in Python 2 we have to execute it dynamically.
+_device_test_async_code = '''
+def _device_test_async(test):
+    @functools.wraps(test)
+    async def wrapper(*args, **kwargs):
+        _prepare_device_test()
+        with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.stub_autotuner):
+            args += (_test_context, _test_command_queue)
+            with _test_context:
+                return await test(*args, **kwargs)
+    return wrapper
+'''
+if sys.version_info >= (3, 5):
+    exec(_device_test_async_code)
+
+
+def device_test(test):
+    """Decorator that causes a test to be skipped if a compute device is not
+    available, and which disables autotuning. If autotuning is desired, use
+    :func:`force_autotune` inside (hence, afterwards on the decorator list)
+    this one."""
+    if sys.version_info >= (3, 5) and inspect.iscoroutinefunction(test):
+        return _device_test_async(test)
+    else:
+        return _device_test_sync(test)
 
 
 def cuda_test(test):
