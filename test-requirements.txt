@@ -1,9 +1,6 @@
 coverage
 funcsigs
-linecache2
 mock
 nose
 pbr
 six
-traceback2
-unittest2
