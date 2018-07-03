@@ -80,7 +80,7 @@ def device_test(test):
     :func:`force_autotune` inside (hence, afterwards on the decorator list)
     this one."""
     if sys.version_info >= (3, 5) and inspect.iscoroutinefunction(test):
-        return _device_test_async(test)
+        return _device_test_async(test)   # noqa: F821
     else:
         return _device_test_sync(test)
 
