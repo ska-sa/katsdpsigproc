@@ -1162,7 +1162,7 @@ class IOSlot(IOSlotBase):
         return tuple([x.required_padded_size() for x in self.dimensions])
 
     def required_bytes(self):
-        return np.product(self.required_padded_shape()) * self.dtype.itemsize
+        return int(np.product(self.required_padded_shape()) * self.dtype.itemsize)
 
     def _allocate(self, allocator, raw=None):
         buffer = allocator.allocate(self.shape, self.dtype, self.required_padded_shape(), raw=raw)
