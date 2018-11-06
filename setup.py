@@ -15,7 +15,7 @@ class BuildPy(build_py):
         return modules
 
 
-tests_require = ['nose', 'mock', 'unittest2']
+tests_require = ['nose', 'mock']
 
 setup(
     name="katsdpsigproc",

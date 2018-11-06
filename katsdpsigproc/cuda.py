@@ -181,14 +181,14 @@ class CommandQueue(object):
             # CUDA doesn't support synchronous transfers sequenced in a stream
             # (PyCUDA simply doesn't pass on the stream argument), so use an
             # async transfer and then block if necessary.
-            buffer.get(data, async=True, stream=self._pycuda_stream)
+            buffer.get_async(self._pycuda_stream, data)
             if blocking:
                 self._pycuda_stream.synchronize()
 
     def enqueue_write_buffer(self, buffer, data, blocking=True):
         with self.context:
             # See comment in enqueue_read_buffer
-            buffer.set(data, async=True, stream=self._pycuda_stream)
+            buffer.set_async(data, self._pycuda_stream)
             if blocking:
                 self._pycuda_stream.synchronize()
 
