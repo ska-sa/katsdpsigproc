@@ -1,11 +1,16 @@
 alabaster
 babel
 docutils
+imagesize
 jinja2
 markupsafe
+packaging
 pygments
 pytz
+requests
 six
 snowballstemmer
-sphinx-rtd-theme
 sphinx
+sphinxcontrib-websupport
+sphinx-rtd-theme
+typing
