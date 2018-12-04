@@ -1,11 +1,15 @@
 alabaster
 babel
+certifi
+chardet
 docutils
+idna
 imagesize
 jinja2
 markupsafe
 packaging
 pygments
+pyparsing
 pytz
 requests
 six
@@ -14,3 +18,4 @@ sphinx
 sphinxcontrib-websupport
 sphinx-rtd-theme
 typing
+urllib3
