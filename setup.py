@@ -37,7 +37,7 @@ setup(
         "decorator",
         "mako",
         "appdirs",
-        "futures",
+        "futures; python_version<'3.2'",
         "trollius; python_version<'3.4'",
         "six"
     ],
