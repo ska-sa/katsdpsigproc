@@ -33,7 +33,6 @@ setup(
         "scipy",
         "pandas",
         "numba>=0.36.1",   # Older versions have bugs in median functions
-        "futures",
         "decorator",
         "mako",
         "appdirs",
