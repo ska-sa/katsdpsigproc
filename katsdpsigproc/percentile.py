@@ -4,8 +4,6 @@
 """
 # see scripts/percentiletest.py for an example
 
-from __future__ import division, print_function, absolute_import
-
 import numpy as np
 
 from . import accel

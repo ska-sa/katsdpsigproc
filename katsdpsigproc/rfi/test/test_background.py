@@ -1,5 +1,5 @@
-from __future__ import division, print_function, absolute_import
 import numpy as np
+
 from .. import host
 from ...test.test_accel import device_test, force_autotune
 from .. import device

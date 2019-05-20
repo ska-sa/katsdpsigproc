@@ -1,26 +1,20 @@
 """Tests for :mod:`katsdpsigproc.resource`."""
 
-# If you edit this file, run update-asyncio.sh to keep things in sync
-
-from __future__ import division, print_function, absolute_import
 import functools
 import time
+import asyncio
+import queue
+from unittest import mock
 
-from six.moves import queue, range
-import trollius
-from trollius import From
 from nose.tools import (assert_equal, assert_true, assert_false,
                         assert_in, assert_not_in, assert_raises, nottest)
-import mock
 
-# Do not rewrite as 'from katsdpsigproc import resource': this line
-# gets mangled by sed via update-asyncio.sh.
-import katsdpsigproc.resource as resource
+from .. import resource
 
 
 @nottest
 def async_test(func):
-    func = trollius.coroutine(func)
+    func = asyncio.coroutine(func)
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -30,7 +24,7 @@ def async_test(func):
 
 class TestWaitUntil(object):
     def setup(self):
-        self.loop = trollius.get_event_loop_policy().new_event_loop()
+        self.loop = asyncio.get_event_loop_policy().new_event_loop()
 
     def teardown(self):
         self.loop.close()
@@ -38,41 +32,41 @@ class TestWaitUntil(object):
     @async_test
     def test_result(self):
         """wait_until returns before the timeout if a result is set"""
-        future = trollius.Future(loop=self.loop)
+        future = asyncio.Future(loop=self.loop)
         self.loop.call_later(0.1, future.set_result, 42)
-        result = yield From(resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop))
+        result = yield from(resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop))
         assert_equal(42, result)
 
     @async_test
     def test_already_set(self):
         """wait_until returns if a future has a result set before the call"""
-        future = trollius.Future(loop=self.loop)
+        future = asyncio.Future(loop=self.loop)
         future.set_result(42)
-        result = yield From(resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop))
+        result = yield from(resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop))
         assert_equal(42, result)
 
     @async_test
     def test_exception(self):
         """wait_until rethrows an exception set on the future"""
-        future = trollius.Future(loop=self.loop)
+        future = asyncio.Future(loop=self.loop)
         self.loop.call_later(0.1, future.set_exception, ValueError('test'))
         with assert_raises(ValueError):
-            yield From(resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop))
+            yield from(resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop))
 
     @async_test
     def test_timeout(self):
-        """wait_until throws `trollius.TimeoutError` if it times out, and cancels the future"""
-        future = trollius.Future(loop=self.loop)
-        with assert_raises(trollius.TimeoutError):
-            yield From(resource.wait_until(future, self.loop.time() + 0.01, loop=self.loop))
+        """wait_until throws `asyncio.TimeoutError` if it times out, and cancels the future"""
+        future = asyncio.Future(loop=self.loop)
+        with assert_raises(asyncio.TimeoutError):
+            yield from(resource.wait_until(future, self.loop.time() + 0.01, loop=self.loop))
         assert_true(future.cancelled())
 
     @async_test
     def test_shield(self):
         """wait_until does not cancel the future if it is wrapped in shield"""
-        future = trollius.Future(loop=self.loop)
-        with assert_raises(trollius.TimeoutError):
-            yield From(resource.wait_until(trollius.shield(future),
+        future = asyncio.Future(loop=self.loop)
+        with assert_raises(asyncio.TimeoutError):
+            yield from(resource.wait_until(asyncio.shield(future),
                                            self.loop.time() + 0.01, loop=self.loop))
         assert_false(future.cancelled())
 
@@ -94,17 +88,17 @@ class DummyEvent(object):
 
 class TestResource(object):
     def setup(self):
-        self.loop = trollius.get_event_loop_policy().new_event_loop()
+        self.loop = asyncio.get_event_loop_policy().new_event_loop()
         self.completed = queue.Queue()
 
     def teardown(self):
         self.loop.close()
 
-    @trollius.coroutine
+    @asyncio.coroutine
     def _run_frame(self, acq, event):
         with acq as value:
             assert_equal(42, value)
-            yield From(acq.wait_events())
+            yield from(acq.wait_events())
             acq.ready([event])
             self.completed.put(acq)
 
@@ -116,10 +110,10 @@ class TestResource(object):
         a1 = r.acquire()
         e0 = DummyEvent(self.completed)
         e1 = DummyEvent(self.completed)
-        run1 = trollius.ensure_future(self._run_frame(a1, e1), loop=self.loop)
-        run0 = trollius.ensure_future(self._run_frame(a0, e0), loop=self.loop)
-        yield From(run0)
-        yield From(run1)
+        run1 = asyncio.ensure_future(self._run_frame(a1, e1), loop=self.loop)
+        run0 = asyncio.ensure_future(self._run_frame(a0, e0), loop=self.loop)
+        yield from(run0)
+        yield from(run1)
         order = []
         try:
             while True:
@@ -138,11 +132,11 @@ class TestResource(object):
         a1 = r.acquire()
         with assert_raises(RuntimeError):
             with a0:
-                yield From(a0.wait_events())
+                yield from(a0.wait_events())
                 raise RuntimeError('test exception')
         with assert_raises(RuntimeError):
             with a1:
-                yield From(a1.wait_events())
+                yield from(a1.wait_events())
                 a1.ready()
 
     @mock.patch('katsdpsigproc.resource._logger')
@@ -162,10 +156,10 @@ class TestResource(object):
 
 class TestJobQueue(object):
     def setup(self):
-        self.loop = trollius.get_event_loop_policy().new_event_loop()
+        self.loop = asyncio.get_event_loop_policy().new_event_loop()
         self.jobs = resource.JobQueue()
-        self.finished = [trollius.Future(loop=self.loop) for i in range(5)]
-        self.unfinished = [trollius.Future(loop=self.loop) for i in range(5)]
+        self.finished = [asyncio.Future(loop=self.loop) for i in range(5)]
+        self.unfinished = [asyncio.Future(loop=self.loop) for i in range(5)]
         for i, future in enumerate(self.finished):
             future.set_result(i)
 
@@ -179,10 +173,10 @@ class TestJobQueue(object):
         self.jobs.clean()
         assert_equal(2, len(self.jobs._jobs))
 
-    @trollius.coroutine
+    @asyncio.coroutine
     def _finish(self):
         for i, future in enumerate(self.unfinished):
-            yield From(trollius.sleep(0.02, loop=self.loop))
+            yield from(asyncio.sleep(0.02, loop=self.loop))
             future.set_result(i)
 
     @async_test
@@ -191,13 +185,13 @@ class TestJobQueue(object):
         self.jobs.add(self.unfinished[0])
         self.jobs.add(self.unfinished[1])
         self.jobs.add(self.unfinished[2])
-        finisher = trollius.ensure_future(self._finish(), loop=self.loop)
-        yield From(self.jobs.finish(max_remaining=1))
+        finisher = asyncio.ensure_future(self._finish(), loop=self.loop)
+        yield from(self.jobs.finish(max_remaining=1))
         assert_true(self.unfinished[0].done())
         assert_true(self.unfinished[1].done())
         assert_false(self.unfinished[2].done())
         assert_equal(1, len(self.jobs))
-        yield From(finisher)
+        yield from(finisher)
 
     def test_nonzero(self):
         assert_false(self.jobs)

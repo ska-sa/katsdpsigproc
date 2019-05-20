@@ -1,17 +1,15 @@
-from __future__ import division, print_function, absolute_import
 import sys
 import functools
 import inspect
 from textwrap import dedent
+from unittest import mock
 
 import numpy as np
 from decorator import decorator
 from mako.template import Template
-from six.moves import zip
 
 from nose.tools import assert_equal, assert_raises
 from nose.plugins.skip import SkipTest
-import mock
 
 from .. import accel, tune
 from ..accel import HostArray, DeviceArray, SVMArray, LinenoLexer
@@ -57,9 +55,6 @@ def _device_test_sync(test):
     return wrapper
 
 
-# This version has Python 3.5-specific syntax, so to protect against a SyntaxError
-# in Python 2 we have to execute it dynamically.
-_device_test_async_code = '''
 def _device_test_async(test):
     @functools.wraps(test)
     async def wrapper(*args, **kwargs):
@@ -69,9 +64,6 @@ def _device_test_async(test):
             with _test_context:
                 return await test(*args, **kwargs)
     return wrapper
-'''
-if sys.version_info >= (3, 5):
-    exec(_device_test_async_code)
 
 
 def device_test(test):
@@ -79,7 +71,7 @@ def device_test(test):
     available, and which disables autotuning. If autotuning is desired, use
     :func:`force_autotune` inside (hence, afterwards on the decorator list)
     this one."""
-    if sys.version_info >= (3, 5) and inspect.iscoroutinefunction(test):
+    if inspect.iscoroutinefunction(test):
         return _device_test_async(test)   # noqa: F821
     else:
         return _device_test_sync(test)

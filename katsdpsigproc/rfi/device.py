@@ -10,10 +10,7 @@ kernel at the appropriate point.
 .. include:: macros.rst
 """
 
-from __future__ import division, print_function, absolute_import
-
 import numpy as np
-from six.moves import range
 
 from .. import accel
 from .. import tune

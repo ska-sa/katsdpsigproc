@@ -1,7 +1,5 @@
 """Tests for RFI thresholding algorithms"""
 
-from __future__ import division, print_function, absolute_import
-
 import numpy as np
 
 from .. import host

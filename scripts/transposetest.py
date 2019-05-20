@@ -2,7 +2,6 @@
 from __future__ import division, print_function, absolute_import
 from katsdpsigproc import accel, transpose
 import numpy as np
-from six.moves import range
 
 dtype = np.complex64
 ctype = 'float2'
