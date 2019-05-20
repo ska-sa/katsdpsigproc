@@ -1,6 +1,5 @@
 """Utilities for scheduling device operations with asyncio."""
 
-from __future__ import division, print_function, absolute_import
 import asyncio
 import logging
 import collections
@@ -9,8 +8,7 @@ import collections
 _logger = logging.getLogger(__name__)
 
 
-@asyncio.coroutine
-def wait_until(future, when, loop=None):
+async def wait_until(future, when, loop=None):
     """Like :meth:`asyncio.wait_for`, but with an absolute timeout."""
     def ready(*args):
         if not waiter.done():
@@ -24,9 +22,9 @@ def wait_until(future, when, loop=None):
     future = asyncio.ensure_future(future, loop=loop)
     future.add_done_callback(ready)
     try:
-        yield from(waiter)
+        await waiter
         if future.done():
-            return (future.result())
+            return future.result()
         else:
             future.remove_done_callback(ready)
             future.cancel()
@@ -35,8 +33,7 @@ def wait_until(future, when, loop=None):
         timeout_handle.cancel()
 
 
-@asyncio.coroutine
-def async_wait_for_events(events, loop=None):
+async def async_wait_for_events(events, loop=None):
     """Coroutine that waits for a list of device events."""
     def wait_for_events(events):
         for event in events:
@@ -44,7 +41,7 @@ def async_wait_for_events(events, loop=None):
     if loop is None:
         loop = asyncio.get_event_loop()
     if events:
-        yield from(loop.run_in_executor(None, wait_for_events, events))
+        await loop.run_in_executor(None, wait_for_events, events)
 
 
 class ResourceAllocation(object):
@@ -79,14 +76,13 @@ class ResourceAllocation(object):
         """
         return self._start
 
-    @asyncio.coroutine
-    def wait_events(self):
+    async def wait_events(self):
         """Wait for previous use of the resource to be complete on the host.
 
         This is a coroutine.
         """
-        events = yield from(self._start)
-        yield from(async_wait_for_events(events, loop=self._loop))
+        events = await self._start
+        await async_wait_for_events(events, loop=self._loop)
 
     def ready(self, events=None):
         """Indicate that we are done with the resource, and that subsequent
@@ -111,7 +107,7 @@ class ResourceAllocation(object):
             if exc_type is not None:
                 self._end.set_exception(exc_value)
             else:
-                _logger.warn('Resource allocation was not explicitly made ready')
+                _logger.warning('Resource allocation was not explicitly made ready')
                 self.ready()
 
 
@@ -173,15 +169,14 @@ class JobQueue(object):
         while self._jobs and self._jobs[0].done():
             self._jobs.popleft().result()     # Re-throws any exception
 
-    @asyncio.coroutine
-    def finish(self, max_remaining=0):
+    async def finish(self, max_remaining=0):
         """Wait for jobs to finish until there are at most `max_remaining` in
         the queue.
 
         This is a coroutine.
         """
         while len(self._jobs) > max_remaining:
-            yield from(self._jobs.popleft())
+            await self._jobs.popleft()
 
     def __len__(self):
         return len(self._jobs)

@@ -2,7 +2,7 @@
 from setuptools import setup, find_packages
 
 
-tests_require = ['nose']
+tests_require = ['nose', 'asynctest']
 
 setup(
     name="katsdpsigproc",

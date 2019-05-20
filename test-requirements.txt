@@ -1,2 +1,3 @@
+asynctest
 coverage
 nose
