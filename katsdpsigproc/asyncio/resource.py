@@ -26,7 +26,7 @@ def wait_until(future, when, loop=None):
     waiter = asyncio.Future(loop=loop)
     timeout_handle = loop.call_at(when, ready)
     # Ensure that the future is really a future, not a coroutine object
-    future = asyncio.async(future, loop=loop)
+    future = asyncio.ensure_future(future, loop=loop)
     future.add_done_callback(ready)
     try:
         yield from(waiter)
@@ -174,7 +174,7 @@ class JobQueue(object):
     def add(self, job):
         """Append a job to the list. If `job` is a coroutine, it is
         automatically wrapped in a task."""
-        self._jobs.append(asyncio.async(job))
+        self._jobs.append(asyncio.ensure_future(job))
 
     def clean(self):
         """Remove completed jobs from the front of the queue."""

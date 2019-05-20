@@ -25,7 +25,7 @@ def wait_until(future, when, loop=None):
     waiter = trollius.Future(loop=loop)
     timeout_handle = loop.call_at(when, ready)
     # Ensure that the future is really a future, not a coroutine object
-    future = trollius.async(future, loop=loop)
+    future = trollius.ensure_future(future, loop=loop)
     future.add_done_callback(ready)
     try:
         yield From(waiter)
@@ -173,7 +173,7 @@ class JobQueue(object):
     def add(self, job):
         """Append a job to the list. If `job` is a coroutine, it is
         automatically wrapped in a task."""
-        self._jobs.append(trollius.async(job))
+        self._jobs.append(trollius.ensure_future(job))
 
     def clean(self):
         """Remove completed jobs from the front of the queue."""

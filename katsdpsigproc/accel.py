@@ -403,10 +403,10 @@ class DeviceArray(object):
 
     def _copyable(self, ary):
         """Whether `ary` can be copied to/from this array directly"""
-        return (HostArray.safe(ary) and
-                ary.dtype == self.dtype and
-                ary.shape == self.shape and
-                ary.padded_shape == self.padded_shape)
+        return (HostArray.safe(ary)
+                and ary.dtype == self.dtype
+                and ary.shape == self.shape
+                and ary.padded_shape == self.padded_shape)
 
     @classmethod
     def _contiguous(cls, ary):
@@ -773,8 +773,8 @@ class SVMArray(HostArray, DeviceArray):
 
     def _copyable(self, ary):
         """Whether `ary` can be copied to/from this array directly"""
-        return (ary.dtype == self.dtype and
-                ary.shape == self.shape)
+        return (ary.dtype == self.dtype
+                and ary.shape == self.shape)
 
     def set(self, command_queue, ary):
         """Synchronous copy from `ary` to self. For SVMArray, this
@@ -952,8 +952,8 @@ class Dimension(object):
         if root._exact:
             return padded_size == root.required_padded_size()
         else:
-            return (padded_size >= root._min_padded_size and
-                    padded_size % root._alignment == 0)
+            return (padded_size >= root._min_padded_size
+                    and padded_size % root._alignment == 0)
 
     def add_align_dtype(self, dtype):
         """Add an alignment hint that this will be used with an array whose

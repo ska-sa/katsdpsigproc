@@ -42,7 +42,7 @@ setup(
     ],
     extras_require={
         "CUDA": ["pycuda>=2015.1.3"],
-        "OpenCL": ["pyopencl"],
+        "OpenCL": ["pyopencl>=2017.2.1"],
         "test": tests_require,
         "doc": ["sphinx>=1.3"]
     },
