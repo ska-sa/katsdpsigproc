@@ -186,7 +186,7 @@ class JobQueue(object):
     def __len__(self):
         return len(self._jobs)
 
-    def __nonzero__(self):
+    def __bool__(self):
         return bool(self._jobs)
 
     def __contains__(self, item):
