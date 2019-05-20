@@ -158,8 +158,8 @@ class Event(object):
         """
         prior_event.wait()
         self.wait()
-        return 1e-9 * (self._pyopencl_event.profile.start -
-                       prior_event._pyopencl_event.profile.end)
+        return 1e-9 * (self._pyopencl_event.profile.start
+                       - prior_event._pyopencl_event.profile.end)
 
     def time_till(self, next_event):
         """Return the time in seconds from this event to `next_event`. See
@@ -399,7 +399,7 @@ class CommandQueue(object):
         if hasattr(data, 'enqueue_read_buffer'):
             data.enqueue_read_buffer(self, buffer, blocking)
         else:
-            buffer.get(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
+            buffer.get(ary=data, queue=self._pyopencl_command_queue, async_=not blocking)
 
     def enqueue_write_buffer(self, buffer, data, blocking=True):
         """Copy data from the host to the device. Only whole-buffer copies are
@@ -419,7 +419,7 @@ class CommandQueue(object):
         if hasattr(data, 'enqueue_write_buffer'):
             data.enqueue_write_buffer(self, buffer, blocking)
         else:
-            buffer.set(ary=data, queue=self._pyopencl_command_queue, async=not blocking)
+            buffer.set(ary=data, queue=self._pyopencl_command_queue, async_=not blocking)
 
     def enqueue_copy_buffer(
             self, src_buffer, dest_buffer):
