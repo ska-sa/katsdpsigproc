@@ -27,7 +27,7 @@ setup(
         "CUDA": ["pycuda>=2015.1.3"],
         "OpenCL": ["pyopencl>=2017.2.1"],
         "test": tests_require,
-        "doc": ["sphinx>=1.3"]
+        "doc": ["sphinx>=1.3", "sphinxcontrib-asyncio", "sphinx-rtd-theme"]
     },
     python_requires=">=3.5",
     tests_require=tests_require,
