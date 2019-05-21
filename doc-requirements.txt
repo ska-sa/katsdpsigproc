@@ -17,5 +17,4 @@ snowballstemmer
 sphinx
 sphinxcontrib-websupport
 sphinx-rtd-theme
-typing
 urllib3
