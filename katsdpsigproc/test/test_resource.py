@@ -1,11 +1,9 @@
 """Tests for :mod:`katsdpsigproc.resource`."""
 
-import functools
 import time
 import asyncio
 import queue
 import logging
-from unittest import mock
 
 import asynctest
 
