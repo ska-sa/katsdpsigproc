@@ -188,4 +188,4 @@ class JobQueue(object):
         return item in self._jobs
 
 
-__all__ = ['wait_until', 'Resource', 'ResourceAllocation', 'JobQueue']
+__all__ = ['wait_until', 'async_wait_for_events', 'Resource', 'ResourceAllocation', 'JobQueue']
