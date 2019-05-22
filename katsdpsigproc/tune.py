@@ -28,7 +28,6 @@ import itertools
 import inspect
 import os
 import os.path
-import sys
 import time
 import logging
 import multiprocessing
@@ -38,8 +37,6 @@ import appdirs
 import sqlite3
 import numpy as np
 from decorator import decorator
-import six
-from six.moves import zip, range
 
 
 _logger = logging.getLogger(__name__)
@@ -65,7 +62,7 @@ def _db_keys(fn, args, kwargs):
     named_args = dict(kwargs)
     for i in range(2, len(args)):
         named_args[argspec.args[i]] = args[i]
-    keys = dict([('arg_' + key, adapt_value(value)) for (key, value) in six.iteritems(named_args)])
+    keys = dict([('arg_' + key, adapt_value(value)) for (key, value) in named_args.items()])
 
     # Add information about the device
     device = args[1].device
@@ -92,7 +89,7 @@ def _query(conn, tablename, keys):
         query = 'SELECT * FROM {0} WHERE'.format(tablename)
         query_args = []
         first = True
-        for key, value in six.iteritems(keys):
+        for key, value in keys.items():
             if not first:
                 query += ' AND'
             first = False
@@ -179,7 +176,7 @@ def autotuner_impl(test, fn, *args, **kwargs):
             # Nothing found in the database, so we need to tune now
             _logger.info('Performing autotuning for %s with key %s', classname, keys)
             ans = fn(*args, **kwargs)
-            values = dict([('value_' + key, value) for (key, value) in six.iteritems(ans)])
+            values = dict([('value_' + key, value) for (key, value) in ans.items()])
             _save(conn, tablename, keys, values)
         else:
             _logger.debug('Autotuning cache hit for %s with key %s', classname, keys)
@@ -282,7 +279,7 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
     opts = itertools.product(*kwargs.values())
     best = None
     best_score = None
-    exc_info = None
+    exc = None
     if threads is None:
         try:
             threads = multiprocessing.cpu_count()
@@ -316,13 +313,13 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
                     if best_score is None or score < best_score:
                         best = keywords
                         best_score = score
-                except Exception:
-                    exc_info = sys.exc_info()
+                except Exception as e:
+                    exc = e
                     _logger.debug("Caught exception while testing configuration %s",
                                   keywords, exc_info=True)
     if best is None:
-        if exc_info is not None:
-            six.reraise(*exc_info)
+        if exc is not None:
+            raise exc
         else:
             raise ValueError('No options to test')
     return best

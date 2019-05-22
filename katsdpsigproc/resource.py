@@ -1,54 +1,47 @@
-"""Utilities for scheduling device operations with trollius."""
+"""Utilities for scheduling device operations with asyncio."""
 
-# If you edit this file, run update-asyncio.sh to keep things in sync.
-
-from __future__ import division, print_function, absolute_import
-import trollius
+import asyncio
 import logging
 import collections
-import six
-from trollius import From
 
 
 _logger = logging.getLogger(__name__)
 
 
-@trollius.coroutine
-def wait_until(future, when, loop=None):
-    """Like :meth:`trollius.wait_for`, but with an absolute timeout."""
+async def wait_until(future, when, loop=None):
+    """Like :meth:`asyncio.wait_for`, but with an absolute timeout."""
     def ready(*args):
         if not waiter.done():
             waiter.set_result(None)
 
     if loop is None:
-        loop = trollius.get_event_loop()
-    waiter = trollius.Future(loop=loop)
+        loop = asyncio.get_event_loop()
+    waiter = asyncio.Future(loop=loop)
     timeout_handle = loop.call_at(when, ready)
     # Ensure that the future is really a future, not a coroutine object
-    future = trollius.ensure_future(future, loop=loop)
+    future = asyncio.ensure_future(future, loop=loop)
     future.add_done_callback(ready)
     try:
-        yield From(waiter)
+        await waiter
         if future.done():
-            raise trollius.Return(future.result())
+            return future.result()
         else:
             future.remove_done_callback(ready)
             future.cancel()
-            raise trollius.TimeoutError()
+            raise asyncio.TimeoutError()
     finally:
         timeout_handle.cancel()
 
 
-@trollius.coroutine
-def async_wait_for_events(events, loop=None):
+async def async_wait_for_events(events, loop=None):
     """Coroutine that waits for a list of device events."""
     def wait_for_events(events):
         for event in events:
             event.wait()
     if loop is None:
-        loop = trollius.get_event_loop()
+        loop = asyncio.get_event_loop()
     if events:
-        yield From(loop.run_in_executor(None, wait_for_events, events))
+        await loop.run_in_executor(None, wait_for_events, events)
 
 
 class ResourceAllocation(object):
@@ -83,14 +76,13 @@ class ResourceAllocation(object):
         """
         return self._start
 
-    @trollius.coroutine
-    def wait_events(self):
+    async def wait_events(self):
         """Wait for previous use of the resource to be complete on the host.
 
         This is a coroutine.
         """
-        events = yield From(self._start)
-        yield From(async_wait_for_events(events, loop=self._loop))
+        events = await self._start
+        await async_wait_for_events(events, loop=self._loop)
 
     def ready(self, events=None):
         """Indicate that we are done with the resource, and that subsequent
@@ -113,12 +105,9 @@ class ResourceAllocation(object):
     def __exit__(self, exc_type, exc_value, exc_tb):
         if not self._end.done():
             if exc_type is not None:
-                if six.PY3:
-                    self._end.set_exception(exc_value)
-                else:
-                    self._end._set_exception_with_tb(exc_value, exc_tb)
+                self._end.set_exception(exc_value)
             else:
-                _logger.warn('Resource allocation was not explicitly made ready')
+                _logger.warning('Resource allocation was not explicitly made ready')
                 self.ready()
 
 
@@ -135,9 +124,9 @@ class Resource(object):
     ----------
     value : object
         Underlying resource to manage
-    loop : trollius.BaseEventLoop, optional
+    loop : asyncio.BaseEventLoop, optional
         Event loop used for asynchronous operations. If not specified, defaults
-        to ``trollius.get_event_loop()``.
+        to ``asyncio.get_event_loop()``.
 
     Attributes
     ----------
@@ -146,9 +135,9 @@ class Resource(object):
     """
     def __init__(self, value, loop=None):
         if loop is None:
-            loop = trollius.get_event_loop()
+            loop = asyncio.get_event_loop()
         self._loop = loop
-        self._future = trollius.Future(loop=loop)
+        self._future = asyncio.Future(loop=loop)
         self._future.set_result([])
         self.value = value
 
@@ -161,7 +150,7 @@ class Resource(object):
         See :class:`ResourceAcquisition` for further details.
         """
         old = self._future
-        self._future = trollius.Future(loop=self._loop)
+        self._future = asyncio.Future(loop=self._loop)
         return ResourceAllocation(old, self._future, self.value, loop=self._loop)
 
 
@@ -173,27 +162,26 @@ class JobQueue(object):
     def add(self, job):
         """Append a job to the list. If `job` is a coroutine, it is
         automatically wrapped in a task."""
-        self._jobs.append(trollius.ensure_future(job))
+        self._jobs.append(asyncio.ensure_future(job))
 
     def clean(self):
         """Remove completed jobs from the front of the queue."""
         while self._jobs and self._jobs[0].done():
             self._jobs.popleft().result()     # Re-throws any exception
 
-    @trollius.coroutine
-    def finish(self, max_remaining=0):
+    async def finish(self, max_remaining=0):
         """Wait for jobs to finish until there are at most `max_remaining` in
         the queue.
 
         This is a coroutine.
         """
         while len(self._jobs) > max_remaining:
-            yield From(self._jobs.popleft())
+            await self._jobs.popleft()
 
     def __len__(self):
         return len(self._jobs)
 
-    def __nonzero__(self):
+    def __bool__(self):
         return bool(self._jobs)
 
     def __contains__(self, item):

@@ -1,11 +1,8 @@
 # coding: utf-8
 """RFI flagging algorithms that run on the CPU."""
 
-from __future__ import division, print_function, absolute_import
-
 import numpy as np
 import pandas as pd
-from six.moves import range, zip
 
 from . import MAD_NORMAL
 

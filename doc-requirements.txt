@@ -15,7 +15,7 @@ requests
 six
 snowballstemmer
 sphinx
+sphinxcontrib-asyncio==0.2.0
 sphinxcontrib-websupport
 sphinx-rtd-theme
-typing
 urllib3

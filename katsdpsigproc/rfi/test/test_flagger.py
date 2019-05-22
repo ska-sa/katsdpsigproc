@@ -2,8 +2,6 @@
 separate tests - this module just tests that they can be glued together
 properly."""
 
-from __future__ import division, print_function, absolute_import
-
 import numpy as np
 
 from .. import host

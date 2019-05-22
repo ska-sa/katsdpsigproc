@@ -1,10 +1,9 @@
-from __future__ import division, print_function, absolute_import
 import sys
 import traceback
 from nose.tools import assert_equal, assert_raises
-import mock
 import sqlite3
 import threading
+from unittest import mock
 from .. import tune
 
 

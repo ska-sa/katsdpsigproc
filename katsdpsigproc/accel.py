@@ -16,7 +16,6 @@ have_opencl : boolean
 .. include:: macros.rst
 """
 
-from __future__ import division, print_function, absolute_import
 import re
 import os
 import sys
@@ -27,8 +26,6 @@ import numpy as np
 import mako.lexer
 from mako.template import Template
 from mako.lookup import TemplateLookup
-import six
-from six.moves import filter, range, zip, input
 import pkg_resources
 
 try:
@@ -520,7 +517,7 @@ class DeviceArray(object):
                     raise IndexError('Empty slice selection')
                 strides.append(stride * self_strides[axis])
                 axis += 1
-            elif isinstance(index, six.integer_types):
+            elif isinstance(index, int):
                 if axis >= len(self_shape):
                     raise IndexError('Too many axes in index expression')
                 if index < 0:
@@ -1323,7 +1320,7 @@ class Operation(object):
 
     def ensure_all_bound(self):
         """Make sure that all slots have a buffer bound, allocating if necessary"""
-        for slot in six.itervalues(self.slots):
+        for slot in self.slots.values():
             if not slot.is_bound():
                 slot.allocate(self.allocator)
 
@@ -1357,7 +1354,7 @@ class Operation(object):
 
     def required_bytes(self):
         """Number of bytes of device storage required"""
-        return sum([x.required_bytes() for x in six.itervalues(self.slots)])
+        return sum([x.required_bytes() for x in self.slots.values()])
 
     def parameters(self):
         """Returns dictionary of configuration options for this operation"""
@@ -1411,16 +1408,16 @@ class OperationSequence(Operation):
             for (slot_name, slot) in operation.slots.items():
                 self.slots[name + ':' + slot_name] = slot
         if compounds is not None:
-            for (name, child_names) in six.iteritems(compounds):
+            for (name, child_names) in compounds.items():
                 children = self._extract_slots(child_names, False)
                 if children:
                     self.slots[name] = CompoundIOSlot(children)
         if aliases is not None:
-            for (name, child_names) in six.iteritems(aliases):
+            for (name, child_names) in aliases.items():
                 children = self._extract_slots(child_names, True)
                 if children:
                     self.slots[name] = AliasIOSlot(children)
-        for operation in six.itervalues(self.operations):
+        for operation in self.operations.values():
             operation.is_root = False
 
     def _extract_slots(self, names, add_to_hidden):

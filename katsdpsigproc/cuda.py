@@ -7,7 +7,6 @@ interfaces.
 from __future__ import division, print_function, absolute_import
 
 import numpy as np
-from six.moves import range
 
 import pycuda.driver
 import pycuda.compiler
