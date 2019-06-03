@@ -1,7 +1,4 @@
-"""Fill device array with a constant value
-
-.. include:: macros.rst
-"""
+"""Fill device array with a constant value"""
 
 import numpy as np
 

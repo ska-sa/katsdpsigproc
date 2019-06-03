@@ -1,7 +1,4 @@
-"""On-device transposition of 2D arrays
-
-.. include:: macros.rst
-"""
+"""On-device transposition of 2D arrays"""
 
 from __future__ import division, print_function, absolute_import
 import numpy as np

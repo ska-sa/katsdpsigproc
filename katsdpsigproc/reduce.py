@@ -1,8 +1,5 @@
 # coding: utf-8
-"""Reduction algorithms
-
-.. include:: macros.rst
-"""
+"""Reduction algorithms"""
 
 import numpy as np
 

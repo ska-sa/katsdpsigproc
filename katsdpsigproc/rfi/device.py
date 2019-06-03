@@ -6,8 +6,6 @@ channel-major or baseline-major order (the flags are emitted in the same
 order). In the former case, the `transposed` member is `False`, otherwise it is
 `True`. The flagger classes automatically detect this and apply a transposition
 kernel at the appropriate point.
-
-.. include:: macros.rst
 """
 
 import numpy as np

@@ -32,8 +32,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
-    'sphinx.ext.napoleon',
-    'sphinxcontrib.asyncio'
+    'sphinx.ext.napoleon'
 ]
 
 # From numpy code: these warnings are harmless
@@ -107,6 +106,10 @@ pygments_style = 'sphinx'
 # If true, keep warnings as "system message" paragraphs in the built documents.
 #keep_warnings = False
 
+rst_prolog = """
+.. |CommandQueue| replace:: :class:`.cuda.CommandQueue` or :class:`.opencl.CommandQueue`
+.. |Context| replace:: :class:`.cuda.Context` or :class:`.opencl.Context`
+"""
 
 # -- Options for HTML output ----------------------------------------------
 

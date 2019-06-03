@@ -1,7 +1,4 @@
-"""On-device percentile calculation of 2D arrays
-
-.. include:: macros.rst
-"""
+"""On-device percentile calculation of 2D arrays"""
 # see scripts/percentiletest.py for an example
 
 import numpy as np

@@ -12,8 +12,6 @@ have_cuda : boolean
     True if PyCUDA could be imported (does not guarantee any CUDA devices)
 have_opencl : boolean
     True if PyOpenCL could be imported (does not guarantee any OpenCL devices)
-
-.. include:: macros.rst
 """
 
 import re
