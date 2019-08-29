@@ -10,7 +10,7 @@ from .. import device
 
 
 def setup():
-    global _vis, _spikes, _channel_flags
+    global _vis, _spikes, _input_flags
     shape = (117, 131)
     # Use a fixed seed to make the test repeatable
     rs = np.random.RandomState(seed=1)
@@ -24,7 +24,7 @@ def setup():
     rfi = rfi_amp * np.exp(rfi_phase)
     _vis += _spikes * rfi
     _vis = _vis.astype(np.complex64)
-    _channel_flags = (rs.random_sample(shape[0]) < 1.0 / 16.0).astype(np.uint8) * 2
+    _input_flags = (rs.random_sample(shape) < 1.0 / 16.0).astype(np.uint8) * 2
 
 
 def test_flagger_host():
@@ -35,9 +35,13 @@ def test_flagger_host():
     flags = flagger(_vis)
     np.testing.assert_equal(_spikes, flags)
     # Test again, this time with channel flags
-    flags = flagger(_vis, _channel_flags)
-    channel_flags = np.broadcast_to(_channel_flags[:, np.newaxis], _vis.shape)
-    expected = np.where(channel_flags, 0, _spikes)
+    flags = flagger(_vis, _input_flags[:, 0])
+    input_flags = np.broadcast_to(_input_flags[:, 0:1], _vis.shape)
+    expected = np.where(input_flags, 0, _spikes)
+    np.testing.assert_equal(expected, flags)
+    # And again with full input flags
+    flags = flagger(_vis, _input_flags)
+    expected = np.where(_input_flags, 0, _spikes)
     np.testing.assert_equal(expected, flags)
 
 
@@ -51,10 +55,14 @@ def check_flagger_device(use_flags, transpose_noise_est, transpose_threshold, co
         context, transpose_threshold, tuning={'wgsx': 8, 'wgsy': 8})
     flagger_device = device.FlaggerDeviceTemplate(background, noise_est, threshold)
     flagger = device.FlaggerHostFromDevice(flagger_device, queue, threshold_args=dict(n_sigma=11.0))
-    if use_flags:
-        flags = flagger(_vis, _channel_flags)
-        channel_flags = np.broadcast_to(_channel_flags[:, np.newaxis], _vis.shape)
-        expected = np.where(channel_flags, 0, _spikes)
+    if use_flags == device.BackgroundFlags.CHANNEL:
+        flags = flagger(_vis, _input_flags[:, 0])
+        input_flags = np.broadcast_to(_input_flags[:, 0:1], _vis.shape)
+        expected = np.where(input_flags, 0, _spikes)
+        np.testing.assert_equal(expected, flags)
+    elif use_flags == device.BackgroundFlags.FULL:
+        flags = flagger(_vis, _input_flags)
+        expected = np.where(_input_flags, 0, _spikes)
         np.testing.assert_equal(expected, flags)
     else:
         flags = flagger(_vis)
@@ -63,22 +71,22 @@ def check_flagger_device(use_flags, transpose_noise_est, transpose_threshold, co
 
 @device_test
 def test_flagger_device(context, queue):
-    check_flagger_device(False, False, False, context, queue)
+    check_flagger_device(device.BackgroundFlags.NONE, False, False, context, queue)
 
 
 @device_test
 def test_flagger_device_transpose_noise_est(context, queue):
     """Test device flagger with a transposed noise estimator"""
-    check_flagger_device(True, True, False, context, queue)
+    check_flagger_device(device.BackgroundFlags.CHANNEL, True, False, context, queue)
 
 
 @device_test
 def test_flagger_device_transpose_threshold(context, queue):
     """Test device flagger with a transposed thresholder"""
-    check_flagger_device(True, False, True, context, queue)
+    check_flagger_device(device.BackgroundFlags.FULL, False, True, context, queue)
 
 
 @device_test
 def test_flagger_device_transpose_both(context, queue):
     """Test device flagger with a transposed noise estimator and thresholder"""
-    check_flagger_device(False, True, True, context, queue)
+    check_flagger_device(device.BackgroundFlags.NONE, True, True, context, queue)

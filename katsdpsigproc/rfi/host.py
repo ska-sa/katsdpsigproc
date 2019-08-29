@@ -182,16 +182,14 @@ class ThresholdSumHost(object):
 
 
 class FlaggerHost(object):
-    """Combine host background and thresholding implementations
-    to make a flagger.
-    """
+    """Combine host background and thresholding implementations to make a flagger."""
 
     def __init__(self, background, noise_est, threshold):
         self.background = background
         self.noise_est = noise_est
         self.threshold = threshold
 
-    def __call__(self, vis, channel_flags=None):
+    def __call__(self, vis, input_flags=None):
         """Perform the flagging.
 
         Parameters
@@ -199,14 +197,17 @@ class FlaggerHost(object):
         vis : array-like
             The input visibilities as a 2D array of complex64, indexed
             by channel and baseline.
-        flags : array-like
-            Predefined channel flags as an array of uint8
+        input_flags : array-like
+            Predefined flags as an array of uint8. These can be either
+            a 1D array of per-channel flags or a 2D array with the same
+            shape as `vis`.
 
         Returns
         -------
         :class:`numpy.ndarray`
-            Flags of the same shape as `vis`.
+            Flags of the same shape as `vis`. Note that `input_flags`
+            are not copied into the output.
         """
-        deviations = self.background(vis, channel_flags)
+        deviations = self.background(vis, input_flags)
         noise = self.noise_est(deviations)
         return self.threshold(deviations, noise)

@@ -805,13 +805,13 @@ class FlaggerDevice(accel.OperationSequence):
         Estimate of per-baseline noise
     **flags** : channels × baselines, uint8
         Output flags
-    **channel_flags** : channels, uint8
-        Input flag per channel. These are only used for estimating the
+    **input_flags** : channels × baseline or channels, uint8
+        Input flags. These are only used for estimating the
         background, and are *not* automatically copied into the output. Any
         visibilities marked as flagged here will *not* be flagged as RFI.
 
         This slot is only present if the backgrounder template has
-        `use_flags` set to true.
+        `use_flags` set, and the value determines the shape.
 
     .. rubric:: Temporary slots
 
@@ -861,7 +861,7 @@ class FlaggerDevice(accel.OperationSequence):
         operations = []
         compounds = {
             'vis': ['background:vis'],
-            'channel_flags': ['background:flags'],
+            'input_flags': ['background:flags'],
             'deviations': ['background:deviations', 'transpose_deviations:src'],
             'deviations_t': ['transpose_deviations:dest'],
             'noise': ['noise_est:noise', 'threshold:noise'],
@@ -915,10 +915,10 @@ class FlaggerHostFromDevice(object):
         self.noise_est_args = dict(noise_est_args)
         self.threshold_args = dict(threshold_args)
 
-    def __call__(self, vis, channel_flags=None):
-        if channel_flags is not None and not self.template.background.use_flags:
+    def __call__(self, vis, input_flags=None):
+        if input_flags is not None and not self.template.background.use_flags:
             raise TypeError("channel flags were provided but not included in the template")
-        if channel_flags is None and self.template.background.use_flags:
+        if input_flags is None and self.template.background.use_flags:
             raise TypeError("channel flags were expected but not provided")
         (channels, baselines) = vis.shape
         fn = self.template.instantiate(
@@ -926,7 +926,7 @@ class FlaggerHostFromDevice(object):
             self.background_args, self.noise_est_args, self.threshold_args)
         fn.ensure_all_bound()
         fn.buffer('vis').set(self.command_queue, vis)
-        if channel_flags is not None:
-            fn.buffer('channel_flags').set(self.command_queue, channel_flags)
+        if input_flags is not None:
+            fn.buffer('input_flags').set(self.command_queue, input_flags)
         fn()
         return fn.buffer('flags').get(self.command_queue)
