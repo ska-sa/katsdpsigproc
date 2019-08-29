@@ -28,6 +28,7 @@ import itertools
 import inspect
 import os
 import os.path
+import enum
 import time
 import logging
 import multiprocessing
@@ -50,6 +51,8 @@ def adapt_value(value):
     """
     if isinstance(value, type) or isinstance(value, np.dtype):
         return repr(value)
+    elif isinstance(value, enum.Enum):
+        return value.name
     return value
 
 

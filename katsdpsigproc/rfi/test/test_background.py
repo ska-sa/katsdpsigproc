@@ -13,10 +13,10 @@ def setup():
     # Use a fixed seed to make the test repeatable
     rs = np.random.RandomState(seed=1)
     _vis_big = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(np.complex64)
-    _flags_big = (rs.random_sample(shape[0]) < 0.1).astype(np.uint8)
+    _flags_big = (rs.random_sample(shape) < 0.1).astype(np.uint8)
     # Ensure that in some cases the entire window is flagged. Also test with non-0/1
     # flag values.
-    _flags_big[100:110] = 4
+    _flags_big[100:110, 0:100] = 4
 
 
 class TestBackgroundMedianFilterHost(object):
@@ -46,8 +46,10 @@ class BaseTestBackgroundDeviceClass(object):
         else:
             vis = _vis_big
         if self.use_flags:
-            out_host = bg_host(vis, _flags_big)
-            out_device = bg_device(vis, _flags_big)
+            full = self.use_flags == device.BackgroundFlags.FULL
+            flags = _flags_big if full else _flags_big[:, 0]
+            out_host = bg_host(vis, flags)
+            out_device = bg_device(vis, flags)
         else:
             out_host = bg_host(vis)
             out_device = bg_device(vis)
@@ -62,7 +64,7 @@ class BaseTestBackgroundDeviceClass(object):
 
 class TestBackgroundMedianFilterDevice(BaseTestBackgroundDeviceClass):
     amplitudes = False
-    use_flags = False
+    use_flags = device.BackgroundFlags.NONE
 
     def factory(self, context, width):
         return device.BackgroundMedianFilterDeviceTemplate(
@@ -74,4 +76,4 @@ class TestBackgroundMedianFilterDeviceAmplitudes(TestBackgroundMedianFilterDevic
 
 
 class TestBackgroundMedianFilterDeviceFlags(TestBackgroundMedianFilterDevice):
-    use_flags = True
+    use_flags = device.BackgroundFlags.CHANNEL

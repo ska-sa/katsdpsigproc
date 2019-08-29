@@ -28,10 +28,14 @@ class BackgroundMedianFilterHost(object):
         else:
             amp = pd.DataFrame(np.abs(vis))
         if flags is not None:
-            # Convert the flags to bool, and add in a baseline axis. The mask
-            # function in Pandas doesn't automatically broadcast, so we have
-            # to do so explicitly with np.broadcast_to.
-            flags_2d = np.broadcast_to(flags.astype(np.bool)[:, np.newaxis], vis.shape)
+            # Convert the flags to bool, and add in a baseline axis if not
+            # already present. The mask function in Pandas doesn't
+            # automatically broadcast, so we have to do so explicitly with
+            # np.broadcast_to.
+            flags = flags.astype(np.bool)
+            if flags.ndim < 2:
+                flags = flags[:, np.newaxis]
+            flags_2d = np.broadcast_to(flags, vis.shape)
             amp = amp.mask(flags_2d)
         med = amp.rolling(self.width, center=True, min_periods=1).median()
         deviation = amp - med
