@@ -1477,7 +1477,7 @@ def _visualize_operation(g, operation, path, slot_map, no_detail_slots, edges):
         Mapping from slots to node names (or port names). It is updated in place
         with all the slots in this operation and its descendants.
     no_detail_slots : set
-        Slots would should not show shape and dtype details. It is updated in
+        Slots that should not show shape and dtype details. It is updated in
         place with any descendant slots of this node.
     edges : set
         Edges to draw, as tuples of two :class:`IOSlotBase`s.
