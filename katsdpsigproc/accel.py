@@ -17,6 +17,7 @@ have_opencl : boolean
 import re
 import os
 import sys
+import io
 import itertools
 from collections import OrderedDict
 
@@ -1436,3 +1437,116 @@ class OperationSequence(Operation):
     def _run(self):
         for operation in self.operations.values():
             operation()
+
+
+def _slot_label(slot, name, hide_detail):
+    """Produce contents of HTML label for a slot.
+
+    If `hide_detail` is true, it will not show the shapes and dtype. This is used when
+    the details will appear on a parent.
+    """
+    if isinstance(slot, AliasIOSlot):
+        return '<b>{name}</b><br/><font color="red">alias slot</font>'.format(name=name)
+    elif hide_detail:
+        return '<b>{name}</b>'.format(name=name)
+    else:
+        shape = '×'.join(str(x) for x in slot.shape)
+        if not shape:
+            shape = 'scalar'
+        padded_shape = '×'.join(str(x) for x in slot.required_padded_shape())
+        dtype = str(np.dtype(slot.dtype))
+        return '<b>{name}</b><br/>{shape}<br/>{padded_shape}<br/>{dtype}'.format(
+            name=name, shape=shape, padded_shape=padded_shape, dtype=dtype)
+
+
+def _visualize_operation(g, operation, path, slot_map, no_detail_slots, edges):
+    """Recursive implementation of :func:`visualize_operation`.
+
+    Parameters
+    ----------
+    g : :class:`graphviz.Graph`
+        Graph or subgraph to be updated with the operation. If the operation has
+        children, it will be rendered as a subgraph, otherwise as a single slot
+        with ports for the slots.
+    operation : :class:`Operation`
+        Operation to add to the graph
+    path : tuple of str
+        Hierarchical name of `operation`. The last component is used for visual
+        display, and the rest for generating unique node labels.
+    slot_map : dict
+        Mapping from slots to node names (or port names). It is updated in place
+        with all the slots in this operation and its descendants.
+    no_detail_slots : set
+        Slots would should not show shape and dtype details. It is updated in
+        place with any descendant slots of this node.
+    edges : set
+        Edges to draw, as tuples of two :class:`IOSlotBase`s.
+    """
+
+    all_slots = {**operation.slots, **operation.hidden_slots}
+
+    if hasattr(operation, 'operations'):
+        # Graphviz treats subgraphs with the prefix 'cluster_' specially. We
+        # only want this for real subgraphs, not the root.
+        node_name = 'cluster_' + '!'.join(path) if len(path) > 1 else 'root'
+        for slot_name, slot in all_slots.items():
+            if isinstance(slot, CompoundIOSlot):
+                for child in slot.children:
+                    no_detail_slots.add(child)
+        with g.subgraph(name=node_name) as sub:
+            sub.attr('graph', label=path[-1])
+            for child_name, child in operation.operations.items():
+                _visualize_operation(sub, child, path + (child_name,),
+                                     slot_map, no_detail_slots, edges)
+            for slot_name, slot in list(all_slots.items()):
+                if slot not in slot_map:     # It's already represented in the child
+                    # ":" has special meaning to graphviz, so we replace it with "+".
+                    full_name = 'slot_{}_{}'.format('!'.join(path), slot_name.replace(':', '+'))
+                    slot_map[slot] = full_name
+                    label = '<' + _slot_label(slot, slot_name, slot in no_detail_slots) + '>'
+                    sub.node(full_name, label=label, shape='box')
+                else:
+                    del all_slots[slot_name]
+    else:
+        node_name = 'op_' + '!'.join(path)
+        label = io.StringIO()
+        label.write('<<table border="1" cellborder="0" rows="*" columns="*">'
+                    '<tr><td colspan="{n_slots}">{name}</td></tr><tr>'
+                    .format(name=path[-1], n_slots=len(operation.slots)))
+        for slot_name, slot in operation.slots.items():
+            label.write('<td port="{name}"><font point-size="9"><i>{name}</i></font></td>'
+                        .format(name=slot_name))
+            slot_map[slot] = node_name + ':' + slot_name.replace(':', '+')
+        label.write('</tr></table>>')
+        g.node(node_name, label=label.getvalue(), shape='plain')
+
+    for slot in all_slots.values():
+        if hasattr(slot, 'children'):
+            for child in slot.children:
+                edges.add((child, slot))
+
+
+def visualize_operation(operation, filename):
+    """Write a visualization of an :class:`Operation` to file.
+
+    This requires :mod:`graphviz` to be installed.
+
+    Parameters
+    ----------
+    operation : :class:`Operation`
+        Operation or operation sequence to visualize
+    filename : str
+        Base filename to write. It should end in ``.gv``, and a rendered
+        PDF will automatically be produced with a filename ending in
+        ``.gv.pdf``.
+    """
+    from graphviz import Graph
+
+    g = Graph()
+    g.attr('graph', clusterrank='local', ranksep='3', compound='yes')
+    slot_map = {}
+    edges = set()
+    _visualize_operation(g, operation, ('root',), slot_map, set(), edges)
+    for a, b in edges:
+        g.edge(slot_map[a], slot_map[b])
+    g.render(filename)

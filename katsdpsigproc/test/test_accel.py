@@ -1,6 +1,9 @@
 import sys
 import functools
 import inspect
+import shutil
+import os
+import tempfile
 from textwrap import dedent
 from unittest import mock
 
@@ -749,3 +752,38 @@ class TestAliasIOSlot(object):
         assert slot.raw is raw
         assert self.slot1.buffer is not None
         assert self.slot2.buffer is not None
+
+
+class TestVisualizeOperation(object):
+    """Tests for :class:`katsdpsigproc.accel.visualize_operation`.
+
+    This is just a basic smoke test to ensure that it runs without crashing.
+    A real test requires a human to sanity-check the visual output.
+    """
+    class Inner(accel.Operation):
+        pass
+
+    def setup(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def teardown(self):
+        shutil.rmtree(self.tmpdir)
+
+    @device_test
+    def test(self, context, queue):
+        inner = accel.Operation(queue)
+        inner.slots['foo'] = accel.IOSlot((3, 4), np.float32)
+        inner.slots['bar'] = accel.IOSlot((4, 3), np.float32)
+
+        mid = accel.OperationSequence(
+            queue,
+            [('inner', inner)],
+            {'inner_foo': ['inner:foo']})
+
+        outer = accel.OperationSequence(
+            queue,
+            [('mid', mid)],
+            {'mid_foo': ['mid:inner_foo']},
+            {'scratch': ['mid:inner:bar']})
+
+        accel.visualize_operation(outer, os.path.join(self.tmpdir, 'test_visualize.gv'))
