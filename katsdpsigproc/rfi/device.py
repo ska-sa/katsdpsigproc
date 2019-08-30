@@ -764,21 +764,12 @@ class FlaggerDeviceTemplate(object):
 class FlaggerDevice(accel.OperationSequence):
     """Concrete instance of :class:`FlaggerDeviceTemplate`.
 
-    Temporary buffers are presented as slots, which allows them to either
-    be set by the user or allocated automatically on first use.
-
     .. rubric:: Slots
 
     **vis** : channels × baselines, float32 or complex64
         Input visibilities (or amplitudes, if the backgrounder takes amplitudes)
-    **deviations** : channels × baselines, float32
-        Temporary, deviations from the background
-    **deviations_t** : baselines × channels, float32, optional
-        Transpose of `deviations`
     **noise** : baselines, float32
         Estimate of per-baseline noise
-    **flags_t** : baselines × channels, uint8, optional
-        Transpose of `flags`
     **flags** : channels × baselines, uint8
         Output flags
     **channel_flags** : channels, uint8
@@ -789,9 +780,21 @@ class FlaggerDevice(accel.OperationSequence):
         This slot is only present if the backgrounder template has
         `use_flags` set to true.
 
+    .. rubric:: Temporary slots
+
+    Temporary buffers are presented as slots, which allows them to either
+    be set by the user or allocated automatically on first use.
+
+    **deviations** : channels × baselines, float32
+        Deviations from the background
+    **deviations_t** : baselines × channels, float32, optional
+        Transpose of `deviations`
+    **flags_t** : baselines × channels, uint8, optional
+        Transpose of `flags`
+
     Parameters
     ----------
-    template : :class:`BackgroundMedianFilterDevice`
+    template : :class:`FlaggerDeviceTemplate`
         Operation template
     command_queue : |CommandQueue|
         Command queue for the operation
