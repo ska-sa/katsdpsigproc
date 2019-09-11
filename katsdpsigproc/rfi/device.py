@@ -8,6 +8,8 @@ order). In the former case, the `transposed` member is `False`, otherwise it is
 kernel at the appropriate point.
 """
 
+import enum
+
 import numpy as np
 
 from .. import accel
@@ -15,6 +17,15 @@ from .. import tune
 from .. import transpose
 from ..accel import DeviceArray
 from . import host
+
+
+class BackgroundFlags(enum.Enum):
+    NONE = 0
+    CHANNEL = 1
+    FULL = 2
+
+    def __bool__(self):
+        return self != BackgroundFlags.NONE
 
 
 class BackgroundHostFromDevice(object):
@@ -54,9 +65,16 @@ class BackgroundMedianFilterDeviceTemplate(object):
         The kernel width (must be odd)
     is_amplitude : boolean
         If ``True``, the inputs are amplitudes rather than complex visibilities
-    use_flags : boolean
-        If ``True``, an extra input of flag values is accepted to indicate bad
-        data.
+    use_flags : :class:`BackgroundFlags` or bool
+        Specify that flags are taken as input to indicate bad data that should
+        not contribute to the backgrounding. The legal values are
+
+        - ``FULL``: takes flags with same shape as visibilities
+        - ``CHANNEL``: takes a single flag per channel
+        - ``NONE``: do not take flags as input
+
+        For backwards compatibility, ``True`` is an alias for ``CHANNEL`` and
+        ``False`` is an alias for ``NONE``.
     tuning : mapping, optional
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
@@ -66,14 +84,21 @@ class BackgroundMedianFilterDeviceTemplate(object):
     """
 
     host_class = host.BackgroundMedianFilterHost
-    autotune_version = 3
+    autotune_version = 4
 
-    def __init__(self, context, width, is_amplitude=False, use_flags=False, tuning=None):
+    def __init__(self, context, width, is_amplitude=False,
+                 use_flags=BackgroundFlags.NONE, tuning=None):
         if tuning is None:
             tuning = self.autotune(context, width, is_amplitude, use_flags)
         self.context = context
         self.width = width
         self.is_amplitude = is_amplitude
+        if use_flags is True:
+            use_flags = BackgroundFlags.CHANNEL
+        elif use_flags is False:
+            use_flags = BackgroundFlags.NONE
+        if not isinstance(use_flags, BackgroundFlags):
+            raise TypeError('use_flags must be an instance of BackgroundFlags or bool')
         self.use_flags = use_flags
         self.wgs = tuning['wgs']
         self.csplit = tuning['csplit']
@@ -82,6 +107,7 @@ class BackgroundMedianFilterDeviceTemplate(object):
             {
                 'width': width, 'wgs': self.wgs,
                 'is_amplitude': is_amplitude,
+                'BackgroundFlags': BackgroundFlags,
                 'use_flags': use_flags
             })
 
@@ -96,8 +122,10 @@ class BackgroundMedianFilterDeviceTemplate(object):
         vis_type = np.float32 if is_amplitude else np.complex64
         vis = DeviceArray(context, shape, vis_type)
         deviations = DeviceArray(context, shape, np.float32)
-        if use_flags:
+        if use_flags == BackgroundFlags.CHANNEL:
             flags = DeviceArray(context, (channels,), np.uint8)
+        elif use_flags == BackgroundFlags.FULL:
+            flags = DeviceArray(context, shape, np.uint8)
         # Initialize with Gaussian random values
         rs = np.random.RandomState(seed=1)
         if is_amplitude:
@@ -107,7 +135,7 @@ class BackgroundMedianFilterDeviceTemplate(object):
             vis_host = vis_host.astype(np.complex64)
         vis.set(queue, vis_host)
         if use_flags:
-            flags.set(queue, (rs.uniform(size=channels) < 0.0001).astype(np.uint8))
+            flags.set(queue, (rs.uniform(size=flags.shape) < 0.0001).astype(np.uint8))
 
         def generate(**tuning):
             fn = cls(context, width, is_amplitude, use_flags, tuning).instantiate(
@@ -131,6 +159,8 @@ class BackgroundMedianFilterDevice(accel.Operation):
 
     **vis** : channels × baselines, float32 or complex64
         Input visibilities, or their amplitudes if `template.is_amplitude` is true
+    **flags** : channels × baselines or channels, float32
+        Input flags (only present if `template.use_flags` is used)
     **deviations** : channels × baselines, float32
         Output deviations from the background
 
@@ -156,7 +186,9 @@ class BackgroundMedianFilterDevice(accel.Operation):
                 accel.Dimension(baselines, self.template.wgs))
         self.slots['vis'] = accel.IOSlot(dims, vis_type)
         self.slots['deviations'] = accel.IOSlot(dims, np.float32)
-        if template.use_flags:
+        if template.use_flags == BackgroundFlags.FULL:
+            self.slots['flags'] = accel.IOSlot(dims, np.uint8)
+        elif template.use_flags == BackgroundFlags.CHANNEL:
             self.slots['flags'] = accel.IOSlot((channels,), np.uint8)
 
     def _run(self):
@@ -181,6 +213,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
     def parameters(self):
         return {
             'width': self.template.width,
+            'use_flags': self.template.use_flags.name,
             'channels': self.channels,
             'baselines': self.baselines
         }
@@ -772,13 +805,13 @@ class FlaggerDevice(accel.OperationSequence):
         Estimate of per-baseline noise
     **flags** : channels × baselines, uint8
         Output flags
-    **channel_flags** : channels, uint8
-        Input flag per channel. These are only used for estimating the
+    **input_flags** : channels × baseline or channels, uint8
+        Input flags. These are only used for estimating the
         background, and are *not* automatically copied into the output. Any
         visibilities marked as flagged here will *not* be flagged as RFI.
 
         This slot is only present if the backgrounder template has
-        `use_flags` set to true.
+        `use_flags` set, and the value determines the shape.
 
     .. rubric:: Temporary slots
 
@@ -828,7 +861,7 @@ class FlaggerDevice(accel.OperationSequence):
         operations = []
         compounds = {
             'vis': ['background:vis'],
-            'channel_flags': ['background:flags'],
+            'input_flags': ['background:flags'],
             'deviations': ['background:deviations', 'transpose_deviations:src'],
             'deviations_t': ['transpose_deviations:dest'],
             'noise': ['noise_est:noise', 'threshold:noise'],
@@ -882,10 +915,10 @@ class FlaggerHostFromDevice(object):
         self.noise_est_args = dict(noise_est_args)
         self.threshold_args = dict(threshold_args)
 
-    def __call__(self, vis, channel_flags=None):
-        if channel_flags is not None and not self.template.background.use_flags:
+    def __call__(self, vis, input_flags=None):
+        if input_flags is not None and not self.template.background.use_flags:
             raise TypeError("channel flags were provided but not included in the template")
-        if channel_flags is None and self.template.background.use_flags:
+        if input_flags is None and self.template.background.use_flags:
             raise TypeError("channel flags were expected but not provided")
         (channels, baselines) = vis.shape
         fn = self.template.instantiate(
@@ -893,7 +926,7 @@ class FlaggerHostFromDevice(object):
             self.background_args, self.noise_est_args, self.threshold_args)
         fn.ensure_all_bound()
         fn.buffer('vis').set(self.command_queue, vis)
-        if channel_flags is not None:
-            fn.buffer('channel_flags').set(self.command_queue, channel_flags)
+        if input_flags is not None:
+            fn.buffer('input_flags').set(self.command_queue, input_flags)
         fn()
         return fn.buffer('flags').get(self.command_queue)

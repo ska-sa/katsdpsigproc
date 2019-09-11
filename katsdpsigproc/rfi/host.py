@@ -28,10 +28,14 @@ class BackgroundMedianFilterHost(object):
         else:
             amp = pd.DataFrame(np.abs(vis))
         if flags is not None:
-            # Convert the flags to bool, and add in a baseline axis. The mask
-            # function in Pandas doesn't automatically broadcast, so we have
-            # to do so explicitly with np.broadcast_to.
-            flags_2d = np.broadcast_to(flags.astype(np.bool)[:, np.newaxis], vis.shape)
+            # Convert the flags to bool, and add in a baseline axis if not
+            # already present. The mask function in Pandas doesn't
+            # automatically broadcast, so we have to do so explicitly with
+            # np.broadcast_to.
+            flags = flags.astype(np.bool)
+            if flags.ndim < 2:
+                flags = flags[:, np.newaxis]
+            flags_2d = np.broadcast_to(flags, vis.shape)
             amp = amp.mask(flags_2d)
         med = amp.rolling(self.width, center=True, min_periods=1).median()
         deviation = amp - med
@@ -178,16 +182,14 @@ class ThresholdSumHost(object):
 
 
 class FlaggerHost(object):
-    """Combine host background and thresholding implementations
-    to make a flagger.
-    """
+    """Combine host background and thresholding implementations to make a flagger."""
 
     def __init__(self, background, noise_est, threshold):
         self.background = background
         self.noise_est = noise_est
         self.threshold = threshold
 
-    def __call__(self, vis, channel_flags=None):
+    def __call__(self, vis, input_flags=None):
         """Perform the flagging.
 
         Parameters
@@ -195,14 +197,17 @@ class FlaggerHost(object):
         vis : array-like
             The input visibilities as a 2D array of complex64, indexed
             by channel and baseline.
-        flags : array-like
-            Predefined channel flags as an array of uint8
+        input_flags : array-like
+            Predefined flags as an array of uint8. These can be either
+            a 1D array of per-channel flags or a 2D array with the same
+            shape as `vis`.
 
         Returns
         -------
         :class:`numpy.ndarray`
-            Flags of the same shape as `vis`.
+            Flags of the same shape as `vis`. Note that `input_flags`
+            are not copied into the output.
         """
-        deviations = self.background(vis, channel_flags)
+        deviations = self.background(vis, input_flags)
         noise = self.noise_est(deviations)
         return self.threshold(deviations, noise)

@@ -140,7 +140,9 @@ DEVICE_FN static void medfilt_serial_sliding(
 % endif
     int first, int last, int N, int stride)
 {
-% if use_flags:
+% if use_flags == BackgroundFlags.FULL:
+#define AMPLITUDE(idx) (flags[(idx) * stride] ? -1.0f : amplitude(in[(idx) * stride]))
+% elif use_flags == BackgroundFlags.CHANNEL:
 #define AMPLITUDE(idx) (flags[(idx)] ? -1.0f : amplitude(in[(idx) * stride]))
 % else:
 #define AMPLITUDE(idx) amplitude(in[(idx) * stride])
@@ -184,7 +186,8 @@ KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
 % if use_flags:
     const GLOBAL unsigned char * flags,
 % endif
-    int channels, int stride, int VT)
+    int channels, int stride,
+    int VT)
 {
     int bl = get_global_id(0);
     int sub = get_global_id(1);
@@ -192,8 +195,10 @@ KERNEL REQD_WORK_GROUP_SIZE(${wgs}, 1, 1) void background_median_filter(
     int end_channel = min(start_channel + VT, channels);
     medfilt_serial_sliding(
         in + bl, out + bl,
-% if use_flags:
+% if use_flags == BackgroundFlags.CHANNEL:
         flags,
+% elif use_flags == BackgroundFlags.FULL:
+        flags + bl,
 % endif
         start_channel, end_channel, channels, stride);
 }
