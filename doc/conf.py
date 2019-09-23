@@ -14,11 +14,20 @@
 
 import sys
 import os
+from unittest.mock import MagicMock
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath('..'))
+
+# Work around C extensions that can't be installed on readthedocs
+if os.environ.get('READTHEDOCS') == 'True':
+    MOCK_MODULES = ['pycuda', 'pycuda.driver', 'pycuda.compiler', 'pycuda.gpuarray',
+                    'pycuda.characterize',
+                    'pyopencl', 'pyopencl.array']
+    sys.modules.update({mod_name: MagicMock() for mod_name in MOCK_MODULES})
+
 
 # -- General configuration ------------------------------------------------
 
