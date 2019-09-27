@@ -3,6 +3,7 @@
 katsdpsigproc.egg-info
 dist
 build
+pip-wheel-metadata
 .coverage
 cover
 coverage.xml

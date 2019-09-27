@@ -7,8 +7,8 @@ tests_require = ['nose', 'asynctest']
 setup(
     name="katsdpsigproc",
     description="Karoo Array Telescope accelerated signal processing tools",
-    author="SKA SA Science Processing Team",
-    author_email="spt@ska.ac.za",
+    author="MeerKAT SDP team",
+    author_email="sdpdev+katsdpsigproc@ska.ac.za",
     packages=find_packages(),
     package_data={'': ['*.mako']},
     scripts=["scripts/rfiflagtest.py"],
