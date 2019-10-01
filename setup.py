@@ -11,7 +11,6 @@ setup(
     author_email="sdpdev+katsdpsigproc@ska.ac.za",
     packages=find_packages(),
     package_data={'': ['*.mako']},
-    scripts=["scripts/rfiflagtest.py"],
     url="https://github.com/ska-sa/katsdpsigproc",
     setup_requires=["katversion"],
     install_requires=[
