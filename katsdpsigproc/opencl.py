@@ -4,16 +4,22 @@ functionality can be added, but should be kept in sync with
 :mod:`katsdpsigproc.cuda`.
 """
 
+from typing import List, Tuple, Sequence, Optional, Callable, Type, Any
+from types import TracebackType
+
 import pyopencl
 import pyopencl.array
 import numpy as np
 
+from .abc import (AbstractProgram, AbstractKernel, AbstractDevice, AbstractContext,
+                  AbstractEvent, AbstractCommandQueue, AbstractTuningCommandQueue)
 
-class _DummyArray(object):
+
+class _DummyArray:
     """Trivial dummy for :class:`pyopencl.array.Array`, that just has
     a `data` attribute.
     """
-    def __init__(self, data):
+    def __init__(self, data: Any) -> None:
         self.data = data
 
 
@@ -22,7 +28,10 @@ class _PinnedAMD(np.ndarray):
     are done by unmapping the buffer, enqueuing the copy, and remapping
     the buffer. This is based on AMD's optimization guide.
     """
-    def __new__(cls, context, queue, shape, dtype):
+    _mapping: pyopencl.MemoryMap
+
+    def __new__(cls, context: 'Context', queue: 'CommandQueue',
+                shape: Tuple[int], dtype: np.dtype) -> '_PinnedAMD':
         dtype = np.dtype(dtype)
         n_bytes = int(np.product(shape)) * dtype.itemsize
         # Do not add READ or WRITE to the flags: doing so seems to cause AMD
@@ -36,14 +45,15 @@ class _PinnedAMD(np.ndarray):
             buffer,
             pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
             0, shape, dtype)[0]
-        mapping = array.base
+        mapping = array.base               # type: pyopencl.MemoryMap
         array = array.view(_PinnedAMD)
         array._buffer = buffer
         array._mapping = mapping
         array._array = _DummyArray(buffer)
         return array
 
-    def _enqueue_transfer(self, queue, blocking, transfer):
+    def _enqueue_transfer(self, queue: 'CommandQueue', blocking: bool,
+                          transfer: Callable[[], None]) -> None:
         if not hasattr(self, '_buffer'):
             raise ValueError('cannot copy to/from a _PinnedAMD view')
         self._mapping.release(queue._pyopencl_command_queue)
@@ -57,7 +67,8 @@ class _PinnedAMD(np.ndarray):
             0, (self._buffer.size,), np.uint8, is_blocking=blocking)[0]
         self._mapping = array.base
 
-    def enqueue_write_buffer(self, queue, buffer, blocking):
+    def enqueue_write_buffer(self, queue: 'CommandQueue', buffer: pyopencl.array.Array,
+                             blocking: bool) -> None:
         """Enqueue a copy from the host buffer to device memory. The host
         memory must not be touched while the copy is in progress.
 
@@ -74,7 +85,8 @@ class _PinnedAMD(np.ndarray):
             queue.enqueue_copy_buffer(self._array, buffer)
         self._enqueue_transfer(queue, blocking, transfer)
 
-    def enqueue_read_buffer(self, queue, buffer, blocking):
+    def enqueue_read_buffer(self, queue: 'CommandQueue', buffer: pyopencl.array.Array,
+                            blocking: bool) -> None:
         """Enqueue a copy to the host buffer from device memory. The host
         memory must not be touched while the copy is in progress.
 
@@ -92,8 +104,10 @@ class _PinnedAMD(np.ndarray):
         self._enqueue_transfer(queue, blocking, transfer)
 
     def enqueue_write_buffer_rect(
-            self, queue, buffer, buffer_origin, data_origin, shape,
-            buffer_strides, data_strides, blocking=True):
+            self, queue: 'CommandQueue', buffer: pyopencl.array.Array,
+            buffer_origin: int, data_origin: int, shape: Sequence[int],
+            buffer_strides: Sequence[int], data_strides: Sequence[int],
+            blocking: bool = True) -> None:
         def transfer():
             queue.enqueue_copy_buffer_rect(
                 self._array, buffer, data_origin, buffer_origin, shape,
@@ -101,8 +115,10 @@ class _PinnedAMD(np.ndarray):
         self._enqueue_transfer(queue, blocking, transfer)
 
     def enqueue_read_buffer_rect(
-            self, queue, buffer, buffer_origin, data_origin, shape,
-            buffer_strides, data_strides, blocking=True):
+            self, queue: 'CommandQueue', buffer: pyopencl.array.Array,
+            buffer_origin: int, data_origin: int, shape: Sequence[int],
+            buffer_strides: Sequence[int], data_strides: Sequence[int],
+            blocking: bool = True) -> None:
         def transfer():
             queue.enqueue_copy_buffer_rect(
                 buffer, self._array, buffer_origin, data_origin, shape,
@@ -110,117 +126,79 @@ class _PinnedAMD(np.ndarray):
         self._enqueue_transfer(queue, blocking, transfer)
 
 
-class Program(object):
-    """Abstraction of a program object"""
-    def __init__(self, pyopencl_program):
+class Program(AbstractProgram):
+    def __init__(self, pyopencl_program: pyopencl.Program) -> None:
         self._pyopencl_program = pyopencl_program
 
-    def get_kernel(self, name):
-        """Create a new kernel
-
-        Parameters
-        ----------
-        name : str
-            Name of the kernel function
-        """
+    def get_kernel(self, name: str) -> 'Kernel':
         return Kernel(self, name)
 
 
-class Kernel(object):
-    """Abstraction of a kernel object. The object can be enqueued using
-    :meth:`CommandQueue.enqueue_kernel`.
-
-    The recommended way to create this object is via
-    :meth:`Program.get_kernel`.
-    """
-    def __init__(self, program, name):
+class Kernel(AbstractKernel):
+    def __init__(self, program: Program, name: str):
         self._pyopencl_kernel = pyopencl.Kernel(program._pyopencl_program, name)
 
 
-class Event(object):
-    """Abstraction of an event. This is more akin to a CUDA event than an
-    OpenCL event, in that it is a marker in a command queue rather than
-    associated with a specific command.
-    """
-    def __init__(self, pyopencl_event):
+class Event(AbstractEvent):
+    def __init__(self, pyopencl_event: pyopencl.Event) -> None:
         self._pyopencl_event = pyopencl_event
 
-    def wait(self):
-        """Block until the event has completed"""
+    def wait(self) -> None:
         self._pyopencl_event.wait()
 
-    def time_since(self, prior_event):
-        """Return the time in seconds from `prior_event` to self. Unlike the
-        PyCUDA method of the same name, this will wait for the events to
-        complete if they have not already.
-        """
+    def time_since(self, prior_event: 'Event') -> float:
         prior_event.wait()
         self.wait()
         return 1e-9 * (self._pyopencl_event.profile.start
                        - prior_event._pyopencl_event.profile.end)
 
-    def time_till(self, next_event):
-        """Return the time in seconds from this event to `next_event`. See
-        :meth:`time_since`.
-        """
+    def time_till(self, next_event: 'Event') -> float:
         return next_event.time_since(self)
 
 
-class Device(object):
+class Device(AbstractDevice):
     """Abstraction of an OpenCL device"""
-    def __init__(self, pyopencl_device):
+
+    def __init__(self, pyopencl_device: pyopencl.Device) -> None:
         self._pyopencl_device = pyopencl_device
 
-    def make_context(self):
-        """Create a new context associated with this device"""
+    def make_context(self) -> 'Context':
         return Context(pyopencl.Context([self._pyopencl_device]))
 
     @property
-    def name(self):
-        """Return human-readable name for the device"""
+    def name(self) -> str:
         return self._pyopencl_device.name
 
     @property
-    def platform_name(self):
-        """Return human-readable name for the platform owning the device"""
+    def platform_name(self) -> str:
         return self._pyopencl_device.platform.name
 
     @property
-    def driver_version(self):
-        """Return human-readable name for the driver version"""
+    def driver_version(self) -> str:
         return self._pyopencl_device.driver_version
 
     @property
-    def is_cuda(self):
-        """Whether the device is a CUDA device"""
+    def is_cuda(self) -> bool:
         return False
 
     @property
-    def is_gpu(self):
-        """Whether device is a GPU"""
+    def is_gpu(self) -> bool:
         return self._pyopencl_device.type & pyopencl.device_type.GPU
 
     @property
-    def is_accelerator(self):
-        """Whether device is an accelerator (as defined by OpenCL device
-        types)"""
+    def is_accelerator(self) -> bool:
         return self._pyopencl_device.type & pyopencl.device_type.ACCELERATOR
 
     @property
-    def is_cpu(self):
-        """Whether the device is a CPU"""
+    def is_cpu(self) -> bool:
         return self._pyopencl_device.type & pyopencl.device_type.CPU
 
     @property
-    def simd_group_size(self):
-        """The number of workitems that run in lock-step. This must only
-        be used to tune performance parameters; there are no guarantees about
-        memory coherency, forward progress etc.
-        """
+    def simd_group_size(self) -> int:
         return pyopencl.characterize.get_simd_group_size(self._pyopencl_device, 4)
 
     @classmethod
-    def _get_platforms(cls):
+    def _get_platforms(cls) -> List[pyopencl.Platform]:
         """Return all platforms"""
         try:
             return pyopencl.get_platforms()
@@ -230,8 +208,7 @@ class Device(object):
             return []
 
     @classmethod
-    def get_devices(cls):
-        """Return a list of all devices on all platforms"""
+    def get_devices(cls) -> List['Device']:
         ans = []
         for platform in cls._get_platforms():
             for device in platform.get_devices():
@@ -239,49 +216,41 @@ class Device(object):
         return ans
 
     @classmethod
-    def get_devices_by_platform(cls):
-        """Return a list of all devices, with a sub-list per platform."""
+    def get_devices_by_platform(cls) -> List[List['Device']]:
         ans = []
         for platform in cls._get_platforms():
             ans.append([Device(device) for device in platform.get_devices()])
         return ans
 
 
-class Context(object):
+class Context(AbstractContext):
     """Abstraction of an OpenCL context"""
-    def __init__(self, pyopencl_context):
+
+    def __init__(self, pyopencl_context: pyopencl.Context) -> None:
         self._pyopencl_context = pyopencl_context
         device = pyopencl_context.devices[0]
         self._internal_queue = pyopencl.CommandQueue(pyopencl_context, device)
         self._force_pinned_amd = False   # Used for unit tests
 
     @property
-    def device(self):
+    def device(self) -> Device:
         """Return the device associated with the context (or the first device,
         if there are multiple)."""
         return Device(self._pyopencl_context.devices[0])
 
-    def compile(self, source, extra_flags=None):
-        """Build a program object from source
-
-        Parameters
-        ----------
-        source : str
-            OpenCL source code
-        extra_flags : list
-            OpenCL-specific parameters to pass to the compiler
-        """
+    def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> Program:
         # source is passed through str because it might arrive as Unicode,
-        # triggering a warning
+        # triggering a warning.
+        # TODO: can remove this now that it's Python 3-only.
         program = pyopencl.Program(self._pyopencl_context, str(source))
         program.build(extra_flags)
         return Program(program)
 
-    def allocate_raw(self, n_bytes):
-        """Create an untyped buffer on the device."""
+    def allocate_raw(self, n_bytes: int) -> pyopencl.Buffer:
         return pyopencl.Buffer(self._pyopencl_context, pyopencl.mem_flags.READ_WRITE, n_bytes)
 
-    def allocate(self, shape, dtype, raw=None):
+    def allocate(self, shape: Tuple[int], dtype: np.dtype,
+                 raw: Optional[pyopencl.Buffer] = None) -> pyopencl.array.Array:
         """Create a typed buffer on the device.
 
         Parameters
@@ -295,7 +264,7 @@ class Context(object):
         """
         return pyopencl.array.Array(self._pyopencl_context, shape, dtype, data=raw)
 
-    def allocate_pinned(self, shape, dtype):
+    def allocate_pinned(self, shape: Tuple[int], dtype: np.dtype) -> np.ndarray:
         """Create a buffer in host memory that can be efficiently copied
         to and from the device.
 
@@ -327,13 +296,13 @@ class Context(object):
         else:
             return np.empty(shape, dtype)
 
-    def allocate_svm_raw(self, n_bytes):
+    def allocate_svm_raw(self, n_bytes: int) -> None:
         raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
 
-    def allocate_svm(self, shape, dtype, raw=None):
+    def allocate_svm(self, shape: Tuple[int], dtype: np.ndarray, raw: Any = None) -> np.ndarray:
         raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
 
-    def create_command_queue(self, profile=False):
+    def create_command_queue(self, profile: bool = False) -> 'CommandQueue':
         """Create a new command queue associated with this context
 
         Parameters
@@ -343,18 +312,21 @@ class Context(object):
         """
         return CommandQueue(self, profile=profile)
 
-    def create_tuning_command_queue(self):
+    def create_tuning_command_queue(self) -> 'TuningCommandQueue':
         """Create a new command queue for doing autotuning"""
         return TuningCommandQueue(self)
 
-    def __enter__(self):
+    def __enter__(self) -> 'Context':
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self,
+                 exc_type: Optional[Type[BaseException]],
+                 exc_val: Optional[BaseException],
+                 exc_tb: Optional[TracebackType]) -> bool:
         return False
 
 
-class CommandQueue(object):
+class CommandQueue(AbstractCommandQueue):
     """Abstraction of a command queue. If no existing command queue is passed
     to the constructor, a new one is created.
 
@@ -368,7 +340,9 @@ class CommandQueue(object):
         If true and `pyopencl_command_queue` is omitted, enabling profiling
         (timing) on the queue.
     """
-    def __init__(self, context, pyopencl_command_queue=None, profile=False):
+    def __init__(self, context: Context,
+                 pyopencl_command_queue: Optional[pyopencl.CommandQueue] = None,
+                 profile: bool = False) -> None:
         self.context = context
         if pyopencl_command_queue is None:
             pyopencl_device = context._pyopencl_context.devices[0]
@@ -380,7 +354,8 @@ class CommandQueue(object):
                 properties)
         self._pyopencl_command_queue = pyopencl_command_queue
 
-    def enqueue_read_buffer(self, buffer, data, blocking=True):
+    def enqueue_read_buffer(self, buffer: pyopencl.array.Array, data: Any,
+                            blocking: bool = True) -> None:
         """Copy data from the device to the host. Only whole-buffer copies are
         supported, and the shape and type must match. In general, one should use
         the convenience functions in :class:`accel.DeviceArray`.
@@ -399,7 +374,8 @@ class CommandQueue(object):
         else:
             buffer.get(ary=data, queue=self._pyopencl_command_queue, async_=not blocking)
 
-    def enqueue_write_buffer(self, buffer, data, blocking=True):
+    def enqueue_write_buffer(self, buffer: pyopencl.array.Array, data: Any,
+                             blocking: bool = True) -> None:
         """Copy data from the host to the device. Only whole-buffer copies are
         supported, and the shape and type must match. In general, one should
         use the convenience functions in :class:`accel.DeviceArray`.
@@ -412,7 +388,7 @@ class CommandQueue(object):
             Source
         blocking : boolean (optional)
             If true (default), the call blocks until the source has been fully
-            read (it has no necessarily reached the device).
+            read (it has not necessarily reached the device).
         """
         if hasattr(data, 'enqueue_write_buffer'):
             data.enqueue_write_buffer(self, buffer, blocking)
@@ -420,7 +396,7 @@ class CommandQueue(object):
             buffer.set(ary=data, queue=self._pyopencl_command_queue, async_=not blocking)
 
     def enqueue_copy_buffer(
-            self, src_buffer, dest_buffer):
+            self, src_buffer: pyopencl.array.Array, dest_buffer: pyopencl.array.Array) -> None:
         """Copy one buffer to another.
 
         Parameters
@@ -433,8 +409,9 @@ class CommandQueue(object):
             src=src_buffer.data, dest=dest_buffer.data)
 
     def enqueue_copy_buffer_rect(
-            self, src_buffer, dest_buffer, src_origin, dest_origin,
-            shape, src_strides, dest_strides):
+            self, src_buffer: pyopencl.array.Array, dest_buffer: pyopencl.array.Array,
+            src_origin: int, dest_origin: int,
+            shape: Sequence[int], src_strides: Sequence[int], dest_strides: Sequence[int]) -> None:
         """Copy a subregion of one buffer to another. This is a low-level
         interface that ignores the shape, strides etc of the buffers, and
         treats them as byte arrays. It also only supports 3 or fewer
@@ -466,8 +443,10 @@ class CommandQueue(object):
             src_pitches=src_strides[1:], dst_pitches=dest_strides[1:])
 
     def enqueue_read_buffer_rect(
-            self, buffer, data, buffer_origin, data_origin, shape,
-            buffer_strides, data_strides, blocking=True):
+            self, buffer: pyopencl.array.Array, data: Any,
+            buffer_origin: int, data_origin: int, shape: Sequence[int],
+            buffer_strides: Sequence[int], data_strides: Sequence[int],
+            blocking: bool = True) -> None:
         """Copy a region of a buffer to host memory. This is a low-level
         interface that ignores the shape, strides etc of the buffers, and
         treats them as byte arrays. It also only supports 3 or fewer dimensions. Use
@@ -506,8 +485,10 @@ class CommandQueue(object):
                 host_pitches=data_strides[1:], buffer_pitches=buffer_strides[1:])
 
     def enqueue_write_buffer_rect(
-            self, buffer, data, buffer_origin, data_origin, shape,
-            buffer_strides, data_strides, blocking=True):
+            self, buffer: pyopencl.array.Array, data: Any,
+            buffer_origin: int, data_origin: int, shape: Sequence[int],
+            buffer_strides: Sequence[int], data_strides: Sequence[int],
+            blocking: bool = True) -> None:
         """Copy a region of host memory to a buffer. This is a low-level
         interface that ignores the shape, strides etc of the buffers, and
         treats them as byte arrays. It also only supports 3 or fewer dimensions. Use
@@ -545,7 +526,7 @@ class CommandQueue(object):
                 region=shape,
                 host_pitches=data_strides[1:], buffer_pitches=buffer_strides[1:])
 
-    def enqueue_zero_buffer(self, buffer):
+    def enqueue_zero_buffer(self, buffer: pyopencl.array.Array) -> None:
         """Fill a buffer with zero bytes.
 
         Parameters
@@ -556,13 +537,14 @@ class CommandQueue(object):
                                      np.uint8(0), 0, buffer.data.get_info(pyopencl.mem_info.SIZE))
 
     @classmethod
-    def _raw_arg(cls, arg):
+    def _raw_arg(cls, arg: Any) -> Any:
         if isinstance(arg, pyopencl.array.Array):
             return arg.data
         else:
             return arg
 
-    def _enqueue_kernel(self, kernel, args, global_size, local_size):
+    def _enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
+                        global_size: Tuple[int], local_size: Tuple[int]) -> pyopencl.Event:
         """Enqueue a kernel to the command queue.
 
         This version returns the OpenCL event object. Refer to
@@ -577,7 +559,8 @@ class CommandQueue(object):
         return kernel._pyopencl_kernel(self._pyopencl_command_queue,
                                        global_size, local_size, *args)
 
-    def enqueue_kernel(self, kernel, args, global_size, local_size):
+    def enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
+                       global_size: Tuple[int], local_size: Tuple[int]) -> None:
         """Enqueue a kernel to the command queue.
 
         .. warning:: It is not thread-safe to call this function in two threads
@@ -599,51 +582,52 @@ class CommandQueue(object):
         """
         self._enqueue_kernel(kernel, args, global_size, local_size)
 
-    def enqueue_marker(self):
+    def enqueue_marker(self) -> Event:
         """Create an event at this point in the command queue"""
         return Event(pyopencl.enqueue_marker(self._pyopencl_command_queue))
 
-    def enqueue_wait_for_events(self, events):
+    def enqueue_wait_for_events(self, events: Sequence[Event]) -> None:
         """Enqueue a barrier to wait for all events in `events`."""
         # OpenCL has some odd semantics for an empty wait list, hence the check
         if events:
             pyopencl.enqueue_barrier(self._pyopencl_command_queue,
                                      [x._pyopencl_event for x in events])
 
-    def flush(self):
+    def flush(self) -> None:
         """Start enqueued work running, but do not wait for it to complete"""
         self._pyopencl_command_queue.flush()
 
-    def finish(self):
+    def finish(self) -> None:
         """Block until all enqueued work has completed"""
         self._pyopencl_command_queue.finish()
 
 
-class TuningCommandQueue(CommandQueue):
+class TuningCommandQueue(CommandQueue, AbstractTuningCommandQueue):
     """Command queue with extra facilities for autotuning. It keeps
     track of kernels that are enqueued since the last call to
     :meth:`start_tuning`, and reports the total time they consume
     when :meth:`stop_tuning` is called.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         kwargs['profile'] = True
         super(TuningCommandQueue, self).__init__(*args, **kwargs)
         self.is_tuning = False
-        self.events = []
+        self.events = []        # type: List[pyopencl.Event]
 
-    def start_tuning(self):
+    def start_tuning(self) -> None:
         self.is_tuning = True
         self.events = []
 
-    def enqueue_kernel(self, kernel, args, global_size, local_size):
+    def enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
+                       global_size: Tuple[int], local_size: Tuple[int]) -> None:
         if not self.is_tuning:
             super(TuningCommandQueue, self).enqueue_kernel(kernel, args, global_size, local_size)
         else:
             event = self._enqueue_kernel(kernel, args, global_size, local_size)
             self.events.append(event)
 
-    def stop_tuning(self):
+    def stop_tuning(self) -> float:
         self.finish()
         elapsed = 0.0
         if self.events:

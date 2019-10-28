@@ -20,6 +20,7 @@ import sys
 import io
 import itertools
 from collections import OrderedDict
+from typing import List
 
 import numpy as np
 import mako.lexer
@@ -40,12 +41,12 @@ except ImportError:
     have_opencl = False
 
 
-def divup(x, y):
+def divup(x: int, y: int) -> int:
     """Divide x by y and round the result upwards"""
     return (x + y - 1) // y
 
 
-def roundup(x, y):
+def roundup(x: int, y: int) -> int:
     """Rounds x up to the next multiple of y"""
     return divup(x, y) * y
 
@@ -59,11 +60,11 @@ class LinenoLexer(mako.lexer.Lexer):
         self.preprocessor.insert(0, self._lineno_preproc)
 
     @classmethod
-    def _escape_filename(cls, filename):
+    def _escape_filename(cls, filename: str) -> str:
         """Escapes a string for the C preprocessor"""
         return '"' + re.sub(r'([\\"])', r'\\\1', filename) + '"'
 
-    def _lineno_preproc(self, source):
+    def _lineno_preproc(self, source: str):
         """Insert #line directives between every line in `source` and return
         the result.
         """
@@ -83,7 +84,7 @@ class LinenoLexer(mako.lexer.Lexer):
         return ''.join(out)
 
 
-def _make_lookup(extra_dirs):
+def _make_lookup(extra_dirs: List[str]) -> TemplateLookup:
     dirs = extra_dirs + [pkg_resources.resource_filename(__name__, '')]
     return TemplateLookup(dirs, lexer_cls=LinenoLexer, strict_undefined=True)
 
