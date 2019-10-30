@@ -1,7 +1,6 @@
-"""Abstraction layer over PyOpenCL to present an interface that is common
-between CUDA and OpenCL. This is only the subset that is needed so far. New
-functionality can be added, but should be kept in sync with
-:mod:`katsdpsigproc.cuda`.
+"""Abstraction layer over PyOpenCL.
+
+It implements the abstract interfaces defined by :mod:`katsdpsigproc.abc`.
 """
 
 from typing import List, Tuple, Sequence, Optional, Callable, Type, Any
