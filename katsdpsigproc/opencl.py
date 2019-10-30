@@ -16,15 +16,15 @@ from .abc import (AbstractProgram, AbstractKernel, AbstractDevice, AbstractConte
 
 
 class _DummyArray:
-    """Trivial dummy for :class:`pyopencl.array.Array`, that just has
-    a `data` attribute.
-    """
+    """Trivial dummy for :class:`pyopencl.array.Array`, that just has a `data` attribute."""
     def __init__(self, data: Any) -> None:
         self.data = data
 
 
 class _PinnedAMD(np.ndarray):
-    """Pinned memory abstraction for AMD GPUs. Copies to the device
+    """Pinned memory abstraction for AMD GPUs.
+    
+    Copies to the device
     are done by unmapping the buffer, enqueuing the copy, and remapping
     the buffer. This is based on AMD's optimization guide.
     """
@@ -74,11 +74,11 @@ class _PinnedAMD(np.ndarray):
 
         Parameters
         ----------
-        queue : :class:`CommandQueue`
+        queue
             Queue for the copy
-        buffer : `pyopencl.array.Array`
+        buffer
             Target buffer
-        blocking : bool
+        blocking
             If `True`, wait for the copy to complete before returning
         """
         def transfer():
@@ -92,11 +92,11 @@ class _PinnedAMD(np.ndarray):
 
         Parameters
         ----------
-        queue : :class:`CommandQueue`
+        queue
             Queue for the copy
-        buffer : `pyopencl.array.Array`
+        buffer
             Source buffer
-        blocking : bool
+        blocking
             If `True`, wait for the copy to complete before returning
         """
         def transfer():
@@ -135,7 +135,7 @@ class Program(AbstractProgram):
 
 
 class Kernel(AbstractKernel):
-    def __init__(self, program: Program, name: str):
+    def __init__(self, program: Program, name: str) -> None:
         self._pyopencl_kernel = pyopencl.Kernel(program._pyopencl_program, name)
 
 
@@ -157,7 +157,7 @@ class Event(AbstractEvent):
 
 
 class Device(AbstractDevice):
-    """Abstraction of an OpenCL device"""
+    """Abstraction of an OpenCL device."""
 
     def __init__(self, pyopencl_device: pyopencl.Device) -> None:
         self._pyopencl_device = pyopencl_device
@@ -234,8 +234,6 @@ class Context(AbstractContext):
 
     @property
     def device(self) -> Device:
-        """Return the device associated with the context (or the first device,
-        if there are multiple)."""
         return Device(self._pyopencl_context.devices[0])
 
     def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> Program:
@@ -251,30 +249,9 @@ class Context(AbstractContext):
 
     def allocate(self, shape: Tuple[int], dtype: np.dtype,
                  raw: Optional[pyopencl.Buffer] = None) -> pyopencl.array.Array:
-        """Create a typed buffer on the device.
-
-        Parameters
-        ----------
-        shape : tuple
-            Shape for the array
-        dtype : numpy dtype
-            Type for the data
-        raw : PyOpenCL buffer, optional
-            Memory backing the array (automatically allocated if `None`
-        """
         return pyopencl.array.Array(self._pyopencl_context, shape, dtype, data=raw)
 
     def allocate_pinned(self, shape: Tuple[int], dtype: np.dtype) -> np.ndarray:
-        """Create a buffer in host memory that can be efficiently copied
-        to and from the device.
-
-        Parameters
-        ----------
-        shape : tuple
-            Shape for the array
-        dtype : numpy dtype
-            Type for the data
-        """
         device = self._pyopencl_context.devices[0]
         if (self._force_pinned_amd
             or ((device.type & pyopencl.device_type.GPU)
@@ -303,17 +280,9 @@ class Context(AbstractContext):
         raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
 
     def create_command_queue(self, profile: bool = False) -> 'CommandQueue':
-        """Create a new command queue associated with this context
-
-        Parameters
-        ----------
-        profile : boolean
-            If true, the command queue will support timing kernels
-        """
         return CommandQueue(self, profile=profile)
 
     def create_tuning_command_queue(self) -> 'TuningCommandQueue':
-        """Create a new command queue for doing autotuning"""
         return TuningCommandQueue(self)
 
     def __enter__(self) -> 'Context':
@@ -332,11 +301,11 @@ class CommandQueue(AbstractCommandQueue):
 
     Parameters
     ----------
-    context : :class:`Context`
+    context
         Context owning the queue
-    pyopencl_command_queue : :class:`pyopencl.CommandQueue` (optional)
+    pyopencl_command_queue
         Existing command queue to wrap
-    profile : boolean
+    profile
         If true and `pyopencl_command_queue` is omitted, enabling profiling
         (timing) on the queue.
     """
@@ -356,19 +325,6 @@ class CommandQueue(AbstractCommandQueue):
 
     def enqueue_read_buffer(self, buffer: pyopencl.array.Array, data: Any,
                             blocking: bool = True) -> None:
-        """Copy data from the device to the host. Only whole-buffer copies are
-        supported, and the shape and type must match. In general, one should use
-        the convenience functions in :class:`accel.DeviceArray`.
-
-        Parameters
-        ----------
-        buffer : `pyopencl.array.Array`
-            Source
-        data : array-like
-            Target
-        blocking : boolean (optional)
-            If true (default) the call blocks until the copy is complete
-        """
         if hasattr(data, 'enqueue_read_buffer'):
             data.enqueue_read_buffer(self, buffer, blocking)
         else:
@@ -376,20 +332,6 @@ class CommandQueue(AbstractCommandQueue):
 
     def enqueue_write_buffer(self, buffer: pyopencl.array.Array, data: Any,
                              blocking: bool = True) -> None:
-        """Copy data from the host to the device. Only whole-buffer copies are
-        supported, and the shape and type must match. In general, one should
-        use the convenience functions in :class:`accel.DeviceArray`.
-
-        Parameters
-        ----------
-        buffer : :class:`pyopencl.array.Array`
-            Target
-        data : array-like
-            Source
-        blocking : boolean (optional)
-            If true (default), the call blocks until the source has been fully
-            read (it has not necessarily reached the device).
-        """
         if hasattr(data, 'enqueue_write_buffer'):
             data.enqueue_write_buffer(self, buffer, blocking)
         else:
@@ -397,13 +339,6 @@ class CommandQueue(AbstractCommandQueue):
 
     def enqueue_copy_buffer(
             self, src_buffer: pyopencl.array.Array, dest_buffer: pyopencl.array.Array) -> None:
-        """Copy one buffer to another.
-
-        Parameters
-        ----------
-        src_buffer,dest_buffer : :class:`pyopencl.array.Array`
-            Source and destination buffers
-        """
         pyopencl.enqueue_copy(
             self._pyopencl_command_queue,
             src=src_buffer.data, dest=dest_buffer.data)
@@ -412,27 +347,6 @@ class CommandQueue(AbstractCommandQueue):
             self, src_buffer: pyopencl.array.Array, dest_buffer: pyopencl.array.Array,
             src_origin: int, dest_origin: int,
             shape: Sequence[int], src_strides: Sequence[int], dest_strides: Sequence[int]) -> None:
-        """Copy a subregion of one buffer to another. This is a low-level
-        interface that ignores the shape, strides etc of the buffers, and
-        treats them as byte arrays. It also only supports 3 or fewer
-        dimensions. Use
-        :py:meth:`~katsdpsigproc.accel.DeviceArray.copy_region` for a
-        high-level interface.
-
-        Parameters
-        ----------
-        src_buffer,dest_buffer : :class:`pyopencl.array.Array`
-            Source and destination buffers
-        src_origin,dest_origin : int
-            Offsets for the start of the copy, in bytes
-        shape : sequence of int
-            Shape of the region to copy (1-3 elements). The first dimension is
-            a byte count.
-        src_strides,dest_strides : sequence of int
-            Strides for the source and destination memory layout, with the same
-            length as `shape`. The first element of each must be 1, and each
-            element must be a factor of the next element.
-        """
         assert src_strides[0] == 1
         assert dest_strides[0] == 1
         pyopencl.enqueue_copy(
@@ -447,30 +361,6 @@ class CommandQueue(AbstractCommandQueue):
             buffer_origin: int, data_origin: int, shape: Sequence[int],
             buffer_strides: Sequence[int], data_strides: Sequence[int],
             blocking: bool = True) -> None:
-        """Copy a region of a buffer to host memory. This is a low-level
-        interface that ignores the shape, strides etc of the buffers, and
-        treats them as byte arrays. It also only supports 3 or fewer dimensions. Use
-        :py:meth:`~katsdpsigproc.accel.DeviceArray.set_region` for a high-level
-        interface.
-
-        Parameters
-        ----------
-        buffer : :class`pyopencl.array.Array`
-            Source
-        data : array-like
-            Target
-        buffer_origin, data_origin : int
-            Offsets for the start of the copy, in bytes
-        shape : sequence of int
-            Shape of the region to copy (1-3 elements). The first dimension is
-            a byte count.
-        buffer_strides,data_strides : sequence of int
-            Strides for the destination and source memory layout, with the same
-            length as `shape`. The first element of each must be 1, and each
-            element must be a factor of the next element.
-        blocking : bool, optional
-            If true, block until the transfer is complete.
-        """
         assert buffer_strides[0] == 1
         assert data_strides[0] == 1
         if hasattr(data, 'enqueue_read_buffer_rect'):
@@ -489,30 +379,6 @@ class CommandQueue(AbstractCommandQueue):
             buffer_origin: int, data_origin: int, shape: Sequence[int],
             buffer_strides: Sequence[int], data_strides: Sequence[int],
             blocking: bool = True) -> None:
-        """Copy a region of host memory to a buffer. This is a low-level
-        interface that ignores the shape, strides etc of the buffers, and
-        treats them as byte arrays. It also only supports 3 or fewer dimensions. Use
-        :py:meth:`~katsdpsigproc.accel.DeviceArray.set_region` for a high-level
-        interface.
-
-        Parameters
-        ----------
-        buffer : :class`pyopencl.array.Array`
-            Target
-        data : array-like
-            Source
-        buffer_origin, data_origin : int
-            Offsets for the start of the copy, in bytes
-        shape : sequence of int
-            Shape of the region to copy (1-3 elements). The first dimension is
-            a byte count.
-        buffer_strides,data_strides : sequence of int
-            Strides for the destination and source memory layout, with the same
-            length as `shape`. The first element of each must be 1, and each
-            element must be a factor of the next element.
-        blocking : bool, optional
-            If true, block until the transfer is complete.
-        """
         assert buffer_strides[0] == 1
         assert data_strides[0] == 1
         if hasattr(data, 'enqueue_write_buffer_rect'):
@@ -527,12 +393,6 @@ class CommandQueue(AbstractCommandQueue):
                 host_pitches=data_strides[1:], buffer_pitches=buffer_strides[1:])
 
     def enqueue_zero_buffer(self, buffer: pyopencl.array.Array) -> None:
-        """Fill a buffer with zero bytes.
-
-        Parameters
-        ----------
-        buffer : :class:`pyopencl.array.Array`
-        """
         pyopencl.enqueue_fill_buffer(self._pyopencl_command_queue, buffer.data,
                                      np.uint8(0), 0, buffer.data.get_info(pyopencl.mem_info.SIZE))
 
@@ -561,52 +421,30 @@ class CommandQueue(AbstractCommandQueue):
 
     def enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
                        global_size: Tuple[int], local_size: Tuple[int]) -> None:
-        """Enqueue a kernel to the command queue.
-
-        .. warning:: It is not thread-safe to call this function in two threads
-            on the same kernel at the same time.
-
-        Parameters
-        ----------
-        kernel : :class:`Kernel`
-            Kernel to run
-        args : sequence
-            Arguments to pass to the kernel. Refer to the PyOpenCL
-            documentation for details. Additionally, this function allows
-            a :class:`pyopencl.array.Array` to be passed.
-        global_size : tuple
-            Number of work-items in each global dimension
-        local_size : tuple
-            Number of work-items in each local dimension. Must divide
-            exactly into `global_size`.
-        """
         self._enqueue_kernel(kernel, args, global_size, local_size)
 
     def enqueue_marker(self) -> Event:
-        """Create an event at this point in the command queue"""
         return Event(pyopencl.enqueue_marker(self._pyopencl_command_queue))
 
     def enqueue_wait_for_events(self, events: Sequence[Event]) -> None:
-        """Enqueue a barrier to wait for all events in `events`."""
         # OpenCL has some odd semantics for an empty wait list, hence the check
         if events:
             pyopencl.enqueue_barrier(self._pyopencl_command_queue,
                                      [x._pyopencl_event for x in events])
 
     def flush(self) -> None:
-        """Start enqueued work running, but do not wait for it to complete"""
         self._pyopencl_command_queue.flush()
 
     def finish(self) -> None:
-        """Block until all enqueued work has completed"""
         self._pyopencl_command_queue.finish()
 
 
 class TuningCommandQueue(CommandQueue, AbstractTuningCommandQueue):
-    """Command queue with extra facilities for autotuning. It keeps
-    track of kernels that are enqueued since the last call to
-    :meth:`start_tuning`, and reports the total time they consume
-    when :meth:`stop_tuning` is called.
+    """Command queue with extra facilities for autotuning.
+    
+    It keeps track of kernels that are enqueued since the last call to
+    :meth:`start_tuning`, and reports the total time they consume when
+    :meth:`stop_tuning` is called.
     """
 
     def __init__(self, *args, **kwargs) -> None:

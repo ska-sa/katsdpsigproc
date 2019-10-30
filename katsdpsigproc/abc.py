@@ -19,14 +19,15 @@ class AbstractProgram(ABC):
 
         Parameters
         ----------
-        name : str
+        name
             Name of the kernel function
         """
 
 
 class AbstractKernel(ABC):
-    """Abstraction of a kernel object. The object can be enqueued using
-    :meth:`CommandQueue.enqueue_kernel`.
+    """Abstraction of a kernel object.
+    
+    The object can be enqueued using :meth:`CommandQueue.enqueue_kernel`.
 
     The recommended way to create this object is via
     :meth:`Program.get_kernel`.
@@ -38,9 +39,10 @@ class AbstractKernel(ABC):
 
 
 class AbstractEvent(ABC):
-    """Abstraction of an event. This is more akin to a CUDA event than an
-    OpenCL event, in that it is a marker in a command queue rather than
-    associated with a specific command.
+    """Abstraction of an event.
+    
+    This is more akin to a CUDA event than an OpenCL event, in that it is a
+    marker in a command queue rather than associated with a specific command.
     """
 
     @abstractmethod
@@ -49,20 +51,22 @@ class AbstractEvent(ABC):
 
     @abstractmethod
     def time_since(self: _E, prior_event: _E) -> float:
-        """Return the time in seconds from `prior_event` to self. Unlike the
-        PyCUDA method of the same name, this will wait for the events to
-        complete if they have not already.
+        """Return the time in seconds from `prior_event` to self.
+        
+        Unlike the PyCUDA method of the same name, this will wait for the
+        events to complete if they have not already.
         """
 
     @abstractmethod
     def time_till(self: _E, next_event: _E) -> float:
-        """Return the time in seconds from this event to `next_event`. See
-        :meth:`time_since`.
+        """Return the time in seconds from this event to `next_event`.
+        
+        See  :meth:`time_since`.
         """
 
 
 class AbstractDevice(ABC):
-    """Abstraction of a device"""
+    """Abstraction of a device."""
 
     @abstractmethod
     def make_context(self) -> 'AbstractContext':
@@ -124,7 +128,7 @@ class AbstractDevice(ABC):
 
 
 class AbstractContext(ABC):
-    """Abstraction of an OpenCL/CUDA context"""
+    """Abstraction of an OpenCL/CUDA context."""
 
     @property
     @abstractmethod
@@ -137,9 +141,9 @@ class AbstractContext(ABC):
 
         Parameters
         ----------
-        source : str
+        source
             Source code
-        extra_flags : list, optional
+        extra_flags
             Extra parameters to pass to the compiler
         """
 
@@ -153,11 +157,11 @@ class AbstractContext(ABC):
 
         Parameters
         ----------
-        shape : tuple
+        shape
             Shape for the array
-        dtype : numpy dtype
+        dtype
             Type for the data
-        raw : Low-level buffer, optional
+        raw
             Memory backing the array (automatically allocated if ``None``)
         """
 
@@ -168,9 +172,9 @@ class AbstractContext(ABC):
 
         Parameters
         ----------
-        shape : tuple
+        shape
             Shape for the array
-        dtype : numpy dtype
+        dtype
             Type for the data
         """
 
@@ -188,7 +192,7 @@ class AbstractContext(ABC):
 
         Parameters
         ----------
-        profile : boolean
+        profile
             If true, the command queue will support timing kernels
         """
 
@@ -219,11 +223,11 @@ class AbstractCommandQueue(ABC):
 
         Parameters
         ----------
-        buffer : Low-level device array
+        buffer
             Source
-        data : array-like
+        data
             Target
-        blocking : boolean (optional)
+        blocking
             If true (default) the call blocks until the copy is complete
         """
 
@@ -235,11 +239,11 @@ class AbstractCommandQueue(ABC):
 
         Parameters
         ----------
-        buffer : Low-level device array
+        buffer
             Target
         data : array-like
             Source
-        blocking : boolean (optional)
+        blocking
             If true (default), the call blocks until the source has been fully
             read (it has not necessarily reached the device).
         """
@@ -250,7 +254,7 @@ class AbstractCommandQueue(ABC):
 
         Parameters
         ----------
-        src_buffer,dest_buffer : Low-level device array
+        src_buffer,dest_buffer
             Source and destination buffers
         """
 
@@ -258,23 +262,24 @@ class AbstractCommandQueue(ABC):
     def enqueue_copy_buffer_rect(
             self, src_buffer: Any, dest_buffer: Any, src_origin: int, dest_origin: int,
             shape: Sequence[int], src_strides: Sequence[int], dest_strides: Sequence[int]) -> None:
-        """Copy a subregion of one buffer to another. This is a low-level
-        interface that ignores the shape, strides etc of the buffers, and
-        treats them as byte arrays. It also only supports 3 or fewer
-        dimensions. Use
+        """Copy a subregion of one buffer to another.
+        
+        This is a low-level interface that ignores the shape, strides etc of
+        the buffers, and treats them as byte arrays. It also only supports 3 or
+        fewer dimensions. Use
         :py:meth:`~katsdpsigproc.accel.DeviceArray.copy_region` for a
         high-level interface.
 
         Parameters
         ----------
-        src_buffer,dest_buffer : Low-level device array
+        src_buffer,dest_buffer
             Source and destination buffers
-        src_origin,dest_origin : int
+        src_origin,dest_origin
             Offsets for the start of the copy, in bytes
-        shape : sequence of int
+        shape
             Shape of the region to copy (1-3 elements). The first dimension is
             a byte count.
-        src_strides,dest_strides : sequence of int
+        src_strides,dest_strides
             Strides for the source and destination memory layout, with the same
             length as `shape`. The first element of each must be 1, and each
             element must be a factor of the next element.
@@ -286,28 +291,30 @@ class AbstractCommandQueue(ABC):
             buffer_origin: int, data_origin: int, shape: Sequence[int],
             buffer_strides: Sequence[int], data_strides: Sequence[int],
             blocking: bool = True) -> None:
-        """Copy a region of a buffer to host memory. This is a low-level
-        interface that ignores the shape, strides etc of the buffers, and
-        treats them as byte arrays. It also only supports 3 or fewer dimensions. Use
+        """Copy a region of a buffer to host memory.
+        
+        This is a low-level interface that ignores the shape, strides etc of
+        the buffers, and treats them as byte arrays. It also only supports 3 or
+        fewer dimensions. Use
         :py:meth:`~katsdpsigproc.accel.DeviceArray.set_region` for a high-level
         interface.
 
         Parameters
         ----------
-        buffer : Low-level device array
+        buffer
             Source
         data : array-like
             Target
-        buffer_origin, data_origin : int
+        buffer_origin, data_origin
             Offsets for the start of the copy, in bytes
-        shape : sequence of int
+        shape
             Shape of the region to copy (1-3 elements). The first dimension is
             a byte count.
-        buffer_strides,data_strides : sequence of int
+        buffer_strides,data_strides
             Strides for the destination and source memory layout, with the same
             length as `shape`. The first element of each must be 1, and each
             element must be a factor of the next element.
-        blocking : bool, optional
+        blocking
             If true, block until the transfer is complete.
         """
 
@@ -317,42 +324,39 @@ class AbstractCommandQueue(ABC):
             buffer_origin: int, data_origin: int, shape: Sequence[int],
             buffer_strides: Sequence[int], data_strides: Sequence[int],
             blocking: bool = True) -> None:
-        """Copy a region of host memory to a buffer. This is a low-level
-        interface that ignores the shape, strides etc of the buffers, and
-        treats them as byte arrays. It also only supports 3 or fewer dimensions. Use
+        """Copy a region of host memory to a buffer.
+        
+        This is a low-level interface that ignores the shape, strides etc of
+        the buffers, and treats them as byte arrays. It also only supports 3 or
+        fewer dimensions. Use
         :py:meth:`~katsdpsigproc.accel.DeviceArray.set_region` for a high-level
         interface.
 
         Parameters
         ----------
-        buffer : Low-level array
+        buffer
             Target
         data : array-like
             Source
-        buffer_origin, data_origin : int
+        buffer_origin, data_origin
             Offsets for the start of the copy, in bytes
-        shape : sequence of int
+        shape
             Shape of the region to copy (1-3 elements). The first dimension is
             a byte count.
-        buffer_strides,data_strides : sequence of int
+        buffer_strides,data_strides
             Strides for the destination and source memory layout, with the same
             length as `shape`. The first element of each must be 1, and each
             element must be a factor of the next element.
-        blocking : bool, optional
+        blocking
             If true, block until the transfer is complete.
         """
 
     @abstractmethod
     def enqueue_zero_buffer(self, buffer: Any) -> None:
-        """Fill a buffer with zero bytes.
-
-        Parameters
-        ----------
-        buffer : Low-level device array
-        """
+        """Fill a buffer with zero bytes."""
 
     @abstractmethod
-    def enqueue_kernel(self, kernel: AbstractKernel, args: Sequence[Any],
+    def enqueue_kernel(self, kernel: Any, args: Sequence[Any],
                        global_size: Tuple[int], local_size: Tuple[int]) -> None:
         """Enqueue a kernel to the command queue.
 
@@ -361,15 +365,15 @@ class AbstractCommandQueue(ABC):
 
         Parameters
         ----------
-        kernel : :class:`Kernel`
+        kernel
             Kernel to run
-        args : sequence
+        args
             Arguments to pass to the kernel. Refer to the PyOpenCL/CUDA
             documentation for details. Additionally, this function allows
             a low-level device array to be passed.
-        global_size : tuple
+        global_size
             Number of work-items in each global dimension
-        local_size : tuple
+        local_size
             Number of work-items in each local dimension. Must divide
             exactly into `global_size`.
         """
@@ -379,8 +383,11 @@ class AbstractCommandQueue(ABC):
         """Create an event at this point in the command queue"""
 
     @abstractmethod
-    def enqueue_wait_for_events(self, events: Sequence[AbstractEvent]) -> None:
+    def enqueue_wait_for_events(self, events: Sequence[Any]) -> None:
         """Enqueue a barrier to wait for all events in `events`."""
+        # Note: the sequence elements must be events of the event class
+        # for the specific API. Python's type system isn't powerful enough
+        # to express that, hence Any.
 
     @abstractmethod
     def flush(self) -> None:
@@ -392,10 +399,11 @@ class AbstractCommandQueue(ABC):
 
 
 class AbstractTuningCommandQueue(AbstractCommandQueue):
-    """Command queue with extra facilities for autotuning. It keeps
-    track of kernels that are enqueued since the last call to
-    :meth:`start_tuning`, and reports the total time they consume
-    when :meth:`stop_tuning` is called.
+    """Command queue with extra facilities for autotuning.
+    
+    It keeps track of kernels that are enqueued since the last call to
+    :meth:`start_tuning`, and reports the total time they consume when
+    :meth:`stop_tuning` is called.
     """
 
     @abstractmethod

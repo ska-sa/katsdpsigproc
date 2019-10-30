@@ -101,8 +101,8 @@ def force_autotune(test, *args, **kw):
 
 
 # Prevent nose from treating it as a test
-device_test.__test__ = False
-cuda_test.__test__ = False
+device_test.__test__ = False         # type: ignore
+cuda_test.__test__ = False           # type: ignore
 
 
 class TestLinenoLexer(object):
