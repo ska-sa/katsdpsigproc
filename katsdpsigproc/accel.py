@@ -8,9 +8,9 @@ on whatever device is available.
 
 Attributes
 ----------
-have_cuda : boolean
+have_cuda : bool
     True if PyCUDA could be imported (does not guarantee any CUDA devices)
-have_opencl : boolean
+have_opencl : bool
     True if PyOpenCL could be imported (does not guarantee any OpenCL devices)
 """
 
@@ -18,15 +18,20 @@ import re
 import os
 import sys
 import io
+from abc import ABC, abstractmethod
 import itertools
 from collections import OrderedDict
-from typing import List
+from typing import (List, Tuple, Set, Mapping, MutableMapping,
+                    Callable, Iterable, Optional, Union, Any)
 
 import numpy as np
 import mako.lexer
 from mako.template import Template
 from mako.lookup import TemplateLookup
 import pkg_resources
+
+from .abc import (AbstractContext, AbstractDevice, AbstractCommandQueue,
+                  AbstractAllocator, AbstractProgram)
 
 try:
     import pycuda.driver
@@ -39,6 +44,9 @@ try:
     have_opencl = True
 except ImportError:
     have_opencl = False
+
+        
+_Slice = Union[int, slice, None, Tuple[Union[int, slice, None], ...]]
 
 
 def divup(x: int, y: int) -> int:
@@ -55,7 +63,7 @@ class LinenoLexer(mako.lexer.Lexer):
     """A wrapper that inserts #line directives into the source code. It
     is used by passing `lexer_cls` to the mako template constructor.
     """
-    def __init__(self, *args, **kw):
+    def __init__(self, *args, **kw) -> None:
         super(LinenoLexer, self).__init__(*args, **kw)
         self.preprocessor.insert(0, self._lineno_preproc)
 
@@ -64,7 +72,7 @@ class LinenoLexer(mako.lexer.Lexer):
         """Escapes a string for the C preprocessor"""
         return '"' + re.sub(r'([\\"])', r'\\\1', filename) + '"'
 
-    def _lineno_preproc(self, source: str):
+    def _lineno_preproc(self, source: str) -> str:
         """Insert #line directives between every line in `source` and return
         the result.
         """
@@ -93,27 +101,30 @@ def _make_lookup(extra_dirs: List[str]) -> TemplateLookup:
 _lookup = _make_lookup([])
 
 
-def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None, source=None):
+def build(context: AbstractContext, name: str, render_kws: Mapping[str, Any],
+          extra_dirs: Optional[List[str]] = None,
+          extra_flags: Optional[List[str]] = None,
+          source: Optional[str] = None) -> AbstractProgram:
     """Build a source module from a mako template.
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which to compile the code
-    name : str
+    name
         Source file name, relative to the katsdpsigproc module
-    render_kws : dict, optional
+    render_kws
         Keyword arguments to pass to mako
-    extra_dirs : list of `str`, optional
+    extra_dirs
         Extra directories to search for source code
-    extra_flags : list, optional
+    extra_flags
         Flags to pass to the compiler
-    source : str, optional
+    source
         If specified, provides the source, overriding `name`
 
     Returns
     -------
-    :class:`cuda.Program` or :class:`opencl.Program`
+    program
         Compiled module
     """
     if render_kws is None:
@@ -134,9 +145,9 @@ def build(context, name, render_kws=None, extra_dirs=None, extra_flags=None, sou
     return context.compile(rendered_source, extra_flags)
 
 
-def all_devices():
+def all_devices() -> List[AbstractDevice]:
     """Return a list of all discovered devices"""
-    devices = []
+    devices = []     # type: List[AbstractDevice]
     if have_cuda:
         pycuda.driver.init()
         devices.extend(cuda.Device.get_devices())
@@ -145,7 +156,9 @@ def all_devices():
     return devices
 
 
-def create_some_context(interactive=True, device_filter=None):
+def create_some_context(
+        interactive: bool = True,
+        device_filter: Optional[Callable[[AbstractDevice], bool]] = None) -> AbstractContext:
     """Create a single-device context, selecting a device automatically. This
     is similar to `pyopencl.create_some_context`. A number of environment
     variables can be set to limit the choice to a single device:
@@ -159,12 +172,12 @@ def create_some_context(interactive=True, device_filter=None):
 
     Parameters
     ----------
-    interactive : boolean
+    interactive
         If true, and `sys.stdin.isatty()` is true, and there are multiple
         choices, it will prompt the user. Otherwise, it will choose the first
         available device, favouring CUDA over OpenCL, then GPU over
         accelerators over other OpenCL devices.
-    device_filter : callable, optional
+    device_filter
         If specified, each device in turn is passed to it, and it must return
         True to keep the device as a candidate or False to reject it.
 
@@ -174,7 +187,7 @@ def create_some_context(interactive=True, device_filter=None):
         If no device could be found or the user made an invalid selection
     """
 
-    def key(device):
+    def key(device: AbstractDevice) -> int:
         if device.is_cuda:
             return 100
         elif device.is_gpu:
@@ -184,7 +197,7 @@ def create_some_context(interactive=True, device_filter=None):
         else:
             return 30
 
-    def parse_id(envar):
+    def parse_id(envar: str) -> Optional[int]:
         if envar in os.environ:
             try:
                 num = int(os.environ[envar])
@@ -194,7 +207,7 @@ def create_some_context(interactive=True, device_filter=None):
                 pass
         return None
 
-    def parse_id_list(envar, max_parts):
+    def parse_id_list(envar: str, max_parts: int) -> Optional[List[int]]:
         """Split an environment variable of the form a[:b[:c...]] into
         its components. If the variable is not validly formatted, returns
         `None`.
@@ -215,9 +228,9 @@ def create_some_context(interactive=True, device_filter=None):
                 pass
         return None
 
-    cuda_id = None
-    opencl_id = None
-    device_id = None
+    cuda_id = None         # type: Optional[int]
+    opencl_id = None       # type: Optional[List[int]]
+    device_id = None       # type: Optional[int]
 
     device_id = parse_id('KATSDPSIGPROC_DEVICE')
     if device_id is None:
@@ -226,8 +239,8 @@ def create_some_context(interactive=True, device_filter=None):
             # Fields are platform number and device number
             opencl_id = parse_id_list('PYOPENCL_CTX', 2)
 
-    cuda_devices = []
-    opencl_devices = []
+    cuda_devices = []      # type: List[cuda.Device]
+    opencl_devices = []    # type: List[List[opencl.Device]]
     if have_cuda:
         pycuda.driver.init()
         cuda_devices = cuda.Device.get_devices()
@@ -303,7 +316,9 @@ class HostArray(np.ndarray):
         If specified, the memory will be allocated in a way that allows
         efficient copies to and from this context.
     """
-    def __new__(cls, shape, dtype, padded_shape=None, context=None):
+    def __new__(cls, shape: Tuple[int], dtype: np.ndarray,
+                padded_shape: Optional[Tuple[int]] = None,
+                context: Optional[AbstractContext] = None):
         if padded_shape is None:
             padded_shape = shape
         assert len(padded_shape) == len(shape)
@@ -322,7 +337,7 @@ class HostArray(np.ndarray):
         return obj
 
     @classmethod
-    def safe(cls, obj):
+    def safe(cls, obj: np.ndarray) -> bool:
         """Determines whether self can be copied to/from a device
         directly.
         """
@@ -332,7 +347,7 @@ class HostArray(np.ndarray):
             return False
 
     @classmethod
-    def padded_view(cls, obj):
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:
         """Retrieves the view of the full memory without padding. Returns
         `None` if `cls.safe(obj)` is `False`."""
         try:
@@ -340,7 +355,7 @@ class HostArray(np.ndarray):
         except AttributeError:
             return None
 
-    def __array_finalize__(self, obj):
+    def __array_finalize__(self, obj: 'HostArray') -> None:
         if obj is not None:
             # View casting or created from a template: we cannot vouch for it.
             self._owner = None
@@ -350,7 +365,7 @@ class HostArray(np.ndarray):
                 self.padded_shape = None
 
 
-class DeviceArray(object):
+class DeviceArray:
     """A light-weight array-like wrapper around a device buffer, that
     handles padding better than PyCUDA (which
     has very poor support).
@@ -362,19 +377,22 @@ class DeviceArray(object):
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context in which to allocate the memory
-    shape : tuple
+    shape
         Shape for the usable data
-    dtype : numpy dtype
+    dtype
         Data type
-    padded_shape : tuple, optional
+    padded_shape
         Shape for memory allocation (defaults to `shape`)
-    raw : low-level allocation from `allocate_raw` method of an allocator
-        If specified, provides the backing memory
+    raw
+        If specified, provides the backing memory. It must be created from
+        the `allocate_raw` method of an allocator.
     """
 
-    def __init__(self, context, shape, dtype, padded_shape=None, raw=None):
+    def __init__(self, context: AbstractContext, shape: Tuple[int],
+                 dtype: np.dtype, padded_shape: Optional[Tuple[int]] = None,
+                 raw: Any = None) -> None:
         if padded_shape is None:
             padded_shape = shape
         assert len(shape) == len(padded_shape)
@@ -386,19 +404,19 @@ class DeviceArray(object):
         self.buffer = context.allocate(padded_shape, dtype, raw)
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         """Number of dimensions"""
         return len(self.shape)
 
     @property
-    def strides(self):
+    def strides(self) -> Tuple[int]:
         """Strides, as in numpy"""
         ans = [self.dtype.itemsize]
         for i in range(len(self.padded_shape) - 1, 0, -1):
             ans.append(ans[-1] * self.padded_shape[i])
         return tuple(reversed(ans))
 
-    def _copyable(self, ary):
+    def _copyable(self, ary: np.ndarray) -> bool:
         """Whether `ary` can be copied to/from this array directly"""
         return (HostArray.safe(ary)
                 and ary.dtype == self.dtype
@@ -406,20 +424,18 @@ class DeviceArray(object):
                 and ary.padded_shape == self.padded_shape)
 
     @classmethod
-    def _contiguous(cls, ary):
+    def _contiguous(cls, ary: np.ndarray) -> HostArray:
         """Returns a contiguous view of a copyable array, for passing to
         PyCUDA or PyOpenCL functions (which require a contiguous view).
         """
         return HostArray.padded_view(ary)
 
-    def empty_like(self):
+    def empty_like(self) -> HostArray:
         """Return an array-like object that can be efficiently copied."""
         return HostArray(self.shape, self.dtype, self.padded_shape, context=self.context)
 
-    def asarray_like(self, ary):
-        """Return an array with the same content as `ary`, but the same memory
-        layout as self.
-        """
+    def asarray_like(self, ary: np.ndarray) -> HostArray:
+        """Return an array with the same content as `ary`, but the same memory layout as `self`."""
         assert ary.shape == self.shape
         if self._copyable(ary):
             return ary
@@ -427,29 +443,31 @@ class DeviceArray(object):
         np.copyto(tmp, ary, casting='no')
         return tmp
 
-    def set(self, command_queue, ary):
+    def set(self, command_queue: AbstractCommandQueue, ary: np.ndarray) -> None:
         """Synchronous copy from `ary` to self"""
         ary = self.asarray_like(ary)
         command_queue.enqueue_write_buffer(self.buffer, self._contiguous(ary))
 
-    def get(self, command_queue, ary=None):
-        """Synchronous copy from self to `ary`. If `ary` is None,
-        or if it is not suitable as a target, the copy is to a newly
-        allocated :class:`HostArray`. The actual target is returned.
+    def get(self, command_queue: AbstractCommandQueue, ary: Optional[np.ndarray] = None) -> None:
+        """Synchronous copy from self to `ary`.
+        
+        If `ary` is None, or if it is not suitable as a target, the copy is to
+        a newly allocated :class:`HostArray`. The actual target is returned.
         """
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
         command_queue.enqueue_read_buffer(self.buffer, self._contiguous(ary))
         return ary
 
-    def set_async(self, command_queue, ary):
+    def set_async(self, command_queue: AbstractCommandQueue, ary: np.ndarray) -> None:
         """Asynchronous copy from `ary` to self"""
         ary = self.asarray_like(ary)
         command_queue.enqueue_write_buffer(
             self.buffer, self._contiguous(ary), blocking=False)
 
-    def get_async(self, command_queue, ary=None):
-        """Asynchronous copy from self to `ary` (see `get`)."""
+    def get_async(self, command_queue: AbstractCommandQueue,
+                  ary: Optional[np.ndarray] = None) -> None:
+        """Asynchronous copy from self to `ary` (see :meth:`get`)."""
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
         command_queue.enqueue_read_buffer(
@@ -457,7 +475,7 @@ class DeviceArray(object):
         return ary
 
     @classmethod
-    def _canonical_slice(cls, region, shape, strides):
+    def _canonical_slice(cls, region: _Slice, shape: Tuple[int], strides: Tuple[int]):
         """Transforms a slice selection into a form that is easier to consume
         internally.
 
@@ -496,7 +514,7 @@ class DeviceArray(object):
         origin = 0
         self_strides = strides
         self_shape = shape
-        shape = []
+        shape = []      # type: List[int]
         strides = []
         axis = 0
         if not isinstance(region, tuple):
@@ -535,7 +553,10 @@ class DeviceArray(object):
         return origin, shape, strides
 
     @classmethod
-    def _region_transfer_params(cls, src, dest, src_region, dest_region):
+    def _region_transfer_params(
+            cls, src: Any, dest: Any,
+            src_region: _Slice,
+            dest_region: _Slice) -> Tuple[int, int, List[int], List[int], List[int]]:
         """Compute offsets, strides and shape for a copy. Where possible, the
         dimension of the copy is reduced by exploiting contiguity. When
         interpreting the return values, the arrays should be thought of as byte
@@ -592,8 +613,12 @@ class DeviceArray(object):
         return src_origin, dest_origin, new_shape, new_src_strides, new_dest_strides
 
     @classmethod
-    def _transfer_region(cls, func, buffer1, buffer2, origin1, origin2,
-                         shape, strides1, strides2, **kwargs):
+    def _transfer_region(cls, func: Callable,
+                         buffer1: Any, buffer2: Any,
+                         origin1: int, origin2: int,
+                         shape: Tuple[int, ...],
+                         strides1: Tuple[int, ...], strides2: Tuple[int, ...],
+                         **kwargs) -> None:
         """Wrapper around the command-queue's copy that handles high dimensions
         by looping.
         """
@@ -607,7 +632,8 @@ class DeviceArray(object):
         else:
             func(buffer1, buffer2, origin1, origin2, shape, strides1, strides2, **kwargs)
 
-    def copy_region(self, command_queue, dest, src_region, dest_region):
+    def copy_region(self, command_queue: AbstractCommandQueue, dest: DeviceArray,
+                    src_region: _Slice, dest_region: _Slice) -> None:
         """Perform a device-to-device copy of a subregion of `self` to `dest`.
         If the source and destination memory overlap, the result is undefined.
 
@@ -616,11 +642,11 @@ class DeviceArray(object):
 
         Parameters
         ----------
-        command_queue : |CommandQueue|
+        command_queue
             Command queue for the asynchronous operation.
-        dest : :class:`DeviceArray`
+        dest
             Target of the copy
-        src_region,dest_region : tuple
+        src_region,dest_region
             Index expressions constructed by `np.s_` or `np.index_exp`.
 
         Raises
@@ -639,7 +665,8 @@ class DeviceArray(object):
             self.buffer, dest.buffer, src_origin, dest_origin,
             shape, src_strides, dest_strides)
 
-    def get_region(self, command_queue, ary, device_region, ary_region, blocking=True):
+    def get_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
+                   device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
         """Perform a device-to-host copy of a subregion of `self` to `ary`.
 
         See :meth:`_canonical_slice` for a description of what slice
@@ -647,14 +674,14 @@ class DeviceArray(object):
 
         Parameters
         ----------
-        command_queue : |CommandQueue|
+        command_queue
             Command queue for the operation.
-        ary : :class:`DeviceArray`
+        ary
             Target of the copy
-        device_region,ary_region : tuple
+        device_region,ary_region
             Index expressions constructed by `np.s_` or `np.index_exp`, to specify
             the source and target regions.
-        blocking : bool, optional
+        blocking
             If false, the operation will be asynchronous.
 
         Raises
@@ -677,7 +704,8 @@ class DeviceArray(object):
             self.buffer, self._contiguous(ary), device_origin, ary_origin,
             shape, device_strides, ary_strides, blocking=blocking)
 
-    def set_region(self, command_queue, ary, device_region, ary_region, blocking=True):
+    def set_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
+                   device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
         """Perform a host-to-device copy of a subregion `ary` to `self`.
 
         See :meth:`_canonical_slice` for a description of what slice
@@ -716,7 +744,7 @@ class DeviceArray(object):
             self.buffer, self._contiguous(ary), device_origin, ary_origin,
             shape, device_strides, ary_strides, blocking=blocking)
 
-    def zero(self, command_queue):
+    def zero(self, command_queue: AbstractCommandQueue) -> None:
         """Memset with zeros (asynchronously)"""
         command_queue.enqueue_zero_buffer(self.buffer)
 
@@ -733,18 +761,19 @@ class SVMArray(HostArray, DeviceArray):
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context in which to allocate the memory
-    shape : tuple
+    shape
         Shape for the array
-    dtype : numpy dtype
+    dtype
         Data type for the array
-    padded_shape : tuple, optional
+    padded_shape
         Total size of memory allocation (defaults to `shape`)
     raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
         If specified, provides the backing memory
     """
-    def __new__(cls, context, shape, dtype, padded_shape=None, raw=None):
+    def __new__(cls, context: AbstractContext, shape: Tuple[int, ...], dtype: np.dtype,
+                padded_shape: Optional[Tuple[int, ...]] = None, raw: Any = None) -> None:
         if padded_shape is None:
             padded_shape = shape
         assert len(padded_shape) == len(shape)
@@ -765,23 +794,27 @@ class SVMArray(HostArray, DeviceArray):
         pass
 
     @property
-    def buffer(self):
+    def buffer(self) -> np.ndarray:
         return self._owner
 
-    def _copyable(self, ary):
+    def _copyable(self, ary: np.ndarray) -> bool:
         """Whether `ary` can be copied to/from this array directly"""
         return (ary.dtype == self.dtype
                 and ary.shape == self.shape)
 
-    def set(self, command_queue, ary):
-        """Synchronous copy from `ary` to self. For SVMArray, this
-        is a CPU copy."""
+    def set(self, command_queue: AbstractCommandQueue, ary: np.ndarray) -> None:
+        """Synchronous copy from `ary` to self.
+        
+        For SVMArray, this is a CPU copy.
+        """
         self[...] = ary
 
-    def get(self, command_queue, ary=None):
-        """Synchronous copy from self to `ary`. If `ary` is None,
-        or if it is not suitable as a target, the copy is to a newly
-        allocated :class:`HostArray`. The actual target is returned.
+    def get(self, command_queue: AbstractCommandQueue,
+            ary: Optional[np.ndarray] = None) -> np.ndarray:
+        """Synchronous copy from self to `ary`.
+        
+        If `ary` is None, or if it is not suitable as a target, the copy is to
+        a newly allocated :class:`HostArray`. The actual target is returned.
         For SVMArray, this is a CPU copy.
         """
         if ary is None or not self._copyable(ary):
@@ -790,54 +823,63 @@ class SVMArray(HostArray, DeviceArray):
             ary[:] = self
             return ary
 
-    def set_async(self, command_queue, ary):
+    def set_async(self, command_queue: AbstractCommandQueue, ary: np.ndarray) -> None:
         """Asynchronous copy from `ary` to self. This is implemented
         synchronously for SVMArray, but exists for compatibility."""
         self.set(command_queue, ary)
 
-    def get_async(self, command_queue, ary=None):
+    def get_async(self, command_queue: AbstractCommandQueue,
+                  ary: Optional[np.ndarray] = None) -> np.ndarray:
         """Asynchronous copy from self to `ary` (see `get`). This
         is implemented synchronously for SVMArray, but exists for
         compatibility."""
         return self.get(command_queue, ary)
 
-    def set_region(self, command_queue, ary, device_region, ary_region, blocking=True):
+    def set_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
+                   device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
         self[device_region] = ary[ary_region]
 
-    def get_region(self, command_queue, ary, device_region, ary_region, blocking=True):
+    def get_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
+                   device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
         ary[ary_region] = self[device_region]
 
 
-class DeviceAllocator(object):
-    """Allocates DeviceArray objects from a context"""
-    def __init__(self, context):
+class DeviceAllocator(AbstractAllocator):
+    """Allocates :class:`DeviceArray` objects from a context"""
+
+    def __init__(self, context: AbstractContext) -> None:
         self.context = context
 
-    def allocate(self, shape, dtype, padded_shape=None, raw=None):
+    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+                 padded_shape: Optional[Tuple[int, ...]] = None,
+                 raw: Any = None) -> DeviceArray:
         return DeviceArray(self.context, shape, dtype, padded_shape, raw)
 
-    def allocate_raw(self, n_bytes):
+    def allocate_raw(self, n_bytes: int) -> Any:
         return self.context.allocate_raw(n_bytes)
 
 
-class SVMAllocator(object):
-    """Allocates SVMArray objects from a context"""
-    def __init__(self, context):
+class SVMAllocator(AbstractAllocator):
+    """Allocates :class:`SVMArray` objects from a context"""
+
+    def __init__(self, context: AbstractContext) -> None:
         self.context = context
 
-    def allocate(self, shape, dtype, padded_shape=None, raw=None):
+    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+                 padded_shape: Optional[Tuple[int, ...]] = None, raw: Any = None) -> SVMArray:
         return SVMArray(self.context, shape, dtype, padded_shape, raw)
 
-    def allocate_raw(self, n_bytes):
+    def allocate_raw(self, n_bytes: int) -> Any:
         return self.context.allocate_svm_raw(n_bytes)
 
 
-class Dimension(object):
-    """A single dimension of an :class:`IOSlot`, representing padding and
-    alignment requirements. Instances can be linked together, with all
-    linked instances (whether directly or indirectly linked) exposing the
-    intersection of their requirements. Internally this is represented
-    using a union-find tree with path compression.
+class Dimension:
+    """A single dimension of an :class:`IOSlot`.
+    
+    It represents padding and alignment requirements. Instances can be linked
+    together, with all linked instances (whether directly or indirectly linked)
+    exposing the intersection of their requirements. Internally this is
+    represented using a union-find tree with path compression.
 
     Note that `min_padded_round` and `alignment` provide similar but
     different requirements. The former is used to determine a minimum amount
@@ -854,33 +896,35 @@ class Dimension(object):
 
     Parameters
     ----------
-    size : int
+    size
         Size of the actual data, before padding
-    min_padded_round : int, optional
+    min_padded_round
         The `min_padded_size` will be computed by rounding `size` up to a
         multiple of this.
-    min_padded_size : int, optional
+    min_padded_size
         Minimum size of the padded allocation, overriding `min_padded_round`.
-    alignment : int, optional
+    alignment
         Padded size is required to be a multiple of this.
         This must be a power of 2.
-    align_dtype : numpy dtype, optional
+    align_dtype
         If specified, it is a hint that this data type is the fastest-varying
         axis of a multidimensional array. The padded size may be chosen to be
         such that the stride is a multiple of `ALIGN_BYTES`, to ensure
         efficient access by GPUs. The hint will be ignored if `exact` is true.
-    exact : bool, optional
+    exact
         If true, padding is forbidden
     """
+
     ALIGN_BYTES = 128
 
     @classmethod
-    def _is_power2(cls, value):
+    def _is_power2(cls, value: int) -> bool:
         return value > 0 and (value & (value - 1)) == 0
 
-    def __init__(self, size,
-                 min_padded_round=None, min_padded_size=None,
-                 alignment=1, align_dtype=None, exact=False):
+    def __init__(self, size: int,
+                 min_padded_round: Optional[int] = None, min_padded_size: Optional[int] = None,
+                 alignment: int = 1, align_dtype: Optional[np.dtype] = None,
+                 exact: bool = False) -> None:
         if min_padded_size is None:
             if min_padded_round is not None:
                 min_padded_size = roundup(size, min_padded_round)
@@ -902,7 +946,7 @@ class Dimension(object):
         if align_dtype is not None:
             self.add_align_dtype(align_dtype)
 
-    def _root(self):
+    def _root(self) -> 'Dimension':
         if self._parent is None:
             return self
         else:
@@ -910,30 +954,30 @@ class Dimension(object):
             return self._parent
 
     @property
-    def size(self):
+    def size(self) -> int:
         return self._root()._size
 
     @property
-    def min_padded_size(self):
+    def min_padded_size(self) -> int:
         return self._root()._min_padded_size
 
     @property
-    def alignment(self):
+    def alignment(self) -> int:
         return self._root()._alignment
 
     @property
-    def alignment_hint(self):
+    def alignment_hint(self) -> int:
         return self._root()._alignment_hint
 
     @property
-    def exact(self):
+    def exact(self) -> bool:
         return self._root()._exact
 
     @property
-    def frozen(self):
+    def frozen(self) -> bool:
         return self._root()._frozen
 
-    def required_padded_size(self):
+    def required_padded_size(self) -> int:
         """Padded size required to satisfy this dimension"""
         root = self._root()
         size = roundup(root._min_padded_size, root._alignment)
@@ -943,7 +987,7 @@ class Dimension(object):
             size = roundup(size, root._alignment_hint)
         return size
 
-    def valid(self, padded_size):
+    def valid(self, padded_size: int) -> bool:
         """Whether `size` is a valid padded size"""
         root = self._root()
         if root._exact:
@@ -952,10 +996,12 @@ class Dimension(object):
             return (padded_size >= root._min_padded_size
                     and padded_size % root._alignment == 0)
 
-    def add_align_dtype(self, dtype):
-        """Add an alignment hint that this will be used with an array whose
-        fastest-varying dimension is of type `dtype`. If the size is not
-        a power of 2, it is ignored.
+    def add_align_dtype(self, dtype: np.ndarray) -> None:
+        """Add an alignment hint.
+        
+        Indicates that this will be used with an array whose fastest-varying
+        dimension is of type `dtype`. If the size is not a power of 2, it is
+        ignored.
         """
         if self.frozen:
             raise ValueError('cannot modify a frozen requirement')
@@ -964,7 +1010,7 @@ class Dimension(object):
             root = self._root()
             root._alignment_hint = max(root._alignment_hint, self.ALIGN_BYTES // itemsize)
 
-    def link(self, other):
+    def link(self, other: 'Dimension') -> None:
         """Make both `self` and `other` reference a single shared
         requirement.
 
@@ -1001,53 +1047,54 @@ class Dimension(object):
         del root2._alignment_hint
         del root2._exact
 
-    def freeze(self):
+    def freeze(self) -> None:
         """Prevent further modifications"""
         self._root()._frozen = True
 
 
-class IOSlotBase(object):
-    """An input/output slot of an operation. A slot can be bound to storage,
-    or can allocate storage itself. This base class is untyped and unshaped,
-    so in most cases one will use :class:`IOSlot` instead.
+class IOSlotBase(ABC):
+    """An input/output slot of an operation.
+    
+    A slot can be bound to storage, or can allocate storage itself. This base
+    class is untyped and unshaped, so in most cases one will use
+    :class:`IOSlot` instead.
 
     Slots are arranged in a tree, and only the root can be manipulated
     directly. The entire tree shares the same storage.
     A slot cannot be reattached to a new parent.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.is_root = True
 
-    def check_root(self):
+    def check_root(self) -> None:
         """Check whether this slot is a root slot, and raise an exception if not."""
         if not self.is_root:
             raise ValueError('not a root slot')
 
-    def required_bytes(self):
+    @abstractmethod
+    def required_bytes(self) -> int:
         """Number of bytes of device storage required"""
-        raise NotImplementedError('abstract base class')
 
+    @abstractmethod
     def is_bound(self):
         """Whether storage is currently attached to this slot"""
-        raise NotImplementedError('abstract base class')
 
-    def attachable(self):
+    def attachable(self) -> bool:
         """Whether this slot can be attached as a child to another"""
         return self.is_root and not self.is_bound()
 
-    def _allocate(self, context, raw=None):
-        """Variant of :meth:`allocate` that does not check whether this is a
-        root slot."""
-        raise NotImplementedError('abstract base class')
+    @abstractmethod
+    def _allocate(self, allocator: AbstractAllocator, raw: Any = None) -> Any:
+        """Variant of :meth:`allocate` that does not check whether this is a root slot."""
 
-    def allocate(self, allocator, raw=None):
+    def allocate(self, allocator: AbstractAllocator, raw: Any = None) -> Any:
         """Allocate and immediately bind a buffer satisfying the requirements.
 
         .. warning:: When `raw` is provided, there is no check that the storage is large enough.
 
         Parameters
         ----------
-        allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`
+        allocator
             Memory allocator from which to obtain the memory
         raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
             Backing storage for the allocation
@@ -1080,13 +1127,13 @@ class IOSlot(IOSlotBase):
     """
 
     @classmethod
-    def _make_dimension(cls, dimension):
+    def _make_dimension(cls, dimension: Union[Dimension, int]) -> Dimension:
         if isinstance(dimension, Dimension):
             return dimension
         else:
             return Dimension(dimension)
 
-    def __init__(self, dimensions, dtype):
+    def __init__(self, dimensions: Tuple[Union[Dimension, int], ...], dtype: np.dtype) -> None:
         super(IOSlot, self).__init__()
         self.dimensions = tuple([self._make_dimension(x) for x in dimensions])
         self.shape = tuple([x.size for x in self.dimensions])
@@ -1095,15 +1142,15 @@ class IOSlot(IOSlotBase):
         self.dtype = np.dtype(dtype)
         self.buffer = None
 
-    def is_bound(self):
+    def is_bound(self) -> bool:
         return self.buffer is not None
 
-    def validate(self, buffer):
+    def validate(self, buffer: DeviceArray) -> None:
         """Check that `buffer` is suitable for binding.
 
         Parameters
         ----------
-        buffer : :class:`DeviceArray`
+        buffer
             Buffer to validate (must not be `None`)
 
         Raises
@@ -1125,17 +1172,15 @@ class IOSlot(IOSlotBase):
             if padded_size != dimension.required_padded_size():
                 raise ValueError('padded size does not match')
 
-    def _bind(self, buffer):
-        """Variant of :meth:`bind` that does not check whether this is a root
-        slot.
-        """
+    def _bind(self, buffer: Optional[DeviceArray]) -> None:
+        """Variant of :meth:`bind` that does not check whether this is a root slot."""
         if buffer is not None:
             self.validate(buffer)
         self.buffer = buffer
         for dimension in self.dimensions:
             dimension.freeze()
 
-    def bind(self, buffer):
+    def bind(self, buffer: Optional[DeviceArray]) -> None:
         """Set the internal buffer reference. Always use this function rather
         that writing it directly.
 
@@ -1143,7 +1188,7 @@ class IOSlot(IOSlotBase):
 
         Parameters
         ----------
-        buffer : :class:`DeviceArray` or `None`
+        buffer
             Buffer to store
 
         Raises
@@ -1154,17 +1199,21 @@ class IOSlot(IOSlotBase):
         self.check_root()
         self._bind(buffer)
 
-    def required_padded_shape(self):
+    def required_padded_shape(self) -> Tuple[int, ...]:
         """Padded shape required to satisfy only this slot"""
-        return tuple([x.required_padded_size() for x in self.dimensions])
+        return tuple(x.required_padded_size() for x in self.dimensions)
 
-    def required_bytes(self):
+    def required_bytes(self) -> int:
         return int(np.product(self.required_padded_shape()) * self.dtype.itemsize)
 
-    def _allocate(self, allocator, raw=None):
+    def _allocate(self, allocator: AbstractAllocator, raw: Any = None) -> DeviceArray:
         buffer = allocator.allocate(self.shape, self.dtype, self.required_padded_shape(), raw=raw)
         self._bind(buffer)
         return buffer
+
+    def allocate(self, allocator: AbstractAllocator, raw: Any = None) -> DeviceArray:
+        # Overloaded just to restrict the type signature
+        return super().allocate(allocator, raw)
 
 
 class CompoundIOSlot(IOSlot):
@@ -1174,7 +1223,7 @@ class CompoundIOSlot(IOSlot):
 
     Parameters
     ----------
-    children : sequence of :class:`IOSlot`
+    children
         Child slots
 
     Raises
@@ -1187,15 +1236,15 @@ class CompoundIOSlot(IOSlot):
         If `children` contains inconsistent data types
     """
 
-    def __init__(self, children):
+    def __init__(self, children: Iterable[IOSlot]) -> None:
         self.children = list(children)
         if not len(self.children):
             raise ValueError('empty child list')
-        shape = children[0].shape
-        dtype = children[0].dtype
-        dimensions = children[0].dimensions
+        shape = self.children[0].shape
+        dtype = self.children[0].dtype
+        dimensions = self.children[0].dimensions
         # Validate consistency and compute combined requirements
-        for child in children:
+        for child in self.children:
             if not child.attachable():
                 raise ValueError('child is not attachable')
             if child.shape != shape:
@@ -1205,14 +1254,14 @@ class CompoundIOSlot(IOSlot):
             for dimension in child.dimensions:
                 if dimension.frozen:
                     raise ValueError('child has frozen dimensions')
-        for child in children:
+        for child in self.children:
             for x, y in zip(dimensions, child.dimensions):
                 x.link(y)
         super(CompoundIOSlot, self).__init__(dimensions, dtype)
-        for child in children:
+        for child in self.children:
             child.is_root = False
 
-    def _bind(self, buffer):
+    def _bind(self, buffer: Optional[DeviceArray]) -> None:
         super(CompoundIOSlot, self)._bind(buffer)
         for child in self.children:
             child._bind(buffer)
@@ -1227,16 +1276,16 @@ class AliasIOSlot(IOSlotBase):
 
     Parameters
     ----------
-    children : list of :class:`IOSlotBase`
+    children
 
     Raises
     ------
     ValueError
         If `children` is empty or contains non-attachable elements
     """
-    def __init__(self, children):
+    def __init__(self, children: Iterable[IOSlot]) -> None:
         super(AliasIOSlot, self).__init__()
-        self.children = children
+        self.children = list(children)
         self.raw = None
         if not len(self.children):
             raise ValueError('empty child list')
@@ -1246,13 +1295,13 @@ class AliasIOSlot(IOSlotBase):
         for child in self.children:
             child.is_root = False
 
-    def is_bound(self):
+    def is_bound(self) -> bool:
         return self.raw is not None
 
-    def required_bytes(self):
+    def required_bytes(self) -> int:
         return max([child.required_bytes() for child in self.children])
 
-    def _allocate(self, allocator, raw=None):
+    def _allocate(self, allocator: AbstractAllocator, raw: Any = None) -> Any:
         if raw is None:
             raw = allocator.allocate_raw(self.required_bytes())
         for child in self.children:
@@ -1261,7 +1310,7 @@ class AliasIOSlot(IOSlotBase):
         return raw
 
 
-class Operation(object):
+class Operation(ABC):
     """An instance of a device operation. Typically one first creates a
     template (which contains the program code, and is expensive to create) and
     then instantiates it for use with specific buffers.
@@ -1282,9 +1331,9 @@ class Operation(object):
 
     Parameters
     ----------
-    command_queue : |CommandQueue|
+    command_queue
         Command queue for the operation
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+    allocator
         Allocator used to allocate unbound slots
 
     Attributes
@@ -1299,7 +1348,8 @@ class Operation(object):
     is_root : boolean
         True if this operation is not part of an :class:`OperationSequence`.
     """
-    def __init__(self, command_queue, allocator=None):
+    def __init__(self, command_queue: AbstractCommandQueue,
+                 allocator: Optional[AbstractAllocator] = None) -> None:
         if allocator is None:
             allocator = DeviceAllocator(command_queue.context)
         elif allocator.context is not None:
@@ -1311,22 +1361,23 @@ class Operation(object):
         self.is_root = True
         self.allocator = allocator
 
-    def bind(self, **kwargs):
+    def bind(self, **kwargs) -> None:
         """Bind buffers to slots by keyword. Each keyword argument name
         specifies a slot name.
         """
         for name, buffer in kwargs.items():
             self.slots[name].bind(buffer)
 
-    def ensure_all_bound(self):
+    def ensure_all_bound(self) -> None:
         """Make sure that all slots have a buffer bound, allocating if necessary"""
         for slot in self.slots.values():
             if not slot.is_bound():
                 slot.allocate(self.allocator)
 
-    def buffer(self, name):
-        """Retrieve the buffer bound to a slot. It will consult
-        both :attr:`slots` and :attr:`hidden_slots`.
+    def buffer(self, name: str) -> Optional[Any]:
+        """Retrieve the buffer bound to a slot.
+        
+        It will consult both :attr:`slots` and :attr:`hidden_slots`.
 
         Parameters
         ----------
@@ -1352,18 +1403,19 @@ class Operation(object):
                 raise KeyError('no slot named ' + name)
         return slot.buffer
 
-    def required_bytes(self):
+    def required_bytes(self) -> int:
         """Number of bytes of device storage required"""
         return sum([x.required_bytes() for x in self.slots.values()])
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         """Returns dictionary of configuration options for this operation"""
         return {}
 
-    def _run(self):
+    @abstractmethod
+    def _run(self) -> Any:
         raise NotImplementedError('abstract base class')
 
-    def __call__(self, **kwargs):
+    def __call__(self, **kwargs) -> Any:
         """Run the operation. Any slots that are not already bound will
         allocate a new buffer. Keyword arguments are passed to :meth:`bind`.
         """
@@ -1386,7 +1438,7 @@ class OperationSequence(Operation):
 
     Parameters
     ----------
-    command_queue : |CommandQueue|
+    command_queue
         Command queue for the operation
     operations : sequence of 2-tuples
         Name, operation pairs to add. Calling the operation executes them in order
@@ -1397,10 +1449,14 @@ class OperationSequence(Operation):
     allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
         Allocator used to allocate unbound slots
     """
-    def __init__(self, command_queue, operations, compounds=None, aliases=None, allocator=None):
-        super(OperationSequence, self).__init__(command_queue, allocator)
+    def __init__(self, command_queue: AbstractCommandQueue,
+                 operations: Iterable[Tuple[str, Operation]],
+                 compounds: Optional[Mapping[str, Iterable[str]]] = None,
+                 aliases: Optional[Mapping[str, Iterable[str]]] = None,
+                 allocator: Optional[AbstractAllocator] = None) -> None:
+        super().__init__(command_queue, allocator)
         self.operations = OrderedDict(operations)
-        for (name, operation) in operations:
+        for (name, operation) in self.operations.items():
             if operation.command_queue is not command_queue:
                 raise ValueError('child has a different command queue to the parent')
             if not operation.is_root:
@@ -1420,9 +1476,9 @@ class OperationSequence(Operation):
         for operation in self.operations.values():
             operation.is_root = False
 
-    def _extract_slots(self, names, add_to_hidden):
+    def _extract_slots(self, names: Iterable[str], add_to_hidden: bool) -> List[IOSlotBase]:
         """Remove and return the slots with the given names"""
-        ans = []
+        ans = []      # type: List[IOSlotBase]
         for name in names:
             try:
                 ans.append(self.slots[name])
@@ -1435,12 +1491,12 @@ class OperationSequence(Operation):
                 pass
         return ans
 
-    def _run(self):
+    def _run(self) -> None:
         for operation in self.operations.values():
             operation()
 
 
-def _slot_label(slot, name, hide_detail):
+def _slot_label(slot: IOSlotBase, name: str, hide_detail: bool) -> str:
     """Produce contents of HTML label for a slot.
 
     If `hide_detail` is true, it will not show the shapes and dtype. This is used when
@@ -1451,6 +1507,7 @@ def _slot_label(slot, name, hide_detail):
     elif hide_detail:
         return '<b>{name}</b>'.format(name=name)
     else:
+        assert isinstance(slot, IOSlot)
         shape = '×'.join(str(x) for x in slot.shape)
         if not shape:
             shape = 'scalar'
@@ -1460,33 +1517,39 @@ def _slot_label(slot, name, hide_detail):
             name=name, shape=shape, padded_shape=padded_shape, dtype=dtype)
 
 
-def _visualize_operation(g, operation, path, slot_map, no_detail_slots, edges):
+def _visualize_operation(
+        g: 'graphviz.Graph',
+        operation: Operation,
+        path: Tuple[str, ...],
+        slot_map: MutableMapping[IOSlotBase, str],
+        no_detail_slots: Set[IOSlotBase],
+        edges: Set[Tuple[IOSlotBase, IOSlotBase]]) -> None:
     """Recursive implementation of :func:`visualize_operation`.
 
     Parameters
     ----------
-    g : :class:`graphviz.Graph`
+    g
         Graph or subgraph to be updated with the operation. If the operation has
         children, it will be rendered as a subgraph, otherwise as a single slot
         with ports for the slots.
-    operation : :class:`Operation`
+    operation
         Operation to add to the graph
-    path : tuple of str
+    path
         Hierarchical name of `operation`. The last component is used for visual
         display, and the rest for generating unique node labels.
-    slot_map : dict
+    slot_map
         Mapping from slots to node names (or port names). It is updated in place
         with all the slots in this operation and its descendants.
-    no_detail_slots : set
+    no_detail_slots
         Slots that should not show shape and dtype details. It is updated in
         place with any descendant slots of this node.
-    edges : set
+    edges
         Edges to draw, as tuples of two :class:`IOSlotBase`s.
     """
-
     all_slots = {**operation.slots, **operation.hidden_slots}
 
     if hasattr(operation, 'operations'):
+        operations = getattr(operation, 'operations')   # type: Mapping[str, Operation]
         # Graphviz treats subgraphs with the prefix 'cluster_' specially. We
         # only want this for real subgraphs, not the root.
         node_name = 'cluster_' + '!'.join(path) if len(path) > 1 else 'root'
@@ -1527,16 +1590,16 @@ def _visualize_operation(g, operation, path, slot_map, no_detail_slots, edges):
                 edges.add((child, slot))
 
 
-def visualize_operation(operation, filename):
+def visualize_operation(operation: Operation, filename: str) -> None:
     """Write a visualization of an :class:`Operation` to file.
 
     This requires :mod:`graphviz` to be installed.
 
     Parameters
     ----------
-    operation : :class:`Operation`
+    operation
         Operation or operation sequence to visualize
-    filename : str
+    filename
         Base filename to write. It should end in ``.gv``, and a rendered
         PDF will automatically be produced with a filename ending in
         ``.gv.pdf``.
