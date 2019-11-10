@@ -1,20 +1,29 @@
 """Abstract base classes for :mod:`opencl` and :mod:`cuda`."""
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Sequence, Optional, Any, Type, TypeVar
+from typing import List, Tuple, Sequence, Optional, Any, Type, TypeVar, Generic
 from types import TracebackType
 
 import numpy as np
 
 
+_B = TypeVar('_B')     # buffer type
+_RB = TypeVar('_RB')   # raw buffer type
+_RS = TypeVar('_RS')   # raw buffer for SVM
+_C = TypeVar('_C', bound='AbstractContext')
+_D = TypeVar('_D', bound='AbstractDevice')
 _E = TypeVar('_E', bound='AbstractEvent')
+_K = TypeVar('_K', bound='AbstractKernel')
+_P = TypeVar('_P', bound='AbstractProgram')
+_Q = TypeVar('_Q', bound='AbstractCommandQueue')
+_TQ = TypeVar('_TQ', bound='AbstractTuningCommandQueue')
 
 
-class AbstractProgram(ABC):
+class AbstractProgram(ABC, Generic[_K]):
     """Abstraction of a program object"""
 
     @abstractmethod
-    def get_kernel(self, name: str) -> 'AbstractKernel':
+    def get_kernel(self, name: str) -> _K:
         """Create a new kernel
 
         Parameters
@@ -24,9 +33,9 @@ class AbstractProgram(ABC):
         """
 
 
-class AbstractKernel(ABC):
+class AbstractKernel(ABC, Generic[_P]):
     """Abstraction of a kernel object.
-    
+
     The object can be enqueued using :meth:`CommandQueue.enqueue_kernel`.
 
     The recommended way to create this object is via
@@ -34,13 +43,13 @@ class AbstractKernel(ABC):
     """
 
     @abstractmethod
-    def __init__(self, program: AbstractProgram, name: str) -> None:
+    def __init__(self, program: _P, name: str) -> None:
         pass
 
 
 class AbstractEvent(ABC):
     """Abstraction of an event.
-    
+
     This is more akin to a CUDA event than an OpenCL event, in that it is a
     marker in a command queue rather than associated with a specific command.
     """
@@ -52,7 +61,7 @@ class AbstractEvent(ABC):
     @abstractmethod
     def time_since(self: _E, prior_event: _E) -> float:
         """Return the time in seconds from `prior_event` to self.
-        
+
         Unlike the PyCUDA method of the same name, this will wait for the
         events to complete if they have not already.
         """
@@ -60,16 +69,16 @@ class AbstractEvent(ABC):
     @abstractmethod
     def time_till(self: _E, next_event: _E) -> float:
         """Return the time in seconds from this event to `next_event`.
-        
+
         See  :meth:`time_since`.
         """
 
 
-class AbstractDevice(ABC):
+class AbstractDevice(ABC, Generic[_C]):
     """Abstraction of a device."""
 
     @abstractmethod
-    def make_context(self) -> 'AbstractContext':
+    def make_context(self) -> _C:
         """Create a new context associated with this device"""
 
     @property
@@ -118,25 +127,25 @@ class AbstractDevice(ABC):
 
     @classmethod
     @abstractmethod
-    def get_devices(cls) -> Sequence['AbstractDevice']:
+    def get_devices(cls: Type[_D]) -> Sequence[_D]:
         """Return a list of all devices on all platforms"""
 
     @classmethod
     @abstractmethod
-    def get_devices_by_platform(cls) -> Sequence[Sequence['AbstractDevice']]:
+    def get_devices_by_platform(cls: Type[_D]) -> Sequence[Sequence[_D]]:
         """Return a list of all devices, with a sub-list per platform."""
 
 
-class AbstractContext(ABC):
+class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
     """Abstraction of an OpenCL/CUDA context."""
 
     @property
     @abstractmethod
-    def device(self) -> AbstractDevice:
+    def device(self) -> _D:
         """Return the device associated with the context (or the first device, if multiple)."""
 
     @abstractmethod
-    def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> AbstractProgram:
+    def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> _P:
         """Build a program object from source
 
         Parameters
@@ -148,11 +157,11 @@ class AbstractContext(ABC):
         """
 
     @abstractmethod
-    def allocate_raw(self, n_bytes: int) -> Any:
+    def allocate_raw(self, n_bytes: int) -> _RB:
         """Create an untyped buffer on the device."""
 
     @abstractmethod
-    def allocate(self, shape: Tuple[int], dtype: np.dtype, raw: Any = None) -> Any:
+    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype, raw: Optional[_RB] = None) -> _B:
         """Create a typed buffer on the device.
 
         Parameters
@@ -166,7 +175,7 @@ class AbstractContext(ABC):
         """
 
     @abstractmethod
-    def allocate_pinned(self, shape: Tuple[int], dtype: np.dtype) -> np.ndarray:
+    def allocate_pinned(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
         """Create a buffer in host memory that can be efficiently copied
         to and from the device.
 
@@ -179,15 +188,16 @@ class AbstractContext(ABC):
         """
 
     @abstractmethod
-    def allocate_svm_raw(self, n_bytes: int) -> Any:
+    def allocate_svm_raw(self, n_bytes: int) -> _RS:
         """Allow raw storage that can be passed in to :meth:`allocate_svm`."""
 
     @abstractmethod
-    def allocate_svm(self, shape: Tuple[int], dtype: np.ndarray, raw: Any = None) -> np.ndarray:
+    def allocate_svm(self, shape: Tuple[int, ...], dtype: np.ndarray,
+                     raw: Optional[_RS] = None) -> np.ndarray:
         """Allocate shared virtual memory."""
 
     @abstractmethod
-    def create_command_queue(self, profile: bool = False) -> 'AbstractCommandQueue':
+    def create_command_queue(self, profile: bool = False) -> _Q:
         """Create a new command queue associated with this context
 
         Parameters
@@ -197,26 +207,28 @@ class AbstractContext(ABC):
         """
 
     @abstractmethod
-    def create_tuning_command_queue(self) -> 'AbstractTuningCommandQueue':
+    def create_tuning_command_queue(self) -> _TQ:
         """Create a new command queue for doing autotuning"""
 
     @abstractmethod
-    def __enter__(self) -> 'AbstractContext':
+    def __enter__(self: _C) -> _C:
         pass
 
     @abstractmethod
     def __exit__(self,
                  exc_type: Optional[Type[BaseException]],
                  exc_val: Optional[BaseException],
-                 exc_tb: Optional[TracebackType]) -> bool:
+                 exc_tb: Optional[TracebackType]) -> None:
         pass
 
 
-class AbstractCommandQueue(ABC):
+class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
     """Abstraction of a command queue."""
 
+    context = None     # type: _C
+
     @abstractmethod
-    def enqueue_read_buffer(self, buffer: Any, data: Any, blocking: bool = True) -> None:
+    def enqueue_read_buffer(self, buffer: _B, data: Any, blocking: bool = True) -> None:
         """Copy data from the device to the host. Only whole-buffer copies are
         supported, and the shape and type must match. In general, one should use
         the convenience functions in :class:`accel.DeviceArray`.
@@ -232,7 +244,7 @@ class AbstractCommandQueue(ABC):
         """
 
     @abstractmethod
-    def enqueue_write_buffer(self, buffer: Any, data: Any, blocking=True) -> None:
+    def enqueue_write_buffer(self, buffer: _B, data: Any, blocking=True) -> None:
         """Copy data from the host to the device. Only whole-buffer copies are
         supported, and the shape and type must match. In general, one should
         use the convenience functions in :class:`accel.DeviceArray`.
@@ -249,7 +261,7 @@ class AbstractCommandQueue(ABC):
         """
 
     @abstractmethod
-    def enqueue_copy_buffer(self, src_buffer: Any, dest_buffer: Any) -> None:
+    def enqueue_copy_buffer(self, src_buffer: _B, dest_buffer: _B) -> None:
         """Copy one buffer to another.
 
         Parameters
@@ -260,10 +272,10 @@ class AbstractCommandQueue(ABC):
 
     @abstractmethod
     def enqueue_copy_buffer_rect(
-            self, src_buffer: Any, dest_buffer: Any, src_origin: int, dest_origin: int,
+            self, src_buffer: _B, dest_buffer: _B, src_origin: int, dest_origin: int,
             shape: Sequence[int], src_strides: Sequence[int], dest_strides: Sequence[int]) -> None:
         """Copy a subregion of one buffer to another.
-        
+
         This is a low-level interface that ignores the shape, strides etc of
         the buffers, and treats them as byte arrays. It also only supports 3 or
         fewer dimensions. Use
@@ -287,12 +299,12 @@ class AbstractCommandQueue(ABC):
 
     @abstractmethod
     def enqueue_read_buffer_rect(
-            self, buffer: Any, data: Any,
+            self, buffer: _B, data: Any,
             buffer_origin: int, data_origin: int, shape: Sequence[int],
             buffer_strides: Sequence[int], data_strides: Sequence[int],
             blocking: bool = True) -> None:
         """Copy a region of a buffer to host memory.
-        
+
         This is a low-level interface that ignores the shape, strides etc of
         the buffers, and treats them as byte arrays. It also only supports 3 or
         fewer dimensions. Use
@@ -320,12 +332,12 @@ class AbstractCommandQueue(ABC):
 
     @abstractmethod
     def enqueue_write_buffer_rect(
-            self, buffer: Any, data: Any,
+            self, buffer: _B, data: Any,
             buffer_origin: int, data_origin: int, shape: Sequence[int],
             buffer_strides: Sequence[int], data_strides: Sequence[int],
             blocking: bool = True) -> None:
         """Copy a region of host memory to a buffer.
-        
+
         This is a low-level interface that ignores the shape, strides etc of
         the buffers, and treats them as byte arrays. It also only supports 3 or
         fewer dimensions. Use
@@ -352,12 +364,12 @@ class AbstractCommandQueue(ABC):
         """
 
     @abstractmethod
-    def enqueue_zero_buffer(self, buffer: Any) -> None:
+    def enqueue_zero_buffer(self, buffer: _B) -> None:
         """Fill a buffer with zero bytes."""
 
     @abstractmethod
-    def enqueue_kernel(self, kernel: Any, args: Sequence[Any],
-                       global_size: Tuple[int], local_size: Tuple[int]) -> None:
+    def enqueue_kernel(self, kernel: _K, args: Sequence[Any],
+                       global_size: Tuple[int, ...], local_size: Tuple[int, ...]) -> None:
         """Enqueue a kernel to the command queue.
 
         .. warning:: It is not thread-safe to call this function in two threads
@@ -379,15 +391,12 @@ class AbstractCommandQueue(ABC):
         """
 
     @abstractmethod
-    def enqueue_marker(self) -> AbstractEvent:
+    def enqueue_marker(self) -> _E:
         """Create an event at this point in the command queue"""
 
     @abstractmethod
-    def enqueue_wait_for_events(self, events: Sequence[Any]) -> None:
+    def enqueue_wait_for_events(self, events: Sequence[_E]) -> None:
         """Enqueue a barrier to wait for all events in `events`."""
-        # Note: the sequence elements must be events of the event class
-        # for the specific API. Python's type system isn't powerful enough
-        # to express that, hence Any.
 
     @abstractmethod
     def flush(self) -> None:
@@ -398,9 +407,9 @@ class AbstractCommandQueue(ABC):
         """Block until all enqueued work has completed"""
 
 
-class AbstractTuningCommandQueue(AbstractCommandQueue):
+class AbstractTuningCommandQueue(Generic[_B, _C, _E, _K], AbstractCommandQueue[_B, _C, _E, _K]):
     """Command queue with extra facilities for autotuning.
-    
+
     It keeps track of kernels that are enqueued since the last call to
     :meth:`start_tuning`, and reports the total time they consume when
     :meth:`stop_tuning` is called.

@@ -21,8 +21,9 @@ import io
 from abc import ABC, abstractmethod
 import itertools
 from collections import OrderedDict
-from typing import (List, Tuple, Set, Mapping, MutableMapping,
-                    Callable, Iterable, Optional, Union, Any)
+from typing import (List, Tuple, Dict, Set, Mapping, MutableMapping, Sequence,
+                    Callable, Iterable, Optional, Union, TypeVar, Generic, Any,
+                    cast, overload, TYPE_CHECKING)
 
 import numpy as np
 import mako.lexer
@@ -30,8 +31,8 @@ from mako.template import Template
 from mako.lookup import TemplateLookup
 import pkg_resources
 
-from .abc import (AbstractContext, AbstractDevice, AbstractCommandQueue,
-                  AbstractAllocator, AbstractProgram)
+from .abc import (AbstractContext, AbstractDevice, AbstractCommandQueue,  # noqa: F401
+                  AbstractTuningCommandQueue, AbstractProgram)
 
 try:
     import pycuda.driver
@@ -45,8 +46,18 @@ try:
 except ImportError:
     have_opencl = False
 
-        
+if TYPE_CHECKING:
+    import graphviz
+
+
 _Slice = Union[int, slice, None, Tuple[Union[int, slice, None], ...]]
+_B = TypeVar('_B')     # buffer type
+_RB = TypeVar('_RB')   # raw buffer type
+_RS = TypeVar('_RS')   # raw buffer for SVM
+_D = TypeVar('_D', bound='AbstractDevice')
+_P = TypeVar('_P', bound='AbstractProgram')
+_Q = TypeVar('_Q', bound='AbstractCommandQueue')
+_TQ = TypeVar('_TQ', bound='AbstractTuningCommandQueue')
 
 
 def divup(x: int, y: int) -> int:
@@ -239,8 +250,9 @@ def create_some_context(
             # Fields are platform number and device number
             opencl_id = parse_id_list('PYOPENCL_CTX', 2)
 
-    cuda_devices = []      # type: List[cuda.Device]
-    opencl_devices = []    # type: List[List[opencl.Device]]
+    cuda_devices = []      # type: Sequence[cuda.Device]
+    opencl_devices = []    # type: Sequence[Sequence[opencl.Device]]
+    devices = []           # type: List[AbstractDevice]
     if have_cuda:
         pycuda.driver.init()
         cuda_devices = cuda.Device.get_devices()
@@ -252,14 +264,14 @@ def create_some_context(
 
     try:
         if cuda_id is not None:
-            devices = [cuda_devices[cuda_id]]
+            devices.append(cuda_devices[cuda_id])
         elif opencl_id is not None:
             if len(opencl_id) == 1:
-                devices = opencl_devices[opencl_id[0]]
+                devices.extend(opencl_devices[opencl_id[0]])
             else:
-                devices = [opencl_devices[opencl_id[0]][opencl_id[1]]]
+                devices.append(opencl_devices[opencl_id[0]][opencl_id[1]])
         else:
-            devices = cuda_devices + list(itertools.chain(*opencl_devices))
+            devices = list(itertools.chain(cuda_devices, *opencl_devices))
             if device_id is not None:
                 devices = [devices[device_id]]
     except IndexError:
@@ -273,9 +285,9 @@ def create_some_context(
         for i, device in enumerate(devices):
             print("    [{0}]: {1} ({2})".format(i, device.name, device.platform_name))
         print()
-        choice = input('Enter selection: ')
+        choice_str = input('Enter selection: ')
         try:
-            choice = int(choice)
+            choice = int(choice_str)
             if choice < 0:
                 raise IndexError   # Otherwise Python's negative indexing kicks in
             device = devices[choice]
@@ -316,8 +328,8 @@ class HostArray(np.ndarray):
         If specified, the memory will be allocated in a way that allows
         efficient copies to and from this context.
     """
-    def __new__(cls, shape: Tuple[int], dtype: np.ndarray,
-                padded_shape: Optional[Tuple[int]] = None,
+    def __new__(cls, shape: Tuple[int, ...], dtype: np.ndarray,
+                padded_shape: Optional[Tuple[int, ...]] = None,
                 context: Optional[AbstractContext] = None):
         if padded_shape is None:
             padded_shape = shape
@@ -338,18 +350,28 @@ class HostArray(np.ndarray):
 
     @classmethod
     def safe(cls, obj: np.ndarray) -> bool:
-        """Determines whether self can be copied to/from a device
-        directly.
-        """
+        """Determines whether self can be copied to/from a device directly."""
         try:
             return obj._owner is not None
         except AttributeError:
             return False
 
+    @overload
+    @classmethod
+    def padded_view(cls, obj: 'HostArray') -> np.ndarray:
+        ...
+
+    @overload       # noqa: F811
     @classmethod
     def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:
-        """Retrieves the view of the full memory without padding. Returns
-        `None` if `cls.safe(obj)` is `False`."""
+        ...
+
+    @classmethod    # noqa: F811
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:
+        """Retrieves the view of the full memory without padding.
+
+        Returns `None` if `cls.safe(obj)` is `False`.
+        """
         try:
             return obj._owner
         except AttributeError:
@@ -360,7 +382,7 @@ class HostArray(np.ndarray):
             # View casting or created from a template: we cannot vouch for it.
             self._owner = None
             if isinstance(obj, HostArray):
-                self.padded_shape = obj.padded_shape
+                self.padded_shape = obj.padded_shape    # type: Tuple[int, ...]
             else:
                 self.padded_shape = None
 
@@ -390,8 +412,8 @@ class DeviceArray:
         the `allocate_raw` method of an allocator.
     """
 
-    def __init__(self, context: AbstractContext, shape: Tuple[int],
-                 dtype: np.dtype, padded_shape: Optional[Tuple[int]] = None,
+    def __init__(self, context: AbstractContext, shape: Tuple[int, ...],
+                 dtype: np.dtype, padded_shape: Optional[Tuple[int, ...]] = None,
                  raw: Any = None) -> None:
         if padded_shape is None:
             padded_shape = shape
@@ -409,7 +431,7 @@ class DeviceArray:
         return len(self.shape)
 
     @property
-    def strides(self) -> Tuple[int]:
+    def strides(self) -> Tuple[int, ...]:
         """Strides, as in numpy"""
         ans = [self.dtype.itemsize]
         for i in range(len(self.padded_shape) - 1, 0, -1):
@@ -424,7 +446,7 @@ class DeviceArray:
                 and ary.padded_shape == self.padded_shape)
 
     @classmethod
-    def _contiguous(cls, ary: np.ndarray) -> HostArray:
+    def _contiguous(cls, ary: HostArray) -> HostArray:
         """Returns a contiguous view of a copyable array, for passing to
         PyCUDA or PyOpenCL functions (which require a contiguous view).
         """
@@ -448,11 +470,12 @@ class DeviceArray:
         ary = self.asarray_like(ary)
         command_queue.enqueue_write_buffer(self.buffer, self._contiguous(ary))
 
-    def get(self, command_queue: AbstractCommandQueue, ary: Optional[np.ndarray] = None) -> None:
+    def get(self, command_queue: AbstractCommandQueue,
+            ary: Optional[np.ndarray] = None) -> np.ndarray:
         """Synchronous copy from self to `ary`.
-        
+
         If `ary` is None, or if it is not suitable as a target, the copy is to
-        a newly allocated :class:`HostArray`. The actual target is returned.
+        a newly-allocated :class:`HostArray`. The actual target is returned.
         """
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
@@ -466,7 +489,7 @@ class DeviceArray:
             self.buffer, self._contiguous(ary), blocking=False)
 
     def get_async(self, command_queue: AbstractCommandQueue,
-                  ary: Optional[np.ndarray] = None) -> None:
+                  ary: Optional[np.ndarray] = None) -> np.ndarray:
         """Asynchronous copy from self to `ary` (see :meth:`get`)."""
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
@@ -475,7 +498,8 @@ class DeviceArray:
         return ary
 
     @classmethod
-    def _canonical_slice(cls, region: _Slice, shape: Tuple[int], strides: Tuple[int]):
+    def _canonical_slice(cls, region: _Slice, shape: Tuple[int, ...],
+                         strides: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...], Tuple[int, ...]]:
         """Transforms a slice selection into a form that is easier to consume
         internally.
 
@@ -512,51 +536,50 @@ class DeviceArray:
             length 1 may have a stride of 0.
         """
         origin = 0
-        self_strides = strides
-        self_shape = shape
-        shape = []      # type: List[int]
-        strides = []
+        copy_shape = []      # type: List[int]
+        copy_strides = []
         axis = 0
         if not isinstance(region, tuple):
             region = (region,)
         for index in region:
             if index is np.newaxis:
-                shape.append(1)
-                strides.append(0)
+                copy_shape.append(1)
+                copy_strides.append(0)
             elif isinstance(index, slice):
-                if axis >= len(self_shape):
+                if axis >= len(shape):
                     raise IndexError('Too many axes in index expression')
-                start, stop, stride = index.indices(self_shape[axis])
+                start, stop, stride = index.indices(shape[axis])
                 if stride <= 0:
                     raise IndexError('Only positive strides are supported')
-                origin += start * self_strides[axis]
-                shape.append((stop - start) // stride)
-                if shape[-1] <= 0:
+                origin += start * strides[axis]
+                copy_shape.append((stop - start) // stride)
+                if copy_shape[-1] <= 0:
                     raise IndexError('Empty slice selection')
-                strides.append(stride * self_strides[axis])
+                copy_strides.append(stride * strides[axis])
                 axis += 1
             elif isinstance(index, int):
-                if axis >= len(self_shape):
+                if axis >= len(shape):
                     raise IndexError('Too many axes in index expression')
                 if index < 0:
-                    index += self_shape[axis]
-                if index < 0 or index >= self_shape[axis]:
+                    index += shape[axis]
+                if index < 0 or index >= shape[axis]:
                     raise IndexError('Index out of range')
-                origin += index * self_strides[axis]
+                origin += index * strides[axis]
                 axis += 1
             else:
                 raise TypeError('Invalid type in slice: {}'.format(type(index)))
-        while axis < len(self_shape):
-            shape.append(self_shape[axis])
-            strides.append(self_strides[axis])
+        while axis < len(shape):
+            copy_shape.append(shape[axis])
+            copy_strides.append(strides[axis])
             axis += 1
-        return origin, shape, strides
+        return origin, tuple(copy_shape), tuple(copy_strides)
 
     @classmethod
     def _region_transfer_params(
             cls, src: Any, dest: Any,
             src_region: _Slice,
-            dest_region: _Slice) -> Tuple[int, int, List[int], List[int], List[int]]:
+            dest_region: _Slice) -> Tuple[int, int, Tuple[int, ...],
+                                          Tuple[int, ...], Tuple[int, ...]]:
         """Compute offsets, strides and shape for a copy. Where possible, the
         dimension of the copy is reduced by exploiting contiguity. When
         interpreting the return values, the arrays should be thought of as byte
@@ -574,9 +597,9 @@ class DeviceArray:
         -------
         src_origin,dest_origin : int
             Byte offset into the source/destination array for the start of the copy
-        shape : list
+        shape : tuple
             Shape for the copy, which may have fewer dimensions than the arrays.
-        src_strides,dest_strides : list
+        src_strides,dest_strides : tuple
             Byte strides for source/destination.
 
         Raises
@@ -610,7 +633,8 @@ class DeviceArray:
                 new_shape.append(src_shape[axis])
                 new_src_strides.append(src_strides[axis])
                 new_dest_strides.append(dest_strides[axis])
-        return src_origin, dest_origin, new_shape, new_src_strides, new_dest_strides
+        return (src_origin, dest_origin,
+                tuple(new_shape), tuple(new_src_strides), tuple(new_dest_strides))
 
     @classmethod
     def _transfer_region(cls, func: Callable,
@@ -632,7 +656,7 @@ class DeviceArray:
         else:
             func(buffer1, buffer2, origin1, origin2, shape, strides1, strides2, **kwargs)
 
-    def copy_region(self, command_queue: AbstractCommandQueue, dest: DeviceArray,
+    def copy_region(self, command_queue: AbstractCommandQueue, dest: 'DeviceArray',
                     src_region: _Slice, dest_region: _Slice) -> None:
         """Perform a device-to-device copy of a subregion of `self` to `dest`.
         If the source and destination memory overlap, the result is undefined.
@@ -773,7 +797,7 @@ class SVMArray(HostArray, DeviceArray):
         If specified, provides the backing memory
     """
     def __new__(cls, context: AbstractContext, shape: Tuple[int, ...], dtype: np.dtype,
-                padded_shape: Optional[Tuple[int, ...]] = None, raw: Any = None) -> None:
+                padded_shape: Optional[Tuple[int, ...]] = None, raw: Any = None) -> 'SVMArray':
         if padded_shape is None:
             padded_shape = shape
         assert len(padded_shape) == len(shape)
@@ -804,7 +828,7 @@ class SVMArray(HostArray, DeviceArray):
 
     def set(self, command_queue: AbstractCommandQueue, ary: np.ndarray) -> None:
         """Synchronous copy from `ary` to self.
-        
+
         For SVMArray, this is a CPU copy.
         """
         self[...] = ary
@@ -812,7 +836,7 @@ class SVMArray(HostArray, DeviceArray):
     def get(self, command_queue: AbstractCommandQueue,
             ary: Optional[np.ndarray] = None) -> np.ndarray:
         """Synchronous copy from self to `ary`.
-        
+
         If `ary` is None, or if it is not suitable as a target, the copy is to
         a newly allocated :class:`HostArray`. The actual target is returned.
         For SVMArray, this is a CPU copy.
@@ -844,38 +868,53 @@ class SVMArray(HostArray, DeviceArray):
         ary[ary_region] = self[device_region]
 
 
-class DeviceAllocator(AbstractAllocator):
+class AbstractAllocator(ABC, Generic[_RB]):
+    context = None    # type: AbstractContext
+
+    @abstractmethod
+    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+                 padded_shape: Optional[Tuple[int, ...]] = None,
+                 raw: Optional[_RB] = None) -> DeviceArray:
+        pass
+
+    @abstractmethod
+    def allocate_raw(self, n_bytes: int) -> _RB:
+        pass
+
+
+class DeviceAllocator(Generic[_B, _RB, _RS, _D, _P, _Q, _TQ], AbstractAllocator[_RB]):
     """Allocates :class:`DeviceArray` objects from a context"""
 
-    def __init__(self, context: AbstractContext) -> None:
+    def __init__(self, context: AbstractContext[_B, _RB, _RS, _D, _P, _Q, _TQ]) -> None:
         self.context = context
 
     def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
                  padded_shape: Optional[Tuple[int, ...]] = None,
-                 raw: Any = None) -> DeviceArray:
+                 raw: Optional[_RB] = None) -> DeviceArray:
         return DeviceArray(self.context, shape, dtype, padded_shape, raw)
 
-    def allocate_raw(self, n_bytes: int) -> Any:
+    def allocate_raw(self, n_bytes: int) -> _RB:
         return self.context.allocate_raw(n_bytes)
 
 
-class SVMAllocator(AbstractAllocator):
+class SVMAllocator(Generic[_B, _RB, _RS, _D, _P, _Q, _TQ], AbstractAllocator[_RS]):
     """Allocates :class:`SVMArray` objects from a context"""
 
-    def __init__(self, context: AbstractContext) -> None:
+    def __init__(self, context: AbstractContext[_B, _RB, _RS, _D, _P, _Q, _TQ]) -> None:
         self.context = context
 
     def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
-                 padded_shape: Optional[Tuple[int, ...]] = None, raw: Any = None) -> SVMArray:
+                 padded_shape: Optional[Tuple[int, ...]] = None,
+                 raw: Optional[_RS] = None) -> SVMArray:
         return SVMArray(self.context, shape, dtype, padded_shape, raw)
 
-    def allocate_raw(self, n_bytes: int) -> Any:
+    def allocate_raw(self, n_bytes: int) -> _RS:
         return self.context.allocate_svm_raw(n_bytes)
 
 
 class Dimension:
     """A single dimension of an :class:`IOSlot`.
-    
+
     It represents padding and alignment requirements. Instances can be linked
     together, with all linked instances (whether directly or indirectly linked)
     exposing the intersection of their requirements. Internally this is
@@ -936,7 +975,7 @@ class Dimension:
         if min_padded_size < size:
             raise ValueError('padded size is less than size')
 
-        self._parent = None
+        self._parent = None     # type: Optional[Dimension]
         self._size = size
         self._min_padded_size = min_padded_size
         self._alignment = alignment
@@ -998,7 +1037,7 @@ class Dimension:
 
     def add_align_dtype(self, dtype: np.ndarray) -> None:
         """Add an alignment hint.
-        
+
         Indicates that this will be used with an array whose fastest-varying
         dimension is of type `dtype`. If the size is not a power of 2, it is
         ignored.
@@ -1054,7 +1093,7 @@ class Dimension:
 
 class IOSlotBase(ABC):
     """An input/output slot of an operation.
-    
+
     A slot can be bound to storage, or can allocate storage itself. This base
     class is untyped and unshaped, so in most cases one will use
     :class:`IOSlot` instead.
@@ -1084,10 +1123,10 @@ class IOSlotBase(ABC):
         return self.is_root and not self.is_bound()
 
     @abstractmethod
-    def _allocate(self, allocator: AbstractAllocator, raw: Any = None) -> Any:
+    def _allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None) -> Any:
         """Variant of :meth:`allocate` that does not check whether this is a root slot."""
 
-    def allocate(self, allocator: AbstractAllocator, raw: Any = None) -> Any:
+    def allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None) -> Any:
         """Allocate and immediately bind a buffer satisfying the requirements.
 
         .. warning:: When `raw` is provided, there is no check that the storage is large enough.
@@ -1140,7 +1179,7 @@ class IOSlot(IOSlotBase):
         if len(self.dimensions) > 1:
             self.dimensions[-1].add_align_dtype(dtype)
         self.dtype = np.dtype(dtype)
-        self.buffer = None
+        self.buffer = None       # type: Optional[DeviceArray]
 
     def is_bound(self) -> bool:
         return self.buffer is not None
@@ -1206,12 +1245,14 @@ class IOSlot(IOSlotBase):
     def required_bytes(self) -> int:
         return int(np.product(self.required_padded_shape()) * self.dtype.itemsize)
 
-    def _allocate(self, allocator: AbstractAllocator, raw: Any = None) -> DeviceArray:
+    def _allocate(self, allocator: AbstractAllocator[_RB],
+                  raw: Optional[_RB] = None) -> DeviceArray:
         buffer = allocator.allocate(self.shape, self.dtype, self.required_padded_shape(), raw=raw)
         self._bind(buffer)
         return buffer
 
-    def allocate(self, allocator: AbstractAllocator, raw: Any = None) -> DeviceArray:
+    def allocate(self, allocator: AbstractAllocator[_RB],
+                 raw: Optional[_RB] = None) -> DeviceArray:
         # Overloaded just to restrict the type signature
         return super().allocate(allocator, raw)
 
@@ -1283,10 +1324,10 @@ class AliasIOSlot(IOSlotBase):
     ValueError
         If `children` is empty or contains non-attachable elements
     """
-    def __init__(self, children: Iterable[IOSlot]) -> None:
+    def __init__(self, children: Iterable[IOSlotBase]) -> None:
         super(AliasIOSlot, self).__init__()
         self.children = list(children)
-        self.raw = None
+        self.raw = None       # type: Optional[Any]
         if not len(self.children):
             raise ValueError('empty child list')
         for child in self.children:
@@ -1301,7 +1342,7 @@ class AliasIOSlot(IOSlotBase):
     def required_bytes(self) -> int:
         return max([child.required_bytes() for child in self.children])
 
-    def _allocate(self, allocator: AbstractAllocator, raw: Any = None) -> Any:
+    def _allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None) -> _RB:
         if raw is None:
             raw = allocator.allocate_raw(self.required_bytes())
         for child in self.children:
@@ -1355,18 +1396,29 @@ class Operation(ABC):
         elif allocator.context is not None:
             if allocator.context is not command_queue.context:
                 raise ValueError('command_queue and allocator have different contexts')
-        self.slots = {}
-        self.hidden_slots = {}
+        self.slots = {}            # type: Dict[str, IOSlotBase]
+        self.hidden_slots = {}     # type: Dict[str, IOSlotBase]
         self.command_queue = command_queue
         self.is_root = True
         self.allocator = allocator
 
     def bind(self, **kwargs) -> None:
-        """Bind buffers to slots by keyword. Each keyword argument name
-        specifies a slot name.
+        """Bind buffers to slots by keyword.
+
+        Each keyword argument name specifies a slot name.
+
+        Raises
+        ------
+        KeyError
+            if a named slots does not exist
+        TypeError
+            if a named slot if an alias slot
         """
         for name, buffer in kwargs.items():
-            self.slots[name].bind(buffer)
+            slot = self.slots[name]
+            if not isinstance(slot, IOSlot):
+                raise TypeError('Slot {} is not an IOSlot'.format(slot))
+            slot.bind(buffer)
 
     def ensure_all_bound(self) -> None:
         """Make sure that all slots have a buffer bound, allocating if necessary"""
@@ -1374,9 +1426,9 @@ class Operation(ABC):
             if not slot.is_bound():
                 slot.allocate(self.allocator)
 
-    def buffer(self, name: str) -> Optional[Any]:
+    def buffer(self, name: str) -> Optional[DeviceArray]:
         """Retrieve the buffer bound to a slot.
-        
+
         It will consult both :attr:`slots` and :attr:`hidden_slots`.
 
         Parameters
@@ -1388,6 +1440,7 @@ class Operation(ABC):
         -------
         :class:`DeviceArray`
             Buffer bound to slot `name`, or `None` if the slot exists but is unbound
+            or is an alias slot.
 
         Raises
         ------
@@ -1401,7 +1454,10 @@ class Operation(ABC):
                 slot = self.hidden_slots[name]
             except KeyError:
                 raise KeyError('no slot named ' + name)
-        return slot.buffer
+        if isinstance(slot, IOSlot):
+            return slot.buffer
+        else:
+            return None
 
     def required_bytes(self) -> int:
         """Number of bytes of device storage required"""
@@ -1467,7 +1523,10 @@ class OperationSequence(Operation):
             for (name, child_names) in compounds.items():
                 children = self._extract_slots(child_names, False)
                 if children:
-                    self.slots[name] = CompoundIOSlot(children)
+                    for child in children:
+                        if not isinstance(child, IOSlot):
+                            raise TypeError('Children of {} must all be IOSlots'.format(name))
+                    self.slots[name] = CompoundIOSlot(cast(Iterable[IOSlot], children))
         if aliases is not None:
             for (name, child_names) in aliases.items():
                 children = self._extract_slots(child_names, True)
@@ -1548,15 +1607,14 @@ def _visualize_operation(
     """
     all_slots = {**operation.slots, **operation.hidden_slots}
 
-    if hasattr(operation, 'operations'):
-        operations = getattr(operation, 'operations')   # type: Mapping[str, Operation]
+    if isinstance(operation, OperationSequence):
         # Graphviz treats subgraphs with the prefix 'cluster_' specially. We
         # only want this for real subgraphs, not the root.
         node_name = 'cluster_' + '!'.join(path) if len(path) > 1 else 'root'
         for slot_name, slot in all_slots.items():
             if isinstance(slot, CompoundIOSlot):
-                for child in slot.children:
-                    no_detail_slots.add(child)
+                for child_slot in slot.children:
+                    no_detail_slots.add(child_slot)
         with g.subgraph(name=node_name) as sub:
             sub.attr('graph', label=path[-1])
             for child_name, child in operation.operations.items():
@@ -1567,8 +1625,8 @@ def _visualize_operation(
                     # ":" has special meaning to graphviz, so we replace it with "+".
                     full_name = 'slot_{}_{}'.format('!'.join(path), slot_name.replace(':', '+'))
                     slot_map[slot] = full_name
-                    label = '<' + _slot_label(slot, slot_name, slot in no_detail_slots) + '>'
-                    sub.node(full_name, label=label, shape='box')
+                    slot_label = '<' + _slot_label(slot, slot_name, slot in no_detail_slots) + '>'
+                    sub.node(full_name, label=slot_label, shape='box')
                 else:
                     del all_slots[slot_name]
     else:
@@ -1586,8 +1644,9 @@ def _visualize_operation(
 
     for slot in all_slots.values():
         if hasattr(slot, 'children'):
-            for child in slot.children:
-                edges.add((child, slot))
+            children = getattr(slot, 'children')  # type: Sequence[IOSlotBase]
+            for child2 in children:
+                edges.add((child2, slot))
 
 
 def visualize_operation(operation: Operation, filename: str) -> None:
@@ -1608,8 +1667,8 @@ def visualize_operation(operation: Operation, filename: str) -> None:
 
     g = Graph()
     g.attr('graph', clusterrank='local', ranksep='3', compound='yes')
-    slot_map = {}
-    edges = set()
+    slot_map = {}        # type: Dict[IOSlotBase, str]
+    edges = set()        # type: Set[Tuple[IOSlotBase, IOSlotBase]]
     _visualize_operation(g, operation, ('root',), slot_map, set(), edges)
     for a, b in edges:
         g.edge(slot_map[a], slot_map[b])

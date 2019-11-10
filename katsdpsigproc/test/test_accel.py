@@ -761,7 +761,8 @@ class TestVisualizeOperation(object):
     A real test requires a human to sanity-check the visual output.
     """
     class Inner(accel.Operation):
-        pass
+        def _run(self) -> None:
+            pass
 
     def setup(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -771,7 +772,7 @@ class TestVisualizeOperation(object):
 
     @device_test
     def test(self, context, queue):
-        inner = accel.Operation(queue)
+        inner = TestVisualizeOperation.Inner(queue)
         inner.slots['foo'] = accel.IOSlot((3, 4), np.float32)
         inner.slots['bar'] = accel.IOSlot((4, 3), np.float32)
 

@@ -3,7 +3,7 @@
 It implements the abstract interfaces defined by :mod:`katsdpsigproc.abc`.
 """
 
-from typing import List, Tuple, Sequence, Optional, Callable, Type, Any
+from typing import List, Tuple, Sequence, Optional, Callable, Type, TypeVar, Any
 from types import TracebackType
 
 import pyopencl
@@ -14,6 +14,10 @@ from .abc import (AbstractProgram, AbstractKernel, AbstractDevice, AbstractConte
                   AbstractEvent, AbstractCommandQueue, AbstractTuningCommandQueue)
 
 
+_T = TypeVar('_T')
+_D = TypeVar('_D', bound='Device')
+
+
 class _DummyArray:
     """Trivial dummy for :class:`pyopencl.array.Array`, that just has a `data` attribute."""
     def __init__(self, data: Any) -> None:
@@ -22,7 +26,7 @@ class _DummyArray:
 
 class _PinnedAMD(np.ndarray):
     """Pinned memory abstraction for AMD GPUs.
-    
+
     Copies to the device
     are done by unmapping the buffer, enqueuing the copy, and remapping
     the buffer. This is based on AMD's optimization guide.
@@ -30,7 +34,7 @@ class _PinnedAMD(np.ndarray):
     _mapping: pyopencl.MemoryMap
 
     def __new__(cls, context: 'Context', queue: 'CommandQueue',
-                shape: Tuple[int], dtype: np.dtype) -> '_PinnedAMD':
+                shape: Tuple[int, ...], dtype: np.dtype) -> '_PinnedAMD':
         dtype = np.dtype(dtype)
         n_bytes = int(np.product(shape)) * dtype.itemsize
         # Do not add READ or WRITE to the flags: doing so seems to cause AMD
@@ -125,7 +129,7 @@ class _PinnedAMD(np.ndarray):
         self._enqueue_transfer(queue, blocking, transfer)
 
 
-class Program(AbstractProgram):
+class Program(AbstractProgram['Kernel']):
     def __init__(self, pyopencl_program: pyopencl.Program) -> None:
         self._pyopencl_program = pyopencl_program
 
@@ -133,7 +137,7 @@ class Program(AbstractProgram):
         return Kernel(self, name)
 
 
-class Kernel(AbstractKernel):
+class Kernel(AbstractKernel[Program]):
     def __init__(self, program: Program, name: str) -> None:
         self._pyopencl_kernel = pyopencl.Kernel(program._pyopencl_program, name)
 
@@ -155,7 +159,7 @@ class Event(AbstractEvent):
         return next_event.time_since(self)
 
 
-class Device(AbstractDevice):
+class Device(AbstractDevice['Context']):
     """Abstraction of an OpenCL device."""
 
     def __init__(self, pyopencl_device: pyopencl.Device) -> None:
@@ -207,22 +211,23 @@ class Device(AbstractDevice):
             return []
 
     @classmethod
-    def get_devices(cls) -> List['Device']:
+    def get_devices(cls: Type[_D]) -> Sequence[_D]:
         ans = []
         for platform in cls._get_platforms():
             for device in platform.get_devices():
-                ans.append(Device(device))
+                ans.append(cls(device))
         return ans
 
     @classmethod
-    def get_devices_by_platform(cls) -> List[List['Device']]:
+    def get_devices_by_platform(cls: Type[_D]) -> Sequence[Sequence[_D]]:
         ans = []
         for platform in cls._get_platforms():
-            ans.append([Device(device) for device in platform.get_devices()])
+            ans.append([cls(device) for device in platform.get_devices()])
         return ans
 
 
-class Context(AbstractContext):
+class Context(AbstractContext[pyopencl.array.Array, pyopencl.Buffer, None,
+                              Device, Program, 'CommandQueue', 'TuningCommandQueue']):
     """Abstraction of an OpenCL context"""
 
     def __init__(self, pyopencl_context: pyopencl.Context) -> None:
@@ -246,11 +251,11 @@ class Context(AbstractContext):
     def allocate_raw(self, n_bytes: int) -> pyopencl.Buffer:
         return pyopencl.Buffer(self._pyopencl_context, pyopencl.mem_flags.READ_WRITE, n_bytes)
 
-    def allocate(self, shape: Tuple[int], dtype: np.dtype,
+    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
                  raw: Optional[pyopencl.Buffer] = None) -> pyopencl.array.Array:
         return pyopencl.array.Array(self._pyopencl_context, shape, dtype, data=raw)
 
-    def allocate_pinned(self, shape: Tuple[int], dtype: np.dtype) -> np.ndarray:
+    def allocate_pinned(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
         device = self._pyopencl_context.devices[0]
         if (self._force_pinned_amd
             or ((device.type & pyopencl.device_type.GPU)
@@ -275,7 +280,8 @@ class Context(AbstractContext):
     def allocate_svm_raw(self, n_bytes: int) -> None:
         raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
 
-    def allocate_svm(self, shape: Tuple[int], dtype: np.ndarray, raw: Any = None) -> np.ndarray:
+    def allocate_svm(self, shape: Tuple[int, ...], dtype: np.ndarray,
+                     raw: Optional[None] = None) -> np.ndarray:
         raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
 
     def create_command_queue(self, profile: bool = False) -> 'CommandQueue':
@@ -284,17 +290,17 @@ class Context(AbstractContext):
     def create_tuning_command_queue(self) -> 'TuningCommandQueue':
         return TuningCommandQueue(self)
 
-    def __enter__(self) -> 'Context':
+    def __enter__(self: _T) -> _T:
         return self
 
     def __exit__(self,
                  exc_type: Optional[Type[BaseException]],
                  exc_val: Optional[BaseException],
-                 exc_tb: Optional[TracebackType]) -> bool:
-        return False
+                 exc_tb: Optional[TracebackType]) -> None:
+        pass
 
 
-class CommandQueue(AbstractCommandQueue):
+class CommandQueue(AbstractCommandQueue[pyopencl.array.Array, Context, Event, Kernel]):
     """Abstraction of a command queue. If no existing command queue is passed
     to the constructor, a new one is created.
 
@@ -308,6 +314,7 @@ class CommandQueue(AbstractCommandQueue):
         If true and `pyopencl_command_queue` is omitted, enabling profiling
         (timing) on the queue.
     """
+
     def __init__(self, context: Context,
                  pyopencl_command_queue: Optional[pyopencl.CommandQueue] = None,
                  profile: bool = False) -> None:
@@ -403,7 +410,8 @@ class CommandQueue(AbstractCommandQueue):
             return arg
 
     def _enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
-                        global_size: Tuple[int], local_size: Tuple[int]) -> pyopencl.Event:
+                        global_size: Tuple[int, ...],
+                        local_size: Tuple[int, ...]) -> pyopencl.Event:
         """Enqueue a kernel to the command queue.
 
         This version returns the OpenCL event object. Refer to
@@ -419,7 +427,7 @@ class CommandQueue(AbstractCommandQueue):
                                        global_size, local_size, *args)
 
     def enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
-                       global_size: Tuple[int], local_size: Tuple[int]) -> None:
+                       global_size: Tuple[int, ...], local_size: Tuple[int, ...]) -> None:
         self._enqueue_kernel(kernel, args, global_size, local_size)
 
     def enqueue_marker(self) -> Event:
@@ -438,9 +446,10 @@ class CommandQueue(AbstractCommandQueue):
         self._pyopencl_command_queue.finish()
 
 
-class TuningCommandQueue(CommandQueue, AbstractTuningCommandQueue):
+class TuningCommandQueue(CommandQueue,
+                         AbstractTuningCommandQueue[pyopencl.array.Array, Context, Event, Kernel]):
     """Command queue with extra facilities for autotuning.
-    
+
     It keeps track of kernels that are enqueued since the last call to
     :meth:`start_tuning`, and reports the total time they consume when
     :meth:`stop_tuning` is called.
@@ -457,7 +466,7 @@ class TuningCommandQueue(CommandQueue, AbstractTuningCommandQueue):
         self.events = []
 
     def enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
-                       global_size: Tuple[int], local_size: Tuple[int]) -> None:
+                       global_size: Tuple[int, ...], local_size: Tuple[int, ...]) -> None:
         if not self.is_tuning:
             super(TuningCommandQueue, self).enqueue_kernel(kernel, args, global_size, local_size)
         else:

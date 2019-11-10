@@ -3,7 +3,7 @@
 It implements the abstract interfaces defined in :mod:`katsdpsigproc.abc`.
 """
 
-from typing import List, Tuple, Sequence, Optional, Callable, Type, Union, Any
+from typing import List, Tuple, Sequence, Optional, Type, TypeVar, Union, Any
 from types import TracebackType
 
 import numpy as np
@@ -17,9 +17,13 @@ from .abc import (AbstractProgram, AbstractKernel, AbstractDevice, AbstractConte
 
 
 NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
+_T = TypeVar('_T')
+_C = TypeVar('_C', bound='Context')
+_D = TypeVar('_D', bound='Device')
+_AnyBuffer = Union[pycuda.gpuarray.GPUArray, np.ndarray]
 
 
-class Program(AbstractProgram):
+class Program(AbstractProgram['Kernel']):
     def __init__(self, pycuda_module: pycuda.driver.Module) -> None:
         self._pycuda_program = pycuda_module
 
@@ -27,7 +31,7 @@ class Program(AbstractProgram):
         return Kernel(self, name)
 
 
-class Kernel(AbstractKernel):
+class Kernel(AbstractKernel[Program]):
     def __init__(self, program: Program, name: str) -> None:
         self._pycuda_kernel = program._pycuda_program.get_function(name)
 
@@ -48,7 +52,7 @@ class Event(AbstractEvent):
         return next_event.time_since(self)
 
 
-class Device(AbstractDevice):
+class Device(AbstractDevice['Context']):
     def __init__(self, pycuda_device: pycuda.driver.Device) -> None:
         self._pycuda_device = pycuda_device
 
@@ -93,12 +97,12 @@ class Device(AbstractDevice):
         return self._pycuda_device.warp_size
 
     @classmethod
-    def get_devices(cls) -> List['Device']:
+    def get_devices(cls: Type[_D]) -> Sequence[_D]:
         num_devices = pycuda.driver.Device.count()
-        return [Device(pycuda.driver.Device(i)) for i in range(num_devices)]
+        return [cls(pycuda.driver.Device(i)) for i in range(num_devices)]
 
     @classmethod
-    def get_devices_by_platform(cls) -> List[List['Device']]:
+    def get_devices_by_platform(cls: Type[_D]) -> Sequence[Sequence[_D]]:
         return [cls.get_devices()]
 
 
@@ -112,13 +116,16 @@ class _RawManaged:
     def __init__(self, wrapped: np.ndarray) -> None:
         self._wrapped = wrapped
 
-    def get_array(self, shape: Tuple[int], dtype: np.dtype) -> np.ndarray:
+    def get_array(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
         """Returns a view of (a prefix of) the memory, with the given shape and type."""
         size = int(np.product(shape)) * np.dtype(dtype).itemsize
         return self._wrapped[:size].view(dtype).reshape(shape)
 
 
-class Context(AbstractContext):
+class Context(AbstractContext[pycuda.gpuarray.GPUArray,
+                              pycuda.driver.DeviceAllocation,
+                              _RawManaged,
+                              Device, Program, 'CommandQueue', 'TuningCommandQueue']):
     def __init__(self, pycuda_context: pycuda.driver.Context) -> None:
         self._pycuda_context = pycuda_context
 
@@ -136,12 +143,12 @@ class Context(AbstractContext):
         with self:
             return pycuda.driver.mem_alloc(n_bytes)
 
-    def allocate(self, shape: Tuple[int], dtype: np.ndarray,
-                 raw: Optional[pycuda.driver.DeviceAllocation] = None):
+    def allocate(self, shape: Tuple[int, ...], dtype: np.ndarray,
+                 raw: Optional[pycuda.driver.DeviceAllocation] = None) -> pycuda.gpuarray.GPUArray:
         with self:
             return pycuda.gpuarray.GPUArray(shape, dtype, gpudata=raw)
 
-    def allocate_pinned(self, shape: Tuple[int], dtype: np.dtype) -> np.ndarray:
+    def allocate_pinned(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
         with self:
             return pycuda.driver.pagelocked_empty(shape, dtype)
 
@@ -150,7 +157,7 @@ class Context(AbstractContext):
             return _RawManaged(pycuda.driver.managed_empty(
                 (n_bytes,), np.uint8, mem_flags=pycuda.driver.mem_attach_flags.GLOBAL))
 
-    def allocate_svm(self, shape: Tuple[int], dtype: np.dtype,
+    def allocate_svm(self, shape: Tuple[int, ...], dtype: np.dtype,
                      raw: Optional[_RawManaged] = None) -> np.ndarray:
         with self:
             if raw is None:
@@ -162,23 +169,22 @@ class Context(AbstractContext):
     def create_command_queue(self, profile: bool = False) -> 'CommandQueue':
         return CommandQueue(self, profile=profile)
 
-    def create_tuning_command_queue(self) -> TuningCommandQueue:
+    def create_tuning_command_queue(self) -> 'TuningCommandQueue':
         return TuningCommandQueue(self)
 
-    def __enter__(self) -> 'Context':
+    def __enter__(self: _C) -> _C:
         self._pycuda_context.push()
         return self
 
     def __exit__(self,
                  exc_type: Optional[Type[BaseException]],
                  exc_val: Optional[BaseException],
-                 exc_tb: Optional[TracebackType]) -> bool:
+                 exc_tb: Optional[TracebackType]) -> None:
         self._pycuda_context.pop()
-        return False
 
 
-class CommandQueue(AbstractCommandQueue):
-    def __init__(self, context: Context, pycuda_stream: Optional[pycuda.Driver.Stream] = None,
+class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event, Kernel]):
+    def __init__(self, context: Context, pycuda_stream: Optional[pycuda.driver.Stream] = None,
                  profile: bool = False) -> None:
         self.context = context
         if pycuda_stream is None:
@@ -206,7 +212,7 @@ class CommandQueue(AbstractCommandQueue):
                 self._pycuda_stream.synchronize()
 
     @staticmethod
-    def _get_device_pointer(buffer: Union[pycuda.gpuarray.GPUArray, np.ndarray]) -> int:
+    def _get_device_pointer(buffer: _AnyBuffer) -> int:
         """Retrieves the device pointer from either a GPUArray or a managed memory allocation."""
         if isinstance(buffer, pycuda.gpuarray.GPUArray):
             return int(buffer.gpudata)
@@ -214,8 +220,8 @@ class CommandQueue(AbstractCommandQueue):
             return buffer.base.get_device_pointer()
 
     def enqueue_copy_buffer_rect(
-            self, src_buffer: Union[pycuda.gpuarray.GPUArray, np.ndarray],
-            dest_buffer: pycuda.gpuarray.GPUArray,
+            self, src_buffer: _AnyBuffer,
+            dest_buffer: _AnyBuffer,
             src_origin: int, dest_origin: int,
             shape: Sequence[int], src_strides: Sequence[int], dest_strides: Sequence[int]) -> None:
         with self.context:
@@ -255,7 +261,7 @@ class CommandQueue(AbstractCommandQueue):
         return view.view(np.uint8)
 
     def enqueue_read_buffer_rect(
-            self, buffer: Union[pycuda.gpuarray.GPUArray, np.ndarray], data: Any,
+            self, buffer: _AnyBuffer, data: Any,
             buffer_origin: int, data_origin: int, shape: Sequence[int],
             buffer_strides: Sequence[int], data_strides: Sequence[int],
             blocking: bool = True) -> None:
@@ -291,7 +297,7 @@ class CommandQueue(AbstractCommandQueue):
                 self._pycuda_stream.synchronize()
 
     def enqueue_write_buffer_rect(
-            self, buffer: Union[pycuda.gpuarray.GPUArray, np.ndarray], data: Any,
+            self, buffer: _AnyBuffer, data: Any,
             buffer_origin: int, data_origin: int, shape: Sequence[int],
             buffer_strides: Sequence[int], data_strides: Sequence[int],
             blocking: bool = True) -> None:
@@ -326,7 +332,7 @@ class CommandQueue(AbstractCommandQueue):
             if blocking:
                 self._pycuda_stream.synchronize()
 
-    def enqueue_zero_buffer(self, buffer: Union[pycuda.gpuarray.GPUArray, np.ndarray]) -> None:
+    def enqueue_zero_buffer(self, buffer: _AnyBuffer) -> None:
         with self.context:
             if isinstance(buffer, pycuda.gpuarray.GPUArray):
                 pycuda.driver.memset_d8(buffer.gpudata, 0, buffer.mem_size * buffer.dtype.itemsize)
@@ -336,7 +342,7 @@ class CommandQueue(AbstractCommandQueue):
                                         buffer.size * buffer.dtype.itemsize)
 
     def enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
-                       global_size: Tuple[int], local_size: Tuple[int]) -> None:
+                       global_size: Tuple[int, ...], local_size: Tuple[int, ...]) -> None:
         assert len(global_size) == len(local_size)
         block = [1, 1, 1]
         grid = [1, 1, 1]
@@ -348,7 +354,7 @@ class CommandQueue(AbstractCommandQueue):
             kernel._pycuda_kernel(*args, block=tuple(block), grid=tuple(grid),
                                   stream=self._pycuda_stream)
 
-    def enqueue_marker(self) -> 'Event':
+    def enqueue_marker(self) -> Event:
         with self.context:
             event = pycuda.driver.Event()
             event.record(self._pycuda_stream)
@@ -369,11 +375,13 @@ class CommandQueue(AbstractCommandQueue):
             self._pycuda_stream.synchronize()
 
 
-class TuningCommandQueue(CommandQueue, AbstractTuningCommandQueue):
-    def __init__(self, *args, **kwargs):
+class TuningCommandQueue(CommandQueue,
+                         AbstractTuningCommandQueue[pycuda.gpuarray.GPUArray,
+                                                    Context, Event, Kernel]):
+    def __init__(self, *args, **kwargs) -> None:
         super(TuningCommandQueue, self).__init__(*args, **kwargs)
         self.is_tuning = False
-        self._start_event = None
+        self._start_event = None    # type: Optional[Event]
 
     def start_tuning(self) -> None:
         self.is_tuning = True
