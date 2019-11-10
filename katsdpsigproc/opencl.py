@@ -3,7 +3,7 @@
 It implements the abstract interfaces defined by :mod:`katsdpsigproc.abc`.
 """
 
-from typing import List, Tuple, Sequence, Optional, Callable, Type, TypeVar, Any
+from typing import List, Tuple, Sequence, Optional, Callable, Type, TypeVar, Union, Any
 from types import TracebackType
 
 import pyopencl
@@ -16,11 +16,13 @@ from .abc import (AbstractProgram, AbstractKernel, AbstractDevice, AbstractConte
 
 _T = TypeVar('_T')
 _D = TypeVar('_D', bound='Device')
+_AnyBuffer = Union['_DummyArray', pyopencl.array.Array]
 
 
 class _DummyArray:
     """Trivial dummy for :class:`pyopencl.array.Array`, that just has a `data` attribute."""
-    def __init__(self, data: Any) -> None:
+
+    def __init__(self, data: pyopencl.Buffer) -> None:
         self.data = data
 
 
@@ -344,13 +346,13 @@ class CommandQueue(AbstractCommandQueue[pyopencl.array.Array, Context, Event, Ke
             buffer.set(ary=data, queue=self._pyopencl_command_queue, async_=not blocking)
 
     def enqueue_copy_buffer(
-            self, src_buffer: pyopencl.array.Array, dest_buffer: pyopencl.array.Array) -> None:
+            self, src_buffer: _AnyBuffer, dest_buffer: _AnyBuffer) -> None:
         pyopencl.enqueue_copy(
             self._pyopencl_command_queue,
             src=src_buffer.data, dest=dest_buffer.data)
 
     def enqueue_copy_buffer_rect(
-            self, src_buffer: pyopencl.array.Array, dest_buffer: pyopencl.array.Array,
+            self, src_buffer: _AnyBuffer, dest_buffer: _AnyBuffer,
             src_origin: int, dest_origin: int,
             shape: Sequence[int], src_strides: Sequence[int], dest_strides: Sequence[int]) -> None:
         assert src_strides[0] == 1

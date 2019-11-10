@@ -112,7 +112,8 @@ def _make_lookup(extra_dirs: List[str]) -> TemplateLookup:
 _lookup = _make_lookup([])
 
 
-def build(context: AbstractContext, name: str, render_kws: Mapping[str, Any],
+def build(context: AbstractContext, name: str,
+          render_kws: Optional[Mapping[str, Any]] = None,
           extra_dirs: Optional[List[str]] = None,
           extra_flags: Optional[List[str]] = None,
           source: Optional[str] = None) -> AbstractProgram:
