@@ -261,16 +261,6 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
         """
 
     @abstractmethod
-    def enqueue_copy_buffer(self, src_buffer: _B, dest_buffer: _B) -> None:
-        """Copy one buffer to another.
-
-        Parameters
-        ----------
-        src_buffer,dest_buffer
-            Source and destination buffers
-        """
-
-    @abstractmethod
     def enqueue_copy_buffer_rect(
             self, src_buffer: _B, dest_buffer: _B, src_origin: int, dest_origin: int,
             shape: Sequence[int], src_strides: Sequence[int], dest_strides: Sequence[int]) -> None:

@@ -211,13 +211,6 @@ class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event
             if blocking:
                 self._pycuda_stream.synchronize()
 
-    def enqueue_copy_buffer(self, src_buffer: _AnyBuffer, dest_buffer: _AnyBuffer) -> None:
-        pycuda.driver.memcpy_dtod_async(
-            self._get_device_pointer(dest_buffer),
-            self._get_device_pointer(src_buffer),
-            dest_buffer.nbytes,
-            self._pycuda_stream)
-
     @staticmethod
     def _get_device_pointer(buffer: _AnyBuffer) -> int:
         """Retrieves the device pointer from either a GPUArray or a managed memory allocation."""
