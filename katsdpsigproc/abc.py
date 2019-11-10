@@ -407,7 +407,7 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
         """Block until all enqueued work has completed"""
 
 
-class AbstractTuningCommandQueue(Generic[_B, _C, _E, _K], AbstractCommandQueue[_B, _C, _E, _K]):
+class AbstractTuningCommandQueue(AbstractCommandQueue[_B, _C, _E, _K]):
     """Command queue with extra facilities for autotuning.
 
     It keeps track of kernels that are enqueued since the last call to
