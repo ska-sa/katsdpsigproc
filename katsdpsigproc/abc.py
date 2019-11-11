@@ -189,7 +189,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
 
     @abstractmethod
     def allocate_svm_raw(self, n_bytes: int) -> _RS:
-        """Allow raw storage that can be passed in to :meth:`allocate_svm`."""
+        """Allocate raw storage that can be passed to :meth:`allocate_svm`."""
 
     @abstractmethod
     def allocate_svm(self, shape: Tuple[int, ...], dtype: np.ndarray,
