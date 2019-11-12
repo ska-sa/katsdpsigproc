@@ -316,9 +316,9 @@ def autotune(generate: Callable[..., Optional[_ScoreFunc]], time_limit: float = 
         if the Cartesian product is empty
     """
     opts = itertools.product(*kwargs.values())
-    best: Optional[Mapping[str, Any]] = None
-    best_score: Optional[float] = None
-    exc: Optional[Exception] = None
+    best = None                # type: Optional[Mapping[str, Any]]
+    best_score = None          # type: Optional[float]
+    exc = None                 # type: Optional[Exception]
     if threads is None:
         try:
             threads = multiprocessing.cpu_count()

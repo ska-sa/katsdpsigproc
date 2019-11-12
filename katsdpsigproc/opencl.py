@@ -33,7 +33,7 @@ class _PinnedAMD(np.ndarray):
     are done by unmapping the buffer, enqueuing the copy, and remapping
     the buffer. This is based on AMD's optimization guide.
     """
-    _mapping: pyopencl.MemoryMap
+    _mapping = None     # type: pyopencl.MemoryMap
 
     def __new__(cls, context: 'Context', queue: 'CommandQueue',
                 shape: Tuple[int, ...], dtype: np.dtype) -> '_PinnedAMD':
