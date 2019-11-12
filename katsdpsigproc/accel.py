@@ -1440,13 +1440,14 @@ class Operation(ABC):
         Returns
         -------
         :class:`DeviceArray`
-            Buffer bound to slot `name`, or `None` if the slot exists but is unbound
-            or is an alias slot.
+            Buffer bound to slot `name`.
 
         Raises
         ------
         KeyError
             If no slot with this name exists
+        TypeError
+            If the slot exists but it is an alias slot
         """
         try:
             slot = self.slots[name]
@@ -1458,7 +1459,7 @@ class Operation(ABC):
         if isinstance(slot, IOSlot):
             return slot.buffer
         else:
-            return None
+            raise TypeError('slot ' + name + ' is an alias slot')
 
     def required_bytes(self) -> int:
         """Number of bytes of device storage required"""
