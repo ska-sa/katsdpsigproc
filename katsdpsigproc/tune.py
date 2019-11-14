@@ -80,12 +80,12 @@ def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]
 
        :func:`autotuner`
     """
-    argspec = inspect.getargspec(fn)
     # Extract the arguments passed to the wrapped function, by name
-    named_args = dict(kwargs)
-    for i in range(2, len(args)):
-        named_args[argspec.args[i]] = args[i]
-    keys = dict([('arg_' + key, adapt_value(value)) for (key, value) in named_args.items()])
+    sig = inspect.signature(fn)
+    bound = sig.bind(*args, **kwargs)
+    bound.apply_defaults()
+    keys = {'arg_' + name: adapt_value(value)
+            for (name, value) in itertools.islice(bound.arguments.items(), 2, None)}
 
     # Add information about the device
     device = args[1].device

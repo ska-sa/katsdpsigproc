@@ -1,13 +1,17 @@
 import sys
 import traceback
-from nose.tools import assert_equal, assert_raises
-import sqlite3
 import threading
 from unittest import mock
+from typing import NoReturn, Any
+
+from nose.tools import assert_equal, assert_raises
+import sqlite3
+
 from .. import tune
+from ..abc import AbstractContext
 
 
-def test_autotune_basic():
+def test_autotune_basic() -> None:
     received = []
     received_lock = threading.Lock()
 
@@ -22,7 +26,7 @@ def test_autotune_basic():
     assert_equal({'a': 1, 'b': 3}, best)
 
 
-def test_autotune_empty():
+def test_autotune_empty() -> None:
     with assert_raises(ValueError):
         tune.autotune(lambda x, y: lambda iters: 0, x=[1, 2], y=[])
 
@@ -31,7 +35,7 @@ class CustomError(RuntimeError):
     pass
 
 
-def test_autotune_some_raise():
+def test_autotune_some_raise() -> None:
     def generate(x):
         if x == 1:
             raise CustomError('x = 1')
@@ -45,11 +49,11 @@ def test_autotune_some_raise():
     assert_equal({'x': 2}, best)
 
 
-def generate_raise(x):
+def generate_raise(x: Any) -> NoReturn:
     raise CustomError('x = {0}'.format(x))
 
 
-def test_autotune_all_raise():
+def test_autotune_all_raise() -> None:
     exc_value = None
     exc_info = None
     with assert_raises(CustomError):
@@ -64,31 +68,36 @@ def test_autotune_all_raise():
     assert_equal('x = 3', str(exc_value))
     # Check that the traceback refers to the original site, not
     # where it was re-raised
+    assert exc_info is not None
     frames = traceback.extract_tb(exc_info[2])
     assert_equal('generate_raise', frames[-1][2])
 
 
-class TestAutotuner(object):
-    """Tests for the `autotuner` decorator. We use mocking to substitute an
-    in-memory database, which is made to persist for the test instead of
-    being closed each time the decorator is called."""
+class TestAutotuner:
+    """Tests for the `autotuner` decorator.
 
-    def setup(self):
+    We use mocking to substitute an in-memory database, which is made to
+    persist for the test instead of being closed each time the decorator is
+    called."""
+
+    autotune_mock = mock.Mock()
+
+    def setup(self) -> None:
         self.conn = sqlite3.connect(':memory:')
-        self.__class__.autotune_mock = mock.Mock()
+        self.autotune_mock.reset()
 
-    def teardown(self):
+    def teardown(self) -> None:
         self.conn.close()
-        del self.__class__.autotune_mock
+        self.autotune_mock.reset()
 
     @classmethod
     @tune.autotuner(test={'a': 3, 'b': -1})
-    def autotune(cls, context, param):
+    def autotune(cls, context: AbstractContext, param: str) -> mock.Mock:
         return cls.autotune_mock(context, param)
 
     @mock.patch('katsdpsigproc.tune._close_db')
     @mock.patch('katsdpsigproc.tune._open_db')
-    def test(self, open_db_mock, close_db_mock):
+    def test(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock) -> None:
         open_db_mock.return_value = self.conn
         tuning = {'a': 1, 'b': 2}
         context = mock.NonCallableMock()

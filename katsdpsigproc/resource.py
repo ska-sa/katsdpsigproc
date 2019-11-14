@@ -160,7 +160,7 @@ class Resource(Generic[_T]):
         handle that can be used to acquire and release it later. Acquisitions
         always occur in the order in which calls to :meth:`acquire` are made.
 
-        See :class:`ResourceAcquisition` for further details.
+        See :class:`ResourceAllocation` for further details.
         """
         old = self._future
         self._future = asyncio.Future(loop=self._loop)

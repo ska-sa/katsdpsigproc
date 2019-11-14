@@ -1,12 +1,18 @@
+from typing import Tuple, Generator, Optional, Callable, cast
+
 import numpy as np
 
 from .test_accel import device_test, force_autotune
 from .. import accel
 from .. import percentile
+from ..abc import AbstractContext, AbstractCommandQueue
 
 
 class TestPercentile5(object):
-    def test_percentile(self):
+    def test_percentile(self) -> Generator[
+            Tuple[Callable[[int, int, bool, Optional[Tuple[int, int]]], None],
+                  int, int, bool, Optional[Tuple[int, int]]],
+            None, None]:
         yield self.check_percentile5, 4096, 1, False, None
         yield self.check_percentile5, 4095, 4029, True, (0, 4009)
         yield self.check_percentile5, 4094, 4030, False, (100, 4030)
@@ -14,21 +20,25 @@ class TestPercentile5(object):
         yield self.check_percentile5, 4092, 4032, True, None
 
     @classmethod
-    def pad_dimension(cls, dim, extra):
+    def pad_dimension(cls, dim: accel.Dimension, extra: int) -> None:
         """Modifies `dim` to have at least `extra` padding"""
         newdim = accel.Dimension(dim.size, min_padded_size=dim.size + extra)
         newdim.link(dim)
 
     @device_test
-    def check_percentile5(self, R, C, is_amplitude, column_range, context, queue):
+    def check_percentile5(self, R: int, C: int, is_amplitude: bool,
+                          column_range: Optional[Tuple[int, int]],
+                          context: AbstractContext, queue: AbstractCommandQueue) -> None:
         template = percentile.Percentile5Template(context, max_columns=5000,
                                                   is_amplitude=is_amplitude)
         fn = template.instantiate(queue, (R, C), column_range)
         # Force some padded, to check that stride calculation works
-        self.pad_dimension(fn.slots['src'].dimensions[0], 1)
-        self.pad_dimension(fn.slots['src'].dimensions[1], 4)
-        self.pad_dimension(fn.slots['dest'].dimensions[0], 2)
-        self.pad_dimension(fn.slots['dest'].dimensions[1], 3)
+        src_slot = cast(accel.IOSlot, fn.slots['src'])
+        dest_slot = cast(accel.IOSlot, fn.slots['dest'])
+        self.pad_dimension(src_slot.dimensions[0], 1)
+        self.pad_dimension(src_slot.dimensions[1], 4)
+        self.pad_dimension(dest_slot.dimensions[0], 2)
+        self.pad_dimension(dest_slot.dimensions[1], 3)
         rs = np.random.RandomState(seed=1)
         if is_amplitude:
             ary = np.abs(rs.randn(R, C)).astype(np.float32)  # note positive numbers required
@@ -52,6 +62,6 @@ class TestPercentile5(object):
 
     @device_test
     @force_autotune
-    def test_autotune(self, context, queue):
+    def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         """Check that the autotuner runs successfully"""
         percentile.Percentile5Template(context, max_columns=5000)
