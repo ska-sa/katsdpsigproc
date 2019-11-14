@@ -1,37 +1,47 @@
 """On-device percentile calculation of 2D arrays"""
 # see scripts/percentiletest.py for an example
 
+from typing import Tuple, Mapping, Callable, Optional, Any, cast
+from typing_extensions import TypedDict
+
 import numpy as np
 
 from . import accel
 from . import tune
+from .abc import AbstractContext, AbstractCommandQueue
 
 
-class Percentile5Template(object):
+_TuningDict = TypedDict('_TuningDict', {'size': int, 'wgsy': int})
+
+
+class Percentile5Template:
     """Kernel for calculating percentiles of a 2D array of data.
+
     5 percentiles [0,100,25,75,50] are calculated per row (along columns, independently per row).
     The lower percentile element, rather than a linear interpolation is chosen.
     WARNING: assumes all values are positive.
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    max_columns : int
+    max_columns
         Maximum number of columns
-    is_amplitude : bool
+    is_amplitude
         If true, the inputs are scalar amplitudes; if false, they are complex
         numbers and the answers are computed on the absolute values
-    tuning : dict, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
-        - size: number of workitems per workgroup
+        - size: number of workitems per workgroup along each row
+        - wgsy: number of workitems per workgroup along each column
     """
 
     autotune_version = 8
 
-    def __init__(self, context, max_columns, is_amplitude=True, tuning=None):
+    def __init__(self, context: AbstractContext, max_columns: int,
+                 is_amplitude: bool = True, tuning: Optional[_TuningDict] = None) -> None:
         self.context = context
         self.max_columns = max_columns
         self.is_amplitude = is_amplitude
@@ -50,7 +60,8 @@ class Percentile5Template(object):
 
     @classmethod
     @tune.autotuner(test={'size': 64, 'wgsy': 4})
-    def autotune(cls, context, max_columns, is_amplitude):
+    def autotune(cls, context: AbstractContext, max_columns: int,
+                 is_amplitude: bool) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         in_shape = (4096, max_columns)
         rs = np.random.RandomState(seed=1)
@@ -60,7 +71,7 @@ class Percentile5Template(object):
             host_data = rs.standard_normal(in_shape) + 1j * rs.standard_normal(in_shape)
             host_data = host_data.astype(np.complex64)
 
-        def generate(size, wgsy):
+        def generate(size: int, wgsy: int) -> Callable[[int], float]:
             if size * wgsy < 32 or size * wgsy > 1024:
                 raise RuntimeError('work group size is unnecessarily large or small, skipping')
             if max_columns > size * 256:
@@ -72,17 +83,23 @@ class Percentile5Template(object):
             inp.set(queue, host_data)
             return tune.make_measure(queue, fn)
 
-        return tune.autotune(generate,
-                             size=[8, 16, 32, 64, 128, 256, 512, 1024],
-                             wgsy=[1, 2, 4, 8, 16, 32])
+        return cast(_TuningDict, tune.autotune(generate,
+                                               size=[8, 16, 32, 64, 128, 256, 512, 1024],
+                                               wgsy=[1, 2, 4, 8, 16, 32]))
 
-    def instantiate(self, *args, **kwargs):
-        return Percentile5(self, *args, **kwargs)
+    def instantiate(self, command_queue: AbstractCommandQueue,
+                    shape: Tuple[int, int],
+                    column_range: Optional[Tuple[int, int]] = None,
+                    allocator: Optional[accel.AbstractAllocator] = None) -> 'Percentile5':
+        return Percentile5(self, command_queue, shape, column_range, allocator)
 
 
 class Percentile5(accel.Operation):
     """Concrete instance of :class:`PercentileTemplate`.
-    WARNING: assumes all values are positive when `template.is_amplitude` is `True`.
+
+    .. warning::
+
+       Assumes all values are positive when `template.is_amplitude` is `True`.
 
     .. rubric:: Slots
 
@@ -97,19 +114,21 @@ class Percentile5(accel.Operation):
 
     Parameters
     ----------
-    template : :class:`Percentile5Template`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command queue for the operation
-    shape : 2-element tuple of int
+    shape
         Shape of the source data
-    column_range: 2-element tuple of int, optional
+    column_range:
         Half-open interval of columns that will be processed. If not specified, all columns are
         processed.
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+    allocator
         Allocator used to allocate unbound slots
     """
-    def __init__(self, template, command_queue, shape, column_range=None, allocator=None):
+    def __init__(self, template: Percentile5Template, command_queue: AbstractCommandQueue,
+                 shape: Tuple[int, int], column_range: Optional[Tuple[int, int]],
+                 allocator: Optional[accel.AbstractAllocator] = None) -> None:
         super(Percentile5, self).__init__(command_queue, allocator)
         if column_range is None:
             column_range = (0, shape[1])
@@ -129,7 +148,7 @@ class Percentile5(accel.Operation):
         self.slots['src'] = accel.IOSlot((row_dim, col_dim), src_type)
         self.slots['dest'] = accel.IOSlot((5, row_dim), np.float32)
 
-    def _run(self):
+    def _run(self) -> None:
         src = self.buffer('src')
         dest = self.buffer('dest')
         rows_padded = accel.roundup(src.shape[0], self.template.wgsy)
@@ -145,10 +164,10 @@ class Percentile5(accel.Operation):
             global_size=(self.template.size, rows_padded),
             local_size=(self.template.size, self.template.wgsy))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
             'max_columns': self.template.max_columns,
             'is_amplitude': self.template.is_amplitude,
-            'shape': self.slots['src'].shape,
+            'shape': self.slots['src'].shape,      # type: ignore
             'column_range': self.column_range
         }

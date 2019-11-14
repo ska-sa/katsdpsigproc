@@ -1,24 +1,32 @@
 """On-device percentile calculation of 2D arrays"""
 # see scripts/maskedsumtest.py for an example
 
+from typing import Tuple, Mapping, Callable, Optional, Any, cast
+from typing_extensions import TypedDict
+
 import numpy as np
 
 from . import accel
 from . import tune
+from .abc import AbstractContext, AbstractCommandQueue
 
 
-class MaskedSumTemplate(object):
+_TuningDict = TypedDict('_TuningDict', {'size': int})
+
+
+class MaskedSumTemplate:
     """Kernel for calculating masked sums of a 2D array of data.
-    masked sums are calculated per column (along rows, independently per column).
+
+    Masked sums are calculated per column (along rows, independently per column).
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    use_amplitudes : bool, optional
+    use_amplitudes
         If true, the amplitudes of the inputs rather than the inputs
         themselves will be summed.
-    tuning : dict, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -27,7 +35,8 @@ class MaskedSumTemplate(object):
 
     autotune_version = 1
 
-    def __init__(self, context, use_amplitudes=False, tuning=None):
+    def __init__(self, context: AbstractContext, use_amplitudes: bool = False,
+                 tuning: Optional[_TuningDict] = None) -> None:
         self.context = context
         self.use_amplitudes = use_amplitudes
         if tuning is None:
@@ -40,7 +49,7 @@ class MaskedSumTemplate(object):
 
     @classmethod
     @tune.autotuner(test={'size': 256})
-    def autotune(cls, context, use_amplitudes):
+    def autotune(cls, context: AbstractContext, use_amplitudes: bool) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         columns = 5000
         in_shape = (4096, columns)
@@ -49,7 +58,7 @@ class MaskedSumTemplate(object):
         host_data = host_data.view(dtype=np.complex64)[..., 0]
         host_mask = np.ones((in_shape[0],)).astype(np.float32)
 
-        def generate(size):
+        def generate(size: int) -> Callable[[int], float]:
             fn = cls(context, use_amplitudes, {
                 'size': size}).instantiate(queue, in_shape)
             inp = fn.slots['src'].allocate(fn.allocator)
@@ -59,10 +68,11 @@ class MaskedSumTemplate(object):
             msk.set(queue, host_mask)
             return tune.make_measure(queue, fn)
 
-        return tune.autotune(generate, size=[32, 64, 128, 256, 512, 1024])
+        return cast(_TuningDict, tune.autotune(generate, size=[32, 64, 128, 256, 512, 1024]))
 
-    def instantiate(self, *args, **kwargs):
-        return MaskedSum(self, *args, **kwargs)
+    def instantiate(self, command_queue: AbstractCommandQueue, shape: Tuple[int, int],
+                    allocator: Optional[accel.AbstractAllocator] = None) -> 'MaskedSum':
+        return MaskedSum(self, command_queue, shape, allocator)
 
 
 class MaskedSum(accel.Operation):
@@ -83,7 +93,9 @@ class MaskedSum(accel.Operation):
         Output type complex64
         Shape is (number of columns of input)
     """
-    def __init__(self, template, command_queue, shape, allocator=None):
+    def __init__(self, template: MaskedSumTemplate, command_queue: AbstractCommandQueue,
+                 shape: Tuple[int, int],
+                 allocator: Optional[accel.AbstractAllocator] = None) -> None:
         super(MaskedSum, self).__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("maskedsum_float")
@@ -96,7 +108,7 @@ class MaskedSum(accel.Operation):
             (accel.Dimension(shape[1], template.size),),
             np.float32 if template.use_amplitudes else np.complex64)
 
-    def _run(self):
+    def _run(self) -> None:
         src = self.buffer('src')
         mask = self.buffer('mask')
         dest = self.buffer('dest')
@@ -109,8 +121,8 @@ class MaskedSum(accel.Operation):
             global_size=(accel.roundup(src.shape[1], self.template.size),),
             local_size=(self.template.size, ))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
-            'shape': self.slots['src'].shape,
+            'shape': self.slots['src'].shape,       # type: ignore
             'use_amplitudes': self.template.use_amplitudes
         }
