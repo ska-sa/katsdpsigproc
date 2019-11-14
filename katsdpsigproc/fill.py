@@ -85,7 +85,8 @@ class Fill(accel.Operation):
     """
 
     def __init__(self, template: FillTemplate, command_queue: AbstractCommandQueue,
-                 shape: Tuple[int, ...], allocator: Optional[accel.AbstractAllocator] = None) -> None:
+                 shape: Tuple[int, ...],
+                 allocator: Optional[accel.AbstractAllocator] = None) -> None:
         super(Fill, self).__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("fill")

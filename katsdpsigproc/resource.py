@@ -155,7 +155,7 @@ class Resource(Generic[_T]):
 
     def acquire(self) -> ResourceAllocation[_T]:
         """Indicate intent to acquire the resource.
-        
+
         This does not actually acquire the resource, but instead returns a
         handle that can be used to acquire and release it later. Acquisitions
         always occur in the order in which calls to :meth:`acquire` are made.
@@ -175,7 +175,7 @@ class JobQueue:
 
     def add(self, job: Awaitable) -> None:
         """Append a job to the list.
-        
+
         If `job` is a coroutine, it is automatically wrapped in a task."""
         self._jobs.append(asyncio.ensure_future(job))
 
