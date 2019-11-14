@@ -65,11 +65,12 @@ class HReduceTemplate:
         src = accel.DeviceArray(context, shape, dtype=dtype)
         dest = accel.DeviceArray(context, (shape[0],), dtype=dtype)
 
-        def generate(**kwargs):
-            wgs = kwargs['wgsx'] * kwargs['wgsy']
+        def generate(wgsx: int, wgsy: int) -> Callable[[int], float]:
+            wgs = wgsx * wgsy
             if wgs < 32 or wgs > 1024:
-                raise RuntimeError('Skipping work group size {wgsx}x{wgsy}'.format(**kwargs))
-            template = cls(context, dtype, ctype, op, identity, extra_code, kwargs)
+                raise RuntimeError('Skipping work group size {}x{}'.format(wgsx, wgsy))
+            template = cls(context, dtype, ctype, op, identity, extra_code,
+                           {'wgsx': wgsx, 'wgsy': wgsy})
             fn = template.instantiate(queue, shape)
             fn.bind(src=src, dest=dest)
             fn.ensure_all_bound()
