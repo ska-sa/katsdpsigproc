@@ -1,12 +1,16 @@
 """On-device transposition of 2D arrays"""
 
-from typing import Tuple, Optional, Mapping, Callable, Any
+from typing import Tuple, Optional, Mapping, Callable, Any, cast
+from typing_extensions import TypedDict
 
 import numpy as np
 
 from . import accel
 from . import tune
 from .abc import AbstractContext, AbstractCommandQueue
+
+
+_TuningDict = TypedDict('_TuningDict', {'block': int, 'vtx': int, 'vty': int})
 
 
 class TransposeTemplate:
@@ -31,7 +35,7 @@ class TransposeTemplate:
     autotune_version = 1
 
     def __init__(self, context: AbstractContext, dtype: np.dtype, ctype: str,
-                 tuning: Optional[Mapping[str, Any]] = None) -> None:
+                 tuning: Optional[_TuningDict] = None) -> None:
         self.context = context
         self.dtype = np.dtype(dtype)
         self.ctype = ctype
@@ -49,7 +53,7 @@ class TransposeTemplate:
 
     @classmethod
     @tune.autotuner(test={'block': 8, 'vtx': 2, 'vty': 3})
-    def autotune(cls, context: AbstractContext, dtype: np.dtype, ctype: str) -> Mapping[str, Any]:
+    def autotune(cls, context: AbstractContext, dtype: np.dtype, ctype: str) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         in_shape = (2048, 2048)
         out_shape = (2048, 2048)
@@ -68,12 +72,12 @@ class TransposeTemplate:
             fn.bind(src=in_data, dest=out_data)
             return tune.make_measure(queue, fn)
 
-        return tune.autotune(generate,
-                             block=[4, 8, 16, 32],
-                             vtx=[1, 2, 3, 4],
-                             vty=[1, 2, 3, 4])
+        return cast(_TuningDict, tune.autotune(generate,
+                                               block=[4, 8, 16, 32],
+                                               vtx=[1, 2, 3, 4],
+                                               vty=[1, 2, 3, 4]))
 
-    def instantiate(self, command_queue: AbstractCommandQueue, shape: Tuple[int, ...],
+    def instantiate(self, command_queue: AbstractCommandQueue, shape: Tuple[int, int],
                     allocator: Optional[accel.AbstractAllocator] = None) -> 'Transpose':
         return Transpose(self, command_queue, shape, allocator)
 
@@ -90,7 +94,7 @@ class Transpose(accel.Operation):
         Output
     """
     def __init__(self, template: TransposeTemplate, command_queue: AbstractCommandQueue,
-                 shape: Tuple[int, ...], allocator: Optional[accel.AbstractAllocator] = None):
+                 shape: Tuple[int, int], allocator: Optional[accel.AbstractAllocator] = None):
         super(Transpose, self).__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("transpose")
