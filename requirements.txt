@@ -20,4 +20,4 @@ python-dateutil            # Needed by Pandas
 pytools
 pytz                       # Needed by Pandas
 scipy
-typing_extensions==3.7.4.1
+typing_extensions
