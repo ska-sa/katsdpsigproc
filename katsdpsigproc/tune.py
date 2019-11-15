@@ -33,20 +33,37 @@ import time
 import logging
 import multiprocessing
 import concurrent.futures
+from typing import Dict, Sequence, Mapping, Callable, Optional, Type, TypeVar, Any, cast
 
 import appdirs
 import sqlite3
 import numpy as np
 from decorator import decorator
+from typing_extensions import Protocol
+
+from .abc import AbstractContext, AbstractTuningCommandQueue
 
 
 _logger = logging.getLogger(__name__)
+_ScoreFunc = Callable[[int], float]
+_T = TypeVar('_T')
 
 
-def adapt_value(value):
-    """Converts `value` to a type that can be used in sqlite3. This is
-    not done through the sqlite3 adapter interface, because that is global
-    rather than per-connection. This also only applies to lookup keys,
+class _TuningFunc(Protocol):
+    @property
+    def __name__(self) -> str:
+        ...
+
+    def __call__(self, __cls: Type, __context: AbstractContext,
+                 *args: Any, **kwargs: Any) -> Mapping[str, Any]:
+        ...
+
+
+def adapt_value(value: Any) -> Any:
+    """Converts `value` to a type that can be used in sqlite3.
+
+    This is not done through the sqlite3 adapter interface, because that is
+    global rather than per-connection. This also only applies to lookup keys,
     not results, because it is not a symmetric relationship.
     """
     if isinstance(value, type) or isinstance(value, np.dtype):
@@ -56,9 +73,12 @@ def adapt_value(value):
     return value
 
 
-def _db_keys(fn, args, kwargs):
-    """Uses the arguments passed to an autotuning function (see
-    :function:`autotuner`) to generate a database key.
+def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]:
+    """Uses the arguments passed to an autotuning function to generate a database key.
+
+    .. seealso::
+
+       :func:`autotuner`
     """
     argspec = inspect.getargspec(fn)
     # Extract the arguments passed to the wrapped function, by name
@@ -75,17 +95,19 @@ def _db_keys(fn, args, kwargs):
     return keys
 
 
-def _query(conn, tablename, keys):
-    """Fetch a cached record from the database. If the record is not found,
-    it will return None.
+def _query(conn: sqlite3.Connection, tablename: str,
+           keys: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
+    """Fetch a cached record from the database.
+
+    If the record is not found, it will return None.
 
     Parameters
     ----------
-    conn : sqlite3.Connection
+    conn
         Database connection
-    tablename : str
+    tablename
         Name of the table to query
-    keys : mapping
+    keys
         Keys and values for the query
     """
     try:
@@ -115,7 +137,8 @@ def _query(conn, tablename, keys):
     return None
 
 
-def _create_table(conn, tablename, keys, values):
+def _create_table(conn: sqlite3.Connection, tablename: str,
+                  keys: Mapping[str, Any], values: Mapping[str, Any]) -> None:
     command = 'CREATE TABLE IF NOT EXISTS {0} ('.format(tablename)
     for name in itertools.chain(keys.keys(), values.keys()):
         command += name + ' NOT NULL, '
@@ -123,7 +146,8 @@ def _create_table(conn, tablename, keys, values):
     conn.execute(command)
 
 
-def _save(conn, tablename, keys, values):
+def _save(conn: sqlite3.Connection, tablename: str,
+          keys: Mapping[str, Any], values: Mapping[str, Any]) -> None:
     """Write cached result into the table, creating it if it does not already
     exist.
     """
@@ -141,7 +165,7 @@ def _save(conn, tablename, keys, values):
         cursor.execute(command, list(entries.values()))
 
 
-def _open_db():
+def _open_db() -> sqlite3.Connection:
     cache_dir = appdirs.user_cache_dir('katsdpsigproc', 'ska-sa')
     try:
         os.makedirs(cache_dir)
@@ -155,16 +179,20 @@ def _open_db():
     return conn
 
 
-def _close_db(conn):
+def _close_db(conn: sqlite3.Connection) -> None:
     """Close a database. This is split into a separate function for the benefit
     of testing, because the close member of the object itself is read-only and
     hence cannot be patched."""
     conn.close()
 
 
-def autotuner_impl(test, fn, *args, **kwargs):
-    """Implementation of :func:`autotuner`. It is split into a separate
-    function so that mocks can patch it."""
+def autotuner_impl(test: Mapping[str, Any],
+                   fn: _TuningFunc,
+                   *args: Any, **kwargs: Any) -> Mapping[str, Any]:
+    """Implementation of :func:`autotuner`.
+
+    It is split into a separate function so that mocks can patch it.
+    """
     cls = args[0]
     classname = '{0}.{1}.{2}'.format(cls.__module__, cls.__name__, fn.__name__)
     tablename = classname.replace('.', '_') + \
@@ -188,7 +216,7 @@ def autotuner_impl(test, fn, *args, **kwargs):
     return ans
 
 
-def autotuner(test):
+def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
     r"""Decorator that marks a function as an autotuning function and caches
     the result. The function must take a class and a context as the first
     two arguments. The remaining arguments form a cache key, along with
@@ -203,7 +231,7 @@ def autotuner(test):
         A value that will be returned by :func:`stub_autotuner`.
     """
     @decorator
-    def autotuner(fn, *args, **kwargs):
+    def autotuner(fn: _TuningFunc, *args: Any, **kwargs: Any) -> Mapping[str, Any]:
         r"""Decorator that marks a function as an autotuning function and caches
         the result. The function must take a class and a context as the first
         two arguments. The remaining arguments form a cache key, along with
@@ -213,28 +241,35 @@ def autotuner(test):
         \*args construct may not be used.
         """
         return autotuner_impl(test, fn, *args, **kwargs)
-    return autotuner
+    # decorator module doesn't have type annotations, so we need to force it
+    return cast(Callable[[_T], _T], autotuner)
 
 
-def force_autotuner(test, fn, *args, **kwargs):
-    """Drop-in replacement for :func:`autotuner_impl` that does not do any
-    caching. It is intended to be used with a mocking framework.
+def force_autotuner(test: Mapping[str, Any], fn: _TuningFunc,
+                    *args: Any, **kwargs: Any) -> Mapping[str, Any]:
+    """Drop-in replacement for :func:`autotuner_impl` that does not do any caching.
+
+    It is intended to be used with a mocking framework.
     """
     return fn(*args, **kwargs)
 
 
-def stub_autotuner(test, fn, *args, **kwargs):
-    """Drop-in replacement for :func:`autotuner_impl` that does not do
-    any tuning, but instead returns the provided value. It is intended to be
+def stub_autotuner(test: Mapping[str, Any], fn: _TuningFunc,
+                   *args: Any, **kwargs: Any) -> Mapping[str, Any]:
+    """Drop-in replacement for :func:`autotuner_impl` that does not do any tuning.
+
+    It instead returns the provided value. It is intended to be
     used with a mocking framework."""
     return test
 
 
-def make_measure(queue, function):
-    """Generates a measurement function that can be returned by the
-    function passed to :func:`autotune`. It calls `function`
-    (with no arguments) the appropriate number of times and returns
-    the averaged elapsed time as measured by `queue`."""
+def make_measure(queue: AbstractTuningCommandQueue, function: Callable[[], None]) -> _ScoreFunc:
+    """Generates a measurement function.
+
+    The result can be returned by the function passed to :func:`autotune`. It
+    calls `function` (with no arguments) the appropriate number of times and
+    returns the averaged elapsed time as measured by `queue`.
+    """
     def measure(iters):
         queue.start_tuning()
         for i in range(iters):
@@ -243,9 +278,9 @@ def make_measure(queue, function):
     return measure
 
 
-def autotune(generate, time_limit=0.1, threads=None, **kwargs):
-    """Run a number of tuning experiments and find the optimal combination
-    of parameters.
+def autotune(generate: Callable[..., Optional[_ScoreFunc]], time_limit: float = 0.1,
+             threads: Optional[int] = None, **kwargs: Any) -> Mapping[str, Any]:
+    """Run a number of tuning experiments and find the optimal combination of parameters.
 
     Each argument is a iterable. The `generate` function is passed each
     element of the Cartesian product (by keyword), and returns a callable.
@@ -265,24 +300,25 @@ def autotune(generate, time_limit=0.1, threads=None, **kwargs):
 
     Parameters
     ----------
-    generate : callable
+    generate
         function that creates a scoring function
-    time_limit : float
+    time_limit
         amount of time to spend testing each configuration (excluding setup time)
-    threads : int, optional
+    threads
         number of parallel calls to `generate` to make at a time (defaults to
         CPU count)
 
     Raises
     ------
-    Exception : if every combination throws an exception, the last exception
-        is re-raised.
-    ValueError : if the Cartesian product is empty
+    Exception
+        if every combination throws an exception, the last exception is re-raised.
+    ValueError
+        if the Cartesian product is empty
     """
     opts = itertools.product(*kwargs.values())
-    best = None
-    best_score = None
-    exc = None
+    best = None                # type: Optional[Mapping[str, Any]]
+    best_score = None          # type: Optional[float]
+    exc = None                 # type: Optional[Exception]
     if threads is None:
         try:
             threads = multiprocessing.cpu_count()

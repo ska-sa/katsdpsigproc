@@ -20,7 +20,8 @@ setup(
         "numba>=0.36.1",   # Older versions have bugs in median functions
         "decorator",
         "mako",
-        "appdirs"
+        "appdirs",
+        "typing_extensions"
     ],
     extras_require={
         "CUDA": ["pycuda>=2015.1.3"],

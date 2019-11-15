@@ -1,23 +1,30 @@
 """On-device transposition of 2D arrays"""
 
-from __future__ import division, print_function, absolute_import
+from typing import Tuple, Optional, Mapping, Callable, Any, cast
+from typing_extensions import TypedDict
+
 import numpy as np
+
 from . import accel
 from . import tune
+from .abc import AbstractContext, AbstractCommandQueue
 
 
-class TransposeTemplate(object):
+_TuningDict = TypedDict('_TuningDict', {'block': int, 'vtx': int, 'vty': int})
+
+
+class TransposeTemplate:
     """Kernel for transposing a 2D array of data
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    dtype : numpy dtype
+    dtype
         Type of data elements
-    ctype : str
+    ctype
         Type (in C/CUDA, not numpy) of data elements
-    tuning : dict, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -27,7 +34,8 @@ class TransposeTemplate(object):
 
     autotune_version = 1
 
-    def __init__(self, context, dtype, ctype, tuning=None):
+    def __init__(self, context: AbstractContext, dtype: np.dtype, ctype: str,
+                 tuning: Optional[_TuningDict] = None) -> None:
         self.context = context
         self.dtype = np.dtype(dtype)
         self.ctype = ctype
@@ -45,14 +53,14 @@ class TransposeTemplate(object):
 
     @classmethod
     @tune.autotuner(test={'block': 8, 'vtx': 2, 'vty': 3})
-    def autotune(cls, context, dtype, ctype):
+    def autotune(cls, context: AbstractContext, dtype: np.dtype, ctype: str) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         in_shape = (2048, 2048)
         out_shape = (2048, 2048)
         in_data = accel.DeviceArray(context, in_shape, dtype=dtype)
         out_data = accel.DeviceArray(context, out_shape, dtype=dtype)
 
-        def generate(block, vtx, vty):
+        def generate(block: int, vtx: int, vty: int) -> Optional[Callable[[int], float]]:
             local_mem = (block * vtx + 1) * (block * vty) * np.dtype(dtype).itemsize
             if local_mem > 32768:
                 # Skip configurations using lots of lmem
@@ -64,13 +72,14 @@ class TransposeTemplate(object):
             fn.bind(src=in_data, dest=out_data)
             return tune.make_measure(queue, fn)
 
-        return tune.autotune(generate,
-                             block=[4, 8, 16, 32],
-                             vtx=[1, 2, 3, 4],
-                             vty=[1, 2, 3, 4])
+        return cast(_TuningDict, tune.autotune(generate,
+                                               block=[4, 8, 16, 32],
+                                               vtx=[1, 2, 3, 4],
+                                               vty=[1, 2, 3, 4]))
 
-    def instantiate(self, *args, **kwargs):
-        return Transpose(self, *args, **kwargs)
+    def instantiate(self, command_queue: AbstractCommandQueue, shape: Tuple[int, int],
+                    allocator: Optional[accel.AbstractAllocator] = None) -> 'Transpose':
+        return Transpose(self, command_queue, shape, allocator)
 
 
 class Transpose(accel.Operation):
@@ -84,7 +93,8 @@ class Transpose(accel.Operation):
     **dest**
         Output
     """
-    def __init__(self, template, command_queue, shape, allocator=None):
+    def __init__(self, template: TransposeTemplate, command_queue: AbstractCommandQueue,
+                 shape: Tuple[int, int], allocator: Optional[accel.AbstractAllocator] = None):
         super(Transpose, self).__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("transpose")
@@ -92,7 +102,7 @@ class Transpose(accel.Operation):
         self.slots['src'] = accel.IOSlot(shape, template.dtype)
         self.slots['dest'] = accel.IOSlot((shape[1], shape[0]), template.dtype)
 
-    def _run(self):
+    def _run(self) -> None:
         src = self.buffer('src')
         dest = self.buffer('dest')
         # Round up to number of blocks in each dimension
@@ -109,9 +119,9 @@ class Transpose(accel.Operation):
             global_size=(in_col_tiles * self.template._block, in_row_tiles * self.template._block),
             local_size=(self.template._block, self.template._block))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
             'dtype': self.template.dtype,
             'ctype': self.template.ctype,
-            'shape': self.slots['src'].shape
+            'shape': self.slots['src'].shape      # type: ignore
         }

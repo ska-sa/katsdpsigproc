@@ -1,39 +1,47 @@
 # coding: utf-8
 """Reduction algorithms"""
 
+from typing import Tuple, Mapping, Callable, Optional, Any, cast
+from typing_extensions import TypedDict
+
 import numpy as np
 
 from . import accel
 from . import tune
+from .abc import AbstractContext, AbstractCommandQueue
 
 
-class HReduceTemplate(object):
+_TuningDict = TypedDict('_TuningDict', {'wgsx': int, 'wgsy': int})
+
+
+class HReduceTemplate:
     """Performs reduction along rows in a 2D array. Only commutative reduction
     operators are supported.
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    dtype : numpy dtype
+    dtype
         Type of data elements
-    ctype : str
+    ctype
         Type (in C/CUDA, not numpy) of data elements
-    op : str
+    op
         C expression to combine two variables, *a* and *b*
-    identity : str
+    identity
         C expression for an identity value for *op*
-    extra_code : str, optional
+    extra_code
         Arbitrary C code to paste in (for use by *op* or *identity*)
-
-    tuning : dict, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
         - wgsx: number of workitems per workgroup per row
         - wgsy: number of rows to handle per workgroup
     """
-    def __init__(self, context, dtype, ctype, op, identity, extra_code='', tuning=None):
+    def __init__(self, context: AbstractContext, dtype: np.dtype, ctype: str,
+                 op: str, identity: str, extra_code: str = '',
+                 tuning: Optional[_TuningDict] = None) -> None:
         self.context = context
         self.dtype = dtype
         self.ctype = ctype
@@ -50,28 +58,32 @@ class HReduceTemplate(object):
 
     @classmethod
     @tune.autotuner(test={'wgsx': 64, 'wgsy': 4})
-    def autotune(cls, context, dtype, ctype, op, identity, extra_code):
+    def autotune(cls, context: AbstractContext, dtype: np.dtype, ctype: str,
+                 op: str, identity: str, extra_code: str) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         shape = (2048, 1024)
         src = accel.DeviceArray(context, shape, dtype=dtype)
         dest = accel.DeviceArray(context, (shape[0],), dtype=dtype)
 
-        def generate(**kwargs):
-            wgs = kwargs['wgsx'] * kwargs['wgsy']
+        def generate(wgsx: int, wgsy: int) -> Callable[[int], float]:
+            wgs = wgsx * wgsy
             if wgs < 32 or wgs > 1024:
-                raise RuntimeError('Skipping work group size {wgsx}x{wgsy}'.format(**kwargs))
-            template = cls(context, dtype, ctype, op, identity, extra_code, kwargs)
+                raise RuntimeError('Skipping work group size {}x{}'.format(wgsx, wgsy))
+            template = cls(context, dtype, ctype, op, identity, extra_code,
+                           {'wgsx': wgsx, 'wgsy': wgsy})
             fn = template.instantiate(queue, shape)
             fn.bind(src=src, dest=dest)
             fn.ensure_all_bound()
             return tune.make_measure(queue, fn)
 
-        return tune.autotune(generate,
-                             wgsx=[32, 64, 128],
-                             wgsy=[1, 2, 4, 8, 16])
+        return cast(_TuningDict, tune.autotune(generate,
+                                               wgsx=[32, 64, 128],
+                                               wgsy=[1, 2, 4, 8, 16]))
 
-    def instantiate(self, *args, **kwargs):
-        return HReduce(self, *args, **kwargs)
+    def instantiate(self, command_queue: AbstractCommandQueue, shape: Tuple[int, int],
+                    column_range: Optional[Tuple[int, int]] = None,
+                    allocator: Optional[accel.AbstractAllocator] = None) -> 'HReduce':
+        return HReduce(self, command_queue, shape, column_range, allocator)
 
 
 class HReduce(accel.Operation):
@@ -89,18 +101,20 @@ class HReduce(accel.Operation):
 
     Parameters
     ----------
-    template : :class:`FillTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command queue for the operation
-    shape : 2-tuple of int
+    shape
         Shape for the source slot
-    column_range : 2-tuple of int, optional
+    column_range
         Half-open range of columns to reduce (defaults to the entire array)
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+    allocator
         Allocator used to allocate unbound slots
     """
-    def __init__(self, template, command_queue, shape, column_range=None, allocator=None):
+    def __init__(self, template: HReduceTemplate, command_queue: AbstractCommandQueue,
+                 shape: Tuple[int, int], column_range: Optional[Tuple[int, int]] = None,
+                 allocator: Optional[accel.AbstractAllocator] = None) -> None:
         if len(shape) != 2:
             raise ValueError('shape must be 2-dimensional')
         if column_range is None:
@@ -121,7 +135,7 @@ class HReduce(accel.Operation):
             (accel.Dimension(shape[0], self.template.wgsy),),
             self.template.dtype)
 
-    def _run(self):
+    def _run(self) -> None:
         src = self.buffer('src')
         dest = self.buffer('dest')
         rows_padded = accel.roundup(src.shape[0], self.template.wgsy)
@@ -136,11 +150,11 @@ class HReduce(accel.Operation):
             global_size=(self.template.wgsx, rows_padded),
             local_size=(self.template.wgsx, self.template.wgsy))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
             'dtype': self.template.dtype,
             'ctype': self.template.ctype,
-            'shape': self.slots['src'].shape,
+            'shape': self.slots['src'].shape,    # type: ignore
             'column_range': self.column_range,
             'op': self.template.op,
             'identity': self.template.identity,

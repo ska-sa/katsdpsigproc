@@ -1427,7 +1427,7 @@ class Operation(ABC):
             if not slot.is_bound():
                 slot.allocate(self.allocator)
 
-    def buffer(self, name: str) -> Optional[DeviceArray]:
+    def buffer(self, name: str) -> DeviceArray:
         """Retrieve the buffer bound to a slot.
 
         It will consult both :attr:`slots` and :attr:`hidden_slots`.
@@ -1440,13 +1440,16 @@ class Operation(ABC):
         Returns
         -------
         :class:`DeviceArray`
-            Buffer bound to slot `name`, or `None` if the slot exists but is unbound
-            or is an alias slot.
+            Buffer bound to slot `name`.
 
         Raises
         ------
         KeyError
             If no slot with this name exists
+        TypeError
+            If the slot exists but it is an alias slot
+        ValueError
+            If the slot exists but does not yet have a buffer bound
         """
         try:
             slot = self.slots[name]
@@ -1456,9 +1459,11 @@ class Operation(ABC):
             except KeyError:
                 raise KeyError('no slot named ' + name)
         if isinstance(slot, IOSlot):
+            if slot.buffer is None:
+                raise ValueError('slot ' + name + ' has no buffer bound')
             return slot.buffer
         else:
-            return None
+            raise TypeError('slot ' + name + ' is an alias slot')
 
     def required_bytes(self) -> int:
         """Number of bytes of device storage required"""
