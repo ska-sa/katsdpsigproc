@@ -15,12 +15,13 @@ from mako.template import Template
 from nose.tools import assert_equal, assert_raises
 from nose.plugins.skip import SkipTest
 
-from .. import accel, tune, opencl
+from .. import accel, tune
 from ..accel import HostArray, DeviceArray, SVMArray, LinenoLexer
 from ..abc import AbstractContext, AbstractCommandQueue
 if accel.have_cuda:
     import pycuda
 if accel.have_opencl:
+    from .. import opencl
     import pyopencl
 
 
