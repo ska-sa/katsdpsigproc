@@ -10,7 +10,7 @@ setup(
     author="MeerKAT SDP team",
     author_email="sdpdev+katsdpsigproc@ska.ac.za",
     packages=find_packages(),
-    package_data={'': ['*.mako']},
+    package_data={'': ['*.mako'], 'katsdpsigproc': ['py.typed']},
     url="https://github.com/ska-sa/katsdpsigproc",
     setup_requires=["katversion"],
     install_requires=[

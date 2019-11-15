@@ -1,14 +1,18 @@
 """Tests for wg_reduce.mako and reduce.py"""
 
+from typing import List, Tuple
+
 import numpy as np
 
 from .test_accel import device_test, force_autotune
 from ..accel import DeviceArray, build
 from .. import reduce
+from ..abc import AbstractContext, AbstractCommandQueue
 
 
-class Fixture(object):
-    def __init__(self, context, rs, size, allow_shuffle, broadcast):
+class Fixture:
+    def __init__(self, context: AbstractContext, rs: np.random.RandomState,
+                 size: int, allow_shuffle: bool, broadcast: bool) -> None:
         rows = 256 // size
         self.data = rs.randint(0, 1000, size=(rows, size)).astype(np.int32)
         self.broadcast = broadcast
@@ -19,12 +23,15 @@ class Fixture(object):
             'rows': rows})
         self._description = "Fixture(..., {}, {}, {})".format(size, allow_shuffle, broadcast)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self._description
 
 
+_fixtures = []    # type: List[Fixture]
+
+
 @device_test
-def setup(context, queue):
+def setup(context: AbstractContext, queue: AbstractContext):
     global _fixtures
     rs = np.random.RandomState(seed=1)  # Fixed seed to make test repeatable
     _fixtures = [Fixture(context, rs, size, allow_shuffle, broadcast)
@@ -33,7 +40,8 @@ def setup(context, queue):
                  for broadcast in [True, False]]
 
 
-def check_reduce(context, queue, kernel_name, op):
+def check_reduce(context: AbstractContext, queue: AbstractCommandQueue,
+                 kernel_name: str, op: np.ufunc) -> None:
     for fixture in _fixtures:
         data = fixture.data
         kernel = fixture.program.get_kernel(kernel_name)
@@ -53,20 +61,21 @@ def check_reduce(context, queue, kernel_name, op):
 
 
 @device_test
-def test_reduce_add(context, queue):
+def test_reduce_add(context: AbstractContext, queue: AbstractCommandQueue) -> None:
     check_reduce(context, queue, 'test_reduce_add', np.add)
 
 
 @device_test
-def test_reduce_max(context, queue):
+def test_reduce_max(context: AbstractContext, queue: AbstractCommandQueue) -> None:
     check_reduce(context, queue, 'test_reduce_max', np.maximum)
 
 
-class TestHReduce(object):
+class TestHReduce:
     """Tests for :class:`katsdpsigproc.reduce.HReduce`"""
 
-    def check(self, context, queue, rows, columns, column_range):
-        template = reduce.HReduceTemplate(context, np.uint32, 'unsigned int', 'a + b', 0)
+    def check(self, context: AbstractContext, queue: AbstractCommandQueue,
+              rows: int, columns: int, column_range: Tuple[int, int]) -> None:
+        template = reduce.HReduceTemplate(context, np.uint32, 'unsigned int', 'a + b', '0')
         fn = template.instantiate(queue, (rows, columns), column_range)
         fn.ensure_all_bound()
         device_src = fn.buffer('src')
@@ -81,17 +90,17 @@ class TestHReduce(object):
         np.testing.assert_equal(expected, dest)
 
     @device_test
-    def test_normal(self, context, queue):
+    def test_normal(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         """Test the usual case"""
         self.check(context, queue, 129, 173, (67, 128))
 
     @device_test
-    def test_small(self, context, queue):
+    def test_small(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         """Test that the special case for columns < work group size works"""
         self.check(context, queue, 7, 8, (1, 7))
 
     @device_test
     @force_autotune
-    def test_autotune(self, context, queue):
+    def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         """Test that autotuner runs successfully"""
         reduce.HReduceTemplate(context, np.uint32, 'unsigned int', 'a + b', '0')

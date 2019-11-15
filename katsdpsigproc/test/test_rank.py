@@ -1,19 +1,29 @@
 """Tests for rank.mako"""
 
+from typing import Optional
+
 import numpy as np
 from nose.tools import assert_equal
 
 from .. import accel
 from ..accel import DeviceArray, build
+from ..abc import AbstractContext, AbstractCommandQueue, AbstractProgram
 from .test_accel import device_test
 
 
+_wgs = 128
+_M = 1000
+_N = 2000
+_program = None      # type: Optional[AbstractProgram]
+_data = None         # type: np.ndarray
+_expected = None     # type: np.ndarray
+
+
 @device_test
-def setup(context, queue):
-    global _program, _wgs, _data, _expected, _N, _M
-    _wgs = 128
-    _M = 1000
-    _N = 2000
+def setup(context, queue):   # type: (AbstractContext, AbstractCommandQueue) -> None
+    # Note: have to use comment-style annotation for the function signature
+    # because nosetests chokes if it has Python 3-style annotations.
+    global _program, _data, _expected
     _program = build(context, 'test/test_rank.mako', {'size': _wgs})
     rs = np.random.RandomState(seed=1)   # Fixed seed to make test repeatable
     _data = rs.randint(0, _M, size=_N).astype(np.int32)
@@ -22,10 +32,12 @@ def setup(context, queue):
         _expected[i] = np.sum(np.less(_data, i))
 
 
-def check_rank(context, queue, kernel_name, wgs):
+def check_rank(context: AbstractContext, queue: AbstractCommandQueue,
+               kernel_name: str, wgs: int) -> None:
     data_d = DeviceArray(context, shape=_data.shape, dtype=_data.dtype)
     data_d.set(queue, _data)
     out_d = DeviceArray(context, shape=_expected.shape, dtype=_expected.dtype)
+    assert _program is not None
     kernel = _program.get_kernel(kernel_name)
     queue.enqueue_kernel(
         kernel, [
@@ -40,18 +52,20 @@ def check_rank(context, queue, kernel_name, wgs):
 
 
 @device_test
-def test_rank_serial(context, queue):
+def test_rank_serial(context: AbstractContext, queue: AbstractCommandQueue) -> None:
     check_rank(context, queue, 'test_rank_serial', 1)
 
 
 @device_test
-def test_rank_parallel(context, queue):
+def test_rank_parallel(context: AbstractContext, queue: AbstractCommandQueue) -> None:
     check_rank(context, queue, 'test_rank_parallel', _wgs)
 
 
-def run_float_func(context, queue, kernel_name, data, output_size):
+def run_float_func(context: AbstractContext, queue: AbstractCommandQueue,
+                   kernel_name: str, data: np.ndarray, output_size: int) -> np.ndarray:
     """Common code for testing find_min_float, find_max_float, median_non_zero_float"""
     size = 128  # Number of workitems
+    assert _program is not None
     kernel = _program.get_kernel(kernel_name)
     data = np.asarray(data, dtype=np.float32)
     N = data.shape[0]
@@ -68,8 +82,9 @@ def run_float_func(context, queue, kernel_name, data, output_size):
     return out
 
 
-class TestFindMinMaxFloat(object):
-    def check_array(self, context, queue, data):
+class TestFindMinMaxFloat:
+    def check_array(self, context: AbstractContext, queue: AbstractCommandQueue,
+                    data: np.ndarray) -> None:
         data = np.asarray(data, dtype=np.float32)
         expected = [np.nanmin(data), np.nanmax(data)]
         out = run_float_func(context, queue, 'test_find_min_max_float', data, 2)
@@ -77,20 +92,20 @@ class TestFindMinMaxFloat(object):
         assert_equal(expected[1], out[1])
 
     @device_test
-    def test_single(self, context, queue):
+    def test_single(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         self.check_array(context, queue, [5.3])
 
     @device_test
-    def test_ordered(self, context, queue):
+    def test_ordered(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         data = np.sort(np.random.uniform(-10.0, 10.0, 1000))
         self.check_array(context, queue, data)
 
     @device_test
-    def test_nan(self, context, queue):
+    def test_nan(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         self.check_array(context, queue, [-10.0, 5.5, np.nan, -20.0, np.nan])
 
     @device_test
-    def test_all_nan(self, context, queue):
+    def test_all_nan(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         # Can't use check_array, because np.nanmin warns if all are NaN,
         # and assert_equal doesn't handle NaN
         data = np.array([np.nan, np.nan], dtype=np.float32)
@@ -99,13 +114,14 @@ class TestFindMinMaxFloat(object):
         assert np.isnan(out[1])
 
     @device_test
-    def test_random(self, context, queue):
+    def test_random(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         data = np.random.uniform(-10.0, 10.0, 1000)
         self.check_array(context, queue, data)
 
 
-class TestMedianNonZero(object):
-    def check_array(self, context, queue, data):
+class TestMedianNonZero:
+    def check_array(self, context: AbstractContext, queue: AbstractCommandQueue,
+                    data: np.ndarray) -> None:
         data = np.asarray(data, dtype=np.float32)
         expected = np.median(data[data > 0.0])
         out = run_float_func(context, queue, 'test_median_non_zero', data, 2)
@@ -113,25 +129,25 @@ class TestMedianNonZero(object):
         assert_equal(expected, out[1])
 
     @device_test
-    def test_single(self, context, queue):
+    def test_single(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         self.check_array(context, queue, [5.3])
 
     @device_test
-    def test_even(self, context, queue):
+    def test_even(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         self.check_array(context, queue, [1.2, 2.3, 3.4, 4.5])
 
     @device_test
-    def test_zeros(self, context, queue):
+    def test_zeros(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         self.check_array(context, queue, [0.0, 0.0, 0.0, 1.2, 5.3, 2.4])
 
     @device_test
-    def test_big_even(self, context, queue):
+    def test_big_even(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         data = np.random.random_sample(10001) + 0.5
         data[123] = 0.0
         self.check_array(context, queue, data)
 
     @device_test
-    def test_big_odd(self, context, queue):
+    def test_big_odd(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         data = np.random.random_sample(10000) + 0.5
         data[456] = 0.0
         self.check_array(context, queue, data)
