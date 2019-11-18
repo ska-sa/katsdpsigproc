@@ -8,8 +8,7 @@ from . import MAD_NORMAL
 
 
 class BackgroundMedianFilterHost:
-    """Host backgrounder that applies a median filter to each baseline
-    (by amplitude).
+    """Host backgrounder that applies a median filter to each baseline (by amplitude).
 
     Parameters
     ----------
@@ -18,6 +17,7 @@ class BackgroundMedianFilterHost:
     amplitudes : boolean
         If `True`, the inputs are amplitudes rather than complex visibilities
     """
+
     def __init__(self, width, amplitudes=False):
         self.width = width
         self.amplitudes = amplitudes
@@ -78,12 +78,13 @@ class ThresholdSimpleHost:
     flag_value : int
         Number stored in returned value to indicate RFI
     """
+
     def __init__(self, n_sigma, flag_value=1):
         self.n_sigma = n_sigma
         self.flag_value = flag_value
 
     def __call__(self, deviations, noise):
-        """Apply the thresholding
+        """Apply the thresholding.
 
         Parameters
         ----------
@@ -103,9 +104,10 @@ class ThresholdSimpleHost:
 
 
 class ThresholdSumHost:
-    """Thresholding using the Offringa Sum-Threshold algorithm, with
-    power-of-two sized windows. The initial (single-pixel) threshold
-    is determined by median of absolute deviations.
+    """Thresholding using the Offringa Sum-Threshold algorithm, with power-of-two sized windows.
+
+    The initial (single-pixel) threshold is determined by median of absolute
+    deviations.
 
     At present, auto- and cross-correlations are treated the same.
 
@@ -129,6 +131,7 @@ class ThresholdSumHost:
 
     def apply_baseline(self, deviations, threshold1):
         """Apply the thresholding to a single baseline.
+
         The flags are returned as booleans, rather than
         `flag_value`.
 
@@ -139,7 +142,6 @@ class ThresholdSumHost:
         threshold1 : float
             Threshold for RFI on individual samples
         """
-
         # The data are modified, so use a copy
         deviations = deviations.copy()
         flags = np.zeros_like(deviations, dtype=np.bool)
@@ -158,7 +160,7 @@ class ThresholdSumHost:
         return flags
 
     def __call__(self, deviations, noise):
-        """Apply the thresholding
+        """Apply the thresholding.
 
         Parameters
         ----------

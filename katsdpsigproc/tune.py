@@ -1,4 +1,5 @@
 """Tools for autotuning algorithm parameters and caching the results.
+
 Note that this is intended to apply only to parameters that affect
 performance, such as work-group sizes, and not the outputs.
 
@@ -60,7 +61,7 @@ class _TuningFunc(Protocol):
 
 
 def adapt_value(value: Any) -> Any:
-    """Converts `value` to a type that can be used in sqlite3.
+    """Convert `value` to a type that can be used in sqlite3.
 
     This is not done through the sqlite3 adapter interface, because that is
     global rather than per-connection. This also only applies to lookup keys,
@@ -74,7 +75,7 @@ def adapt_value(value: Any) -> Any:
 
 
 def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]:
-    """Uses the arguments passed to an autotuning function to generate a database key.
+    """Use the arguments passed to an autotuning function to generate a database key.
 
     .. seealso::
 
@@ -148,9 +149,7 @@ def _create_table(conn: sqlite3.Connection, tablename: str,
 
 def _save(conn: sqlite3.Connection, tablename: str,
           keys: Mapping[str, Any], values: Mapping[str, Any]) -> None:
-    """Write cached result into the table, creating it if it does not already
-    exist.
-    """
+    """Write cached result into the table, creating it if it does not already exist."""
     _create_table(conn, tablename, keys, values)
     # Combine all fields
     entries = dict(keys)
@@ -180,9 +179,12 @@ def _open_db() -> sqlite3.Connection:
 
 
 def _close_db(conn: sqlite3.Connection) -> None:
-    """Close a database. This is split into a separate function for the benefit
-    of testing, because the close member of the object itself is read-only and
-    hence cannot be patched."""
+    """Close a database.
+
+    This is split into a separate function for the benefit of testing, because
+    the close member of the object itself is read-only and hence cannot be
+    patched.
+    """
     conn.close()
 
 
@@ -217,10 +219,11 @@ def autotuner_impl(test: Mapping[str, Any],
 
 
 def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
-    r"""Decorator that marks a function as an autotuning function and caches
-    the result. The function must take a class and a context as the first
-    two arguments. The remaining arguments form a cache key, along with
-    properties of the device and the name of the function.
+    r"""Decorator that marks a function as an autotuning function and caches the result.
+
+    The function must take a class and a context as the first two arguments.
+    The remaining arguments form a cache key, along with properties of the
+    device and the name of the function.
 
     Every argument to the function must have a name, which implies that the
     \*args construct may not be used.
@@ -232,9 +235,10 @@ def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
     """
     @decorator
     def autotuner(fn: _TuningFunc, *args: Any, **kwargs: Any) -> Mapping[str, Any]:
-        r"""Decorator that marks a function as an autotuning function and caches
-        the result. The function must take a class and a context as the first
-        two arguments. The remaining arguments form a cache key, along with
+        r"""Decorator that marks a function as an autotuning function and caches the result.
+
+        The function must take a class and a context as the first two
+        arguments. The remaining arguments form a cache key, along with
         properties of the device and the name of the function.
 
         Every argument to the function must have a name, which implies that the
@@ -259,12 +263,13 @@ def stub_autotuner(test: Mapping[str, Any], fn: _TuningFunc,
     """Drop-in replacement for :func:`autotuner_impl` that does not do any tuning.
 
     It instead returns the provided value. It is intended to be
-    used with a mocking framework."""
+    used with a mocking framework.
+    """
     return test
 
 
 def make_measure(queue: AbstractTuningCommandQueue, function: Callable[[], None]) -> _ScoreFunc:
-    """Generates a measurement function.
+    """Generate a measurement function.
 
     The result can be returned by the function passed to :func:`autotune`. It
     calls `function` (with no arguments) the appropriate number of times and

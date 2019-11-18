@@ -1,4 +1,4 @@
-"""Karoo Array Telescope accelerated signal processing tools"""
+"""Karoo Array Telescope accelerated signal processing tools."""
 
 # BEGIN VERSION CHECK
 # Get package version when locally imported from repo or via -e develop install

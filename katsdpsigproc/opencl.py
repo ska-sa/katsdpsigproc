@@ -33,6 +33,7 @@ class _PinnedAMD(np.ndarray):
     are done by unmapping the buffer, enqueuing the copy, and remapping
     the buffer. This is based on AMD's optimization guide.
     """
+
     _mapping = None     # type: pyopencl.MemoryMap
 
     def __new__(cls, context: 'Context', queue: 'CommandQueue',
@@ -74,8 +75,9 @@ class _PinnedAMD(np.ndarray):
 
     def enqueue_write_buffer(self, queue: 'CommandQueue', buffer: pyopencl.array.Array,
                              blocking: bool) -> None:
-        """Enqueue a copy from the host buffer to device memory. The host
-        memory must not be touched while the copy is in progress.
+        """Enqueue a copy from the host buffer to device memory.
+
+        The host memory must not be touched while the copy is in progress.
 
         Parameters
         ----------
@@ -92,8 +94,9 @@ class _PinnedAMD(np.ndarray):
 
     def enqueue_read_buffer(self, queue: 'CommandQueue', buffer: pyopencl.array.Array,
                             blocking: bool) -> None:
-        """Enqueue a copy to the host buffer from device memory. The host
-        memory must not be touched while the copy is in progress.
+        """Enqueue a copy to the host buffer from device memory.
+
+        The host memory must not be touched while the copy is in progress.
 
         Parameters
         ----------
@@ -204,7 +207,7 @@ class Device(AbstractDevice['Context']):
 
     @classmethod
     def _get_platforms(cls) -> List[pyopencl.Platform]:
-        """Return all platforms"""
+        """Return all platforms."""
         try:
             return pyopencl.get_platforms()
         except pyopencl.LogicError:
@@ -230,7 +233,7 @@ class Device(AbstractDevice['Context']):
 
 class Context(AbstractContext[pyopencl.array.Array, pyopencl.Buffer, None,
                               Device, Program, 'CommandQueue', 'TuningCommandQueue']):
-    """Abstraction of an OpenCL context"""
+    """Abstraction of an OpenCL context."""
 
     def __init__(self, pyopencl_context: pyopencl.Context) -> None:
         self._pyopencl_context = pyopencl_context
@@ -303,8 +306,10 @@ class Context(AbstractContext[pyopencl.array.Array, pyopencl.Buffer, None,
 
 
 class CommandQueue(AbstractCommandQueue[pyopencl.array.Array, Context, Event, Kernel]):
-    """Abstraction of a command queue. If no existing command queue is passed
-    to the constructor, a new one is created.
+    """Abstraction of a command queue.
+
+    If no existing command queue is passed to the constructor, a new one is
+    created.
 
     Parameters
     ----------

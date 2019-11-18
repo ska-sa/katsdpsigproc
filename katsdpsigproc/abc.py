@@ -20,11 +20,11 @@ _TQ = TypeVar('_TQ', bound='AbstractTuningCommandQueue')
 
 
 class AbstractProgram(ABC, Generic[_K]):
-    """Abstraction of a program object"""
+    """Abstraction of a program object."""
 
     @abstractmethod
     def get_kernel(self, name: str) -> _K:
-        """Create a new kernel
+        """Create a new kernel.
 
         Parameters
         ----------
@@ -56,7 +56,7 @@ class AbstractEvent(ABC):
 
     @abstractmethod
     def wait(self) -> None:
-        """Block until the event has completed"""
+        """Block until the event has completed."""
 
     @abstractmethod
     def time_since(self: _E, prior_event: _E) -> float:
@@ -79,42 +79,42 @@ class AbstractDevice(ABC, Generic[_C]):
 
     @abstractmethod
     def make_context(self) -> _C:
-        """Create a new context associated with this device"""
+        """Create a new context associated with this device."""
 
     @property
     @abstractmethod
     def name(self) -> str:
-        """Return human-readable name for the device"""
+        """Return human-readable name for the device."""
 
     @property
     @abstractmethod
     def platform_name(self) -> str:
-        """Return human-readable name for the platform owning the device"""
+        """Return human-readable name for the platform owning the device."""
 
     @property
     @abstractmethod
     def driver_version(self) -> str:
-        """Return human-readable name for the driver version"""
+        """Return human-readable name for the driver version."""
 
     @property
     @abstractmethod
     def is_cuda(self) -> bool:
-        """Whether the device is a CUDA device"""
+        """Whether the device is a CUDA device."""
 
     @property
     @abstractmethod
     def is_gpu(self) -> bool:
-        """Whether device is a GPU"""
+        """Whether device is a GPU."""
 
     @property
     @abstractmethod
     def is_accelerator(self) -> bool:
-        """Whether device is an accelerator (as defined by OpenCL device types)"""
+        """Whether device is an accelerator (as defined by OpenCL device types)."""
 
     @property
     @abstractmethod
     def is_cpu(self) -> bool:
-        """Whether the device is a CPU"""
+        """Whether the device is a CPU."""
 
     @property
     @abstractmethod
@@ -128,7 +128,7 @@ class AbstractDevice(ABC, Generic[_C]):
     @classmethod
     @abstractmethod
     def get_devices(cls: Type[_D]) -> Sequence[_D]:
-        """Return a list of all devices on all platforms"""
+        """Return a list of all devices on all platforms."""
 
     @classmethod
     @abstractmethod
@@ -146,7 +146,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
 
     @abstractmethod
     def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> _P:
-        """Build a program object from source
+        """Build a program object from source.
 
         Parameters
         ----------
@@ -176,8 +176,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
 
     @abstractmethod
     def allocate_pinned(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
-        """Create a buffer in host memory that can be efficiently copied
-        to and from the device.
+        """Create a buffer in host memory that can be efficiently copied to and from the device.
 
         Parameters
         ----------
@@ -198,7 +197,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
 
     @abstractmethod
     def create_command_queue(self, profile: bool = False) -> _Q:
-        """Create a new command queue associated with this context
+        """Create a new command queue associated with this context.
 
         Parameters
         ----------
@@ -208,7 +207,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
 
     @abstractmethod
     def create_tuning_command_queue(self) -> _TQ:
-        """Create a new command queue for doing autotuning"""
+        """Create a new command queue for doing autotuning."""
 
     @abstractmethod
     def __enter__(self: _C) -> _C:
@@ -229,9 +228,11 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
 
     @abstractmethod
     def enqueue_read_buffer(self, buffer: _B, data: Any, blocking: bool = True) -> None:
-        """Copy data from the device to the host. Only whole-buffer copies are
-        supported, and the shape and type must match. In general, one should use
-        the convenience functions in :class:`accel.DeviceArray`.
+        """Copy data from the device to the host.
+
+        Only whole-buffer copies are supported, and the shape and type must
+        match. In general, one should use the convenience functions in
+        :class:`accel.DeviceArray`.
 
         Parameters
         ----------
@@ -245,9 +246,11 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
 
     @abstractmethod
     def enqueue_write_buffer(self, buffer: _B, data: Any, blocking=True) -> None:
-        """Copy data from the host to the device. Only whole-buffer copies are
-        supported, and the shape and type must match. In general, one should
-        use the convenience functions in :class:`accel.DeviceArray`.
+        """Copy data from the host to the device.
+
+        Only whole-buffer copies are supported, and the shape and type must
+        match. In general, one should use the convenience functions in
+        :class:`accel.DeviceArray`.
 
         Parameters
         ----------
@@ -382,7 +385,7 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
 
     @abstractmethod
     def enqueue_marker(self) -> _E:
-        """Create an event at this point in the command queue"""
+        """Create an event at this point in the command queue."""
 
     @abstractmethod
     def enqueue_wait_for_events(self, events: Sequence[_E]) -> None:
@@ -390,11 +393,11 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
 
     @abstractmethod
     def flush(self) -> None:
-        """Start enqueued work running, but do not wait for it to complete"""
+        """Start enqueued work running, but do not wait for it to complete."""
 
     @abstractmethod
     def finish(self) -> None:
-        """Block until all enqueued work has completed"""
+        """Block until all enqueued work has completed."""
 
 
 class AbstractTuningCommandQueue(AbstractCommandQueue[_B, _C, _E, _K]):

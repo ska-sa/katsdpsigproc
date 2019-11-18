@@ -1,4 +1,4 @@
-"""Fill device array with a constant value"""
+"""Fill device array with a constant value."""
 
 from typing import Tuple, Mapping, Callable, Optional, Any
 
@@ -10,9 +10,9 @@ from .abc import AbstractContext, AbstractCommandQueue
 
 
 class FillTemplate:
-    """
-    Fills a device array with a constant value. The pad elements are also
-    filled with this value.
+    """Fill a device array with a constant value.
+
+    The pad elements are also filled with this value.
 
     .. note::
         To fill with zeros, use :meth:`katsdpsigproc.DeviceArray.zero`

@@ -1,4 +1,4 @@
-"""On-device percentile calculation of 2D arrays"""
+"""Perform on-device percentile calculation of 2D arrays."""
 # see scripts/percentiletest.py for an example
 
 from typing import Tuple, Mapping, Callable, Optional, Any, cast
@@ -126,6 +126,7 @@ class Percentile5(accel.Operation):
     allocator
         Allocator used to allocate unbound slots
     """
+
     def __init__(self, template: Percentile5Template, command_queue: AbstractCommandQueue,
                  shape: Tuple[int, int], column_range: Optional[Tuple[int, int]],
                  allocator: Optional[accel.AbstractAllocator] = None) -> None:
