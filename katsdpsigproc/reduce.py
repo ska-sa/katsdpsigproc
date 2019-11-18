@@ -124,7 +124,7 @@ class HReduce(accel.Operation):
         if column_range[0] >= column_range[1]:
             raise ValueError('column range is empty')
 
-        super(HReduce, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('hreduce')
         self.column_range = column_range

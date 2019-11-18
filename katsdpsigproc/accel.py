@@ -75,7 +75,7 @@ class LinenoLexer(mako.lexer.Lexer):
     is used by passing `lexer_cls` to the mako template constructor.
     """
     def __init__(self, *args, **kw) -> None:
-        super(LinenoLexer, self).__init__(*args, **kw)
+        super().__init__(*args, **kw)
         self.preprocessor.insert(0, self._lineno_preproc)
 
     @classmethod
@@ -98,7 +98,7 @@ class LinenoLexer(mako.lexer.Lexer):
             lines.pop()
         out = []
         for i, line in enumerate(lines):
-            out.append('#line {0} {1}\n'.format(i + 1, escaped_filename))
+            out.append('#line {} {}\n'.format(i + 1, escaped_filename))
             out.append(line + '\n')
         return ''.join(out)
 
@@ -284,7 +284,7 @@ def create_some_context(
     if interactive and len(devices) > 1 and sys.stdin.isatty():
         print("Select device:")
         for i, device in enumerate(devices):
-            print("    [{0}]: {1} ({2})".format(i, device.name, device.platform_name))
+            print("    [{}]: {} ({})".format(i, device.name, device.platform_name))
         print()
         choice_str = input('Enter selection: ')
         try:
@@ -1174,7 +1174,7 @@ class IOSlot(IOSlotBase):
             return Dimension(dimension)
 
     def __init__(self, dimensions: Tuple[Union[Dimension, int], ...], dtype: np.dtype) -> None:
-        super(IOSlot, self).__init__()
+        super().__init__()
         self.dimensions = tuple([self._make_dimension(x) for x in dimensions])
         self.shape = tuple([x.size for x in self.dimensions])
         if len(self.dimensions) > 1:
@@ -1299,12 +1299,12 @@ class CompoundIOSlot(IOSlot):
         for child in self.children:
             for x, y in zip(dimensions, child.dimensions):
                 x.link(y)
-        super(CompoundIOSlot, self).__init__(dimensions, dtype)
+        super().__init__(dimensions, dtype)
         for child in self.children:
             child.is_root = False
 
     def _bind(self, buffer: Optional[DeviceArray]) -> None:
-        super(CompoundIOSlot, self)._bind(buffer)
+        super()._bind(buffer)
         for child in self.children:
             child._bind(buffer)
 
@@ -1326,7 +1326,7 @@ class AliasIOSlot(IOSlotBase):
         If `children` is empty or contains non-attachable elements
     """
     def __init__(self, children: Iterable[IOSlotBase]) -> None:
-        super(AliasIOSlot, self).__init__()
+        super().__init__()
         self.children = list(children)
         self.raw = None       # type: Optional[Any]
         if not len(self.children):

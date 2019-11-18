@@ -96,7 +96,7 @@ class MaskedSum(accel.Operation):
     def __init__(self, template: MaskedSumTemplate, command_queue: AbstractCommandQueue,
                  shape: Tuple[int, int],
                  allocator: Optional[accel.AbstractAllocator] = None) -> None:
-        super(MaskedSum, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("maskedsum_float")
         self.shape = shape

@@ -8,7 +8,7 @@ from .. import percentile
 from ..abc import AbstractContext, AbstractCommandQueue
 
 
-class TestPercentile5(object):
+class TestPercentile5:
     def test_percentile(self) -> Generator[
             Tuple[Callable[[int, int, bool, Optional[Tuple[int, int]]], None],
                   int, int, bool, Optional[Tuple[int, int]]],

@@ -129,7 +129,7 @@ class Percentile5(accel.Operation):
     def __init__(self, template: Percentile5Template, command_queue: AbstractCommandQueue,
                  shape: Tuple[int, int], column_range: Optional[Tuple[int, int]],
                  allocator: Optional[accel.AbstractAllocator] = None) -> None:
-        super(Percentile5, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         if column_range is None:
             column_range = (0, shape[1])
         if column_range[1] <= column_range[0]:

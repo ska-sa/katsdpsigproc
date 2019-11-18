@@ -19,7 +19,7 @@ def setup():
     _flags_big[100:110, 0:100] = 4
 
 
-class TestBackgroundMedianFilterHost(object):
+class TestBackgroundMedianFilterHost:
     def setup(self):
         self.background = host.BackgroundMedianFilterHost(3)
 
@@ -34,7 +34,7 @@ class TestBackgroundMedianFilterHost(object):
         np.testing.assert_equal(ref, out)
 
 
-class BaseTestBackgroundDeviceClass(object):
+class BaseTestBackgroundDeviceClass:
     @device_test
     def test_result(self, context, queue):
         width = 5

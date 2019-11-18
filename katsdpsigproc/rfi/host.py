@@ -7,7 +7,7 @@ import pandas as pd
 from . import MAD_NORMAL
 
 
-class BackgroundMedianFilterHost(object):
+class BackgroundMedianFilterHost:
     """Host backgrounder that applies a median filter to each baseline
     (by amplitude).
 
@@ -43,7 +43,7 @@ class BackgroundMedianFilterHost(object):
         return deviation.values
 
 
-class NoiseEstMADHost(object):
+class NoiseEstMADHost:
     """Estimate noise using the median of non-zero absolute deviations."""
 
     def __call__(self, deviations):
@@ -68,7 +68,7 @@ class NoiseEstMADHost(object):
         return out * MAD_NORMAL
 
 
-class ThresholdSimpleHost(object):
+class ThresholdSimpleHost:
     """Threshold each element independently.
 
     Parameters
@@ -102,7 +102,7 @@ class ThresholdSimpleHost(object):
         return flags * self.flag_value
 
 
-class ThresholdSumHost(object):
+class ThresholdSumHost:
     """Thresholding using the Offringa Sum-Threshold algorithm, with
     power-of-two sized windows. The initial (single-pixel) threshold
     is determined by median of absolute deviations.
@@ -181,7 +181,7 @@ class ThresholdSumHost(object):
         return flags
 
 
-class FlaggerHost(object):
+class FlaggerHost:
     """Combine host background and thresholding implementations to make a flagger."""
 
     def __init__(self, background, noise_est, threshold):

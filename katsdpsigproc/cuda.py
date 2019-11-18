@@ -379,7 +379,7 @@ class TuningCommandQueue(CommandQueue,
                          AbstractTuningCommandQueue[pycuda.gpuarray.GPUArray,
                                                     Context, Event, Kernel]):
     def __init__(self, *args, **kwargs) -> None:
-        super(TuningCommandQueue, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.is_tuning = False
         self._start_event = None    # type: Optional[Event]
 

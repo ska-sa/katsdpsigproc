@@ -95,7 +95,7 @@ class Transpose(accel.Operation):
     """
     def __init__(self, template: TransposeTemplate, command_queue: AbstractCommandQueue,
                  shape: Tuple[int, int], allocator: Optional[accel.AbstractAllocator] = None):
-        super(Transpose, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("transpose")
         self.shape = shape

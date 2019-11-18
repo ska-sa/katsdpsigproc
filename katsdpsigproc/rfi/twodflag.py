@@ -771,7 +771,7 @@ def _get_flags_mp(in_data, in_flags, flagger):
     return out_flags
 
 
-class SumThresholdFlagger(object):
+class SumThresholdFlagger:
     """Flagger that uses the SumThreshold method (Offringa, A., MNRAS, 405, 155-167, 2010)
     to detect spikes in both frequency and time axes.
     The full algorithm does the following:

@@ -28,7 +28,7 @@ class BackgroundFlags(enum.Enum):
         return self != BackgroundFlags.NONE
 
 
-class BackgroundHostFromDevice(object):
+class BackgroundHostFromDevice:
     """Wraps a device-side background template to present the host interface."""
     def __init__(self, template, command_queue):
         self.template = template
@@ -51,7 +51,7 @@ class BackgroundHostFromDevice(object):
         return fn.buffer('deviations').get(self.command_queue)
 
 
-class BackgroundMedianFilterDeviceTemplate(object):
+class BackgroundMedianFilterDeviceTemplate:
     """Device algorithm that applies a median filter to each baseline
     (in amplitude). It is the same algorithm as
     :class:`host.BackgroundMedianFilterHost`, but may give slightly different
@@ -176,7 +176,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
         Allocator used to allocate unbound slots
     """
     def __init__(self, template, command_queue, channels, baselines, allocator=None):
-        super(BackgroundMedianFilterDevice, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('background_median_filter')
         self.channels = channels
@@ -219,7 +219,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
         }
 
 
-class NoiseEstHostFromDevice(object):
+class NoiseEstHostFromDevice:
     """Wraps a device-side noise estimator template to present the host interface"""
     def __init__(self, template, command_queue):
         self.template = template
@@ -241,7 +241,7 @@ class NoiseEstHostFromDevice(object):
         return noise
 
 
-class NoiseEstMADDeviceTemplate(object):
+class NoiseEstMADDeviceTemplate:
     """Estimate noise using the median of non-zero absolute deviations.
 
     In most cases NoiseEstMADTDeviceTemplate is more efficient.
@@ -306,7 +306,7 @@ class NoiseEstMADDevice(accel.Operation):
     transposed = False
 
     def __init__(self, template, command_queue, channels, baselines, allocator=None):
-        super(NoiseEstMADDevice, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('madnz')
         self.channels = channels
@@ -337,7 +337,7 @@ class NoiseEstMADDevice(accel.Operation):
         }
 
 
-class NoiseEstMADTDeviceTemplate(object):
+class NoiseEstMADTDeviceTemplate:
     """Device-side noise estimation by median of absolute deviations. It
     should give the same results as :class:`NoiseEstMADHost`, up to
     floating-point accuracy. It uses transposed (baseline-major) memory
@@ -427,7 +427,7 @@ class NoiseEstMADTDevice(accel.Operation):
     transposed = True
 
     def __init__(self, template, command_queue, channels, baselines, allocator=None):
-        super(NoiseEstMADTDevice, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('madnz_t')
         if channels > self.template.max_channels:
@@ -457,7 +457,7 @@ class NoiseEstMADTDevice(accel.Operation):
         }
 
 
-class ThresholdHostFromDevice(object):
+class ThresholdHostFromDevice:
     """Wraps a device-side thresholder template to present the host interface"""
     def __init__(self, template, command_queue, *args, **kwargs):
         self.template = template
@@ -486,7 +486,7 @@ class ThresholdHostFromDevice(object):
         return flags
 
 
-class ThresholdSimpleDeviceTemplate(object):
+class ThresholdSimpleDeviceTemplate:
     """Device-side thresholding, operating independently on each sample. It
     should give the same results as :class:`ThresholdSimpleHost`, up to
     floating-point accuracy.
@@ -567,7 +567,7 @@ class ThresholdSimpleDevice(accel.Operation):
     """
 
     def __init__(self, template, command_queue, channels, baselines, n_sigma, allocator=None):
-        super(ThresholdSimpleDevice, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         if template.transposed:
             kernel_name = 'threshold_simple_t'
@@ -616,7 +616,7 @@ class ThresholdSimpleDevice(accel.Operation):
         }
 
 
-class ThresholdSumDeviceTemplate(object):
+class ThresholdSumDeviceTemplate:
     """A device version of :class:`katsdpsigproc.rfi.host.ThresholdSumHost`.
     It uses transposed data. Performance will be best with a large work
     group size, because of the stencil-like nature of the computation.
@@ -721,7 +721,7 @@ class ThresholdSumDevice(accel.Operation):
 
     def __init__(self, template, command_queue, channels, baselines, n_sigma, threshold_falloff=1.2,
                  allocator=None):
-        super(ThresholdSumDevice, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('threshold_sum')
         self.channels = channels
@@ -759,7 +759,7 @@ class ThresholdSumDevice(accel.Operation):
         }
 
 
-class FlaggerDeviceTemplate(object):
+class FlaggerDeviceTemplate:
     """Combine device backgrounder, noise estimation and thresholder
     implementations to create a flagger. The thresholder and/or noise
     estimation may take transposed input, in which case this object will manage
@@ -884,11 +884,11 @@ class FlaggerDevice(accel.OperationSequence):
                 command_queue, (baselines, channels))
             operations.append(('transpose_flags', self.transpose_flags))
 
-        super(FlaggerDevice, self).__init__(
+        super().__init__(
             command_queue, operations, compounds, allocator=allocator)
 
 
-class FlaggerHostFromDevice(object):
+class FlaggerHostFromDevice:
     """Wrapper that makes a :class:`FlaggerDeviceTemplate` present the
     interface of :class:`FlaggerHost`. This is intended only for ease of
     use. It is not efficient, because it allocates and frees memory on

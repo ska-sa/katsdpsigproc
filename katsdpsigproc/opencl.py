@@ -459,7 +459,7 @@ class TuningCommandQueue(CommandQueue,
 
     def __init__(self, *args, **kwargs) -> None:
         kwargs['profile'] = True
-        super(TuningCommandQueue, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.is_tuning = False
         self.events = []        # type: List[pyopencl.Event]
 
@@ -470,7 +470,7 @@ class TuningCommandQueue(CommandQueue,
     def enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
                        global_size: Tuple[int, ...], local_size: Tuple[int, ...]) -> None:
         if not self.is_tuning:
-            super(TuningCommandQueue, self).enqueue_kernel(kernel, args, global_size, local_size)
+            super().enqueue_kernel(kernel, args, global_size, local_size)
         else:
             event = self._enqueue_kernel(kernel, args, global_size, local_size)
             self.events.append(event)

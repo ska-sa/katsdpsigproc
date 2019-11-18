@@ -34,7 +34,7 @@ def test_NoiseEstMADHost():
     np.testing.assert_allclose(_expected, actual)
 
 
-class BaseTestNoiseEstDeviceClass(object):
+class BaseTestNoiseEstDeviceClass:
     @device_test
     def test_result(self, context, queue):
         template = self.factory(context)

@@ -111,14 +111,14 @@ def _query(conn: sqlite3.Connection, tablename: str,
         Keys and values for the query
     """
     try:
-        query = 'SELECT * FROM {0} WHERE'.format(tablename)
+        query = 'SELECT * FROM {} WHERE'.format(tablename)
         query_args = []
         first = True
         for key, value in keys.items():
             if not first:
                 query += ' AND'
             first = False
-            query += ' {0}=?'.format(key)
+            query += ' {}=?'.format(key)
             query_args.append(value)
         cursor = conn.cursor()
         cursor.execute(query, query_args)
@@ -139,10 +139,10 @@ def _query(conn: sqlite3.Connection, tablename: str,
 
 def _create_table(conn: sqlite3.Connection, tablename: str,
                   keys: Mapping[str, Any], values: Mapping[str, Any]) -> None:
-    command = 'CREATE TABLE IF NOT EXISTS {0} ('.format(tablename)
+    command = 'CREATE TABLE IF NOT EXISTS {} ('.format(tablename)
     for name in itertools.chain(keys.keys(), values.keys()):
         command += name + ' NOT NULL, '
-    command += 'PRIMARY KEY ({0}) ON CONFLICT REPLACE)'.format(', '.join(keys.keys()))
+    command += 'PRIMARY KEY ({}) ON CONFLICT REPLACE)'.format(', '.join(keys.keys()))
     conn.execute(command)
 
 
@@ -155,7 +155,7 @@ def _save(conn: sqlite3.Connection, tablename: str,
     # Combine all fields
     entries = dict(keys)
     entries.update(values)
-    command = 'INSERT OR REPLACE INTO {0}({1}) VALUES ({2})'.format(
+    command = 'INSERT OR REPLACE INTO {}({}) VALUES ({})'.format(
         tablename,
         ', '.join(entries.keys()),
         ', '.join(['?' for x in entries.keys()]))
@@ -194,7 +194,7 @@ def autotuner_impl(test: Mapping[str, Any],
     It is split into a separate function so that mocks can patch it.
     """
     cls = args[0]
-    classname = '{0}.{1}.{2}'.format(cls.__module__, cls.__name__, fn.__name__)
+    classname = '{}.{}.{}'.format(cls.__module__, cls.__name__, fn.__name__)
     tablename = classname.replace('.', '_') + \
         '__' + str(getattr(cls, 'autotune_version', 0))
     keys = _db_keys(fn, args, kwargs)
@@ -207,7 +207,7 @@ def autotuner_impl(test: Mapping[str, Any],
             # Nothing found in the database, so we need to tune now
             _logger.info('Performing autotuning for %s with key %s', classname, keys)
             ans = fn(*args, **kwargs)
-            values = dict([('value_' + key, value) for (key, value) in ans.items()])
+            values = {'value_' + key: value for (key, value) in ans.items()}
             _save(conn, tablename, keys, values)
         else:
             _logger.debug('Autotuning cache hit for %s with key %s', classname, keys)
