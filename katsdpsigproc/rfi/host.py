@@ -12,6 +12,10 @@ from . import MAD_NORMAL
 
 class AbstractBackgroundHost(ABC):
     @abstractmethod
+    def __init__(self, width: int, amplitudes: bool = False) -> None:
+        pass    # pragma: nocover
+
+    @abstractmethod
     def __call__(self, vis: np.ndarray, flags: Optional[np.ndarray] = None) -> np.ndarray:
         """Subtract an estimate of background signal (without RFI).
 
@@ -49,6 +53,10 @@ class AbstractNoiseEstHost(ABC):
 
 
 class AbstractThresholdHost(ABC):
+    @abstractmethod
+    def __init__(self, n_sigma: float) -> None:
+        pass        # pragma: nocover
+
     @abstractmethod
     def __call__(self, deviations: np.ndarray, noise: np.ndarray) -> np.ndarray:
         """Apply the thresholding.
