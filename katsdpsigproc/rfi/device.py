@@ -9,14 +9,20 @@ kernel at the appropriate point.
 """
 
 import enum
+from abc import ABC, abstractmethod
+from typing import List, Tuple, Optional, Mapping, Union, Callable, Type, Any
 
 import numpy as np
 
 from .. import accel
 from .. import tune
 from .. import transpose
-from ..accel import DeviceArray
+from ..abc import AbstractContext, AbstractCommandQueue
+from ..accel import DeviceArray, AbstractAllocator
 from . import host
+
+
+_THRESHOLD_SUM_DEFAULT_THRESHOLD_FALLOFF = 1.2
 
 
 class BackgroundFlags(enum.Enum):
@@ -28,14 +34,63 @@ class BackgroundFlags(enum.Enum):
         return self != BackgroundFlags.NONE
 
 
-class BackgroundHostFromDevice:
+class AbstractBackgroundDevice(accel.Operation):
+    pass
+
+
+class AbstractBackgroundDeviceTemplate(ABC):
+    use_flags = None    # type: BackgroundFlags
+    context = None      # type: AbstractContext
+    host_class = None   # type: Type[host.AbstractBackgroundHost]
+
+    @abstractmethod
+    def instantiate(self, command_queue: AbstractCommandQueue, channels: int, baselines: int,
+                    allocator: Optional[AbstractAllocator] = None) -> AbstractBackgroundDevice:
+        """Create an instance."""
+
+
+class AbstractNoiseEstDevice(accel.Operation):
+    transposed = None   # type: bool
+
+
+class AbstractNoiseEstDeviceTemplate(ABC):
+    transposed = None   # type: bool
+    context = None      # type: AbstractContext
+    host_class = None   # type: Type[host.AbstractNoiseEstHost]
+
+    @abstractmethod
+    def instantiate(self, command_queue: AbstractCommandQueue, channels: int, baselines: int,
+                    allocator: Optional[AbstractAllocator] = None) -> AbstractNoiseEstDevice:
+        """Create an instance."""
+
+
+class AbstractThresholdDevice(accel.Operation):
+    transposed = None   # type: bool
+
+
+class AbstractThresholdDeviceTemplate(ABC):
+    transposed = None   # type: bool
+    context = None      # type: AbstractContext
+    host_class = None   # type: Type[host.AbstractThresholdHost]
+
+    @abstractmethod
+    def instantiate(self, command_queue: AbstractCommandQueue, channels: int, baselines: int,
+                    n_sigma: float,
+                    *, allocator: Optional[AbstractAllocator] = None) -> AbstractThresholdDevice:
+        """Create an instance."""
+        # allocator is marked as keyword-only in this base class because
+        # concrete classes may have extra parameters before it.
+
+
+class BackgroundHostFromDevice(host.AbstractBackgroundHost):
     """Wrap a device-side background template to present the host interface."""
 
-    def __init__(self, template, command_queue):
+    def __init__(self, template: AbstractBackgroundDeviceTemplate,
+                 command_queue: AbstractCommandQueue) -> None:
         self.template = template
         self.command_queue = command_queue
 
-    def __call__(self, vis, flags=None):
+    def __call__(self, vis: np.ndarray, flags: Optional[np.ndarray] = None) -> accel.HostArray:
         if flags is not None and not self.template.use_flags:
             raise TypeError("flags were provided but not included in the template")
         if flags is None and self.template.use_flags:
@@ -52,7 +107,7 @@ class BackgroundHostFromDevice:
         return fn.buffer('deviations').get(self.command_queue)
 
 
-class BackgroundMedianFilterDeviceTemplate:
+class BackgroundMedianFilterDeviceTemplate(AbstractBackgroundDeviceTemplate):
     """Device algorithm that applies a median filter to each baseline (in amplitude).
 
     It is the same algorithm as :class:`host.BackgroundMedianFilterHost`, but
@@ -61,13 +116,13 @@ class BackgroundMedianFilterDeviceTemplate:
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    width : int
+    width
         The kernel width (must be odd)
-    is_amplitude : boolean
+    is_amplitude
         If ``True``, the inputs are amplitudes rather than complex visibilities
-    use_flags : :class:`BackgroundFlags` or bool
+    use_flags
         Specify that flags are taken as input to indicate bad data that should
         not contribute to the backgrounding. The legal values are
 
@@ -88,10 +143,9 @@ class BackgroundMedianFilterDeviceTemplate:
     host_class = host.BackgroundMedianFilterHost
     autotune_version = 4
 
-    def __init__(self, context, width, is_amplitude=False,
-                 use_flags=BackgroundFlags.NONE, tuning=None):
-        if tuning is None:
-            tuning = self.autotune(context, width, is_amplitude, use_flags)
+    def __init__(self, context: AbstractContext, width: int, is_amplitude: bool = False,
+                 use_flags: Union[BackgroundFlags, bool] = BackgroundFlags.NONE,
+                 tuning: Optional[Mapping[str, Any]] = None):
         self.context = context
         self.width = width
         self.is_amplitude = is_amplitude
@@ -101,6 +155,8 @@ class BackgroundMedianFilterDeviceTemplate:
             use_flags = BackgroundFlags.NONE
         if not isinstance(use_flags, BackgroundFlags):
             raise TypeError('use_flags must be an instance of BackgroundFlags or bool')
+        if tuning is None:
+            tuning = self.autotune(context, width, is_amplitude, use_flags)
         self.use_flags = use_flags
         self.wgs = tuning['wgs']
         self.csplit = tuning['csplit']
@@ -115,7 +171,8 @@ class BackgroundMedianFilterDeviceTemplate:
 
     @classmethod
     @tune.autotuner(test={'wgs': 128, 'csplit': 4})
-    def autotune(cls, context, width, is_amplitude, use_flags):
+    def autotune(cls, context: AbstractContext, width: int, is_amplitude: bool,
+                 use_flags: BackgroundFlags) -> Mapping[str, Any]:
         queue = context.create_tuning_command_queue()
         # Note: baselines must be a multiple of any tested workgroup size
         channels = 4096
@@ -139,7 +196,7 @@ class BackgroundMedianFilterDeviceTemplate:
         if use_flags:
             flags.set(queue, (rs.uniform(size=flags.shape) < 0.0001).astype(np.uint8))
 
-        def generate(**tuning):
+        def generate(**tuning) -> Callable[[int], float]:
             fn = cls(context, width, is_amplitude, use_flags, tuning).instantiate(
                 queue, channels, baselines)
             fn.bind(vis=vis, deviations=deviations)
@@ -149,12 +206,14 @@ class BackgroundMedianFilterDeviceTemplate:
 
         return tune.autotune(generate, wgs=[32, 64, 128, 256, 512], csplit=[1, 2, 4, 8, 16])
 
-    def instantiate(self, *args, **kwargs):
+    def instantiate(self, command_queue: AbstractCommandQueue, channels: int, baselines: int,
+                    allocator: Optional[AbstractAllocator] = None
+                    ) -> 'BackgroundMedianFilterDevice':
         """Create an instance. See :class:`BackgroundMedianFilterDevice`."""
-        return BackgroundMedianFilterDevice(self, *args, **kwargs)
+        return BackgroundMedianFilterDevice(self, command_queue, channels, baselines, allocator)
 
 
-class BackgroundMedianFilterDevice(accel.Operation):
+class BackgroundMedianFilterDevice(AbstractBackgroundDevice):
     """Concrete instance of :class:`BackgroundMedianFilterDeviceTemplate`.
 
     .. rubric:: Slots
@@ -168,17 +227,20 @@ class BackgroundMedianFilterDevice(accel.Operation):
 
     Parameters
     ----------
-    template : :class:`BackgroundMedianFilterDeviceTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command queue for the operation
-    channels, baselines : int
+    channels, baselines
         Shape of the visibilities array
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+    allocator
         Allocator used to allocate unbound slots
     """
 
-    def __init__(self, template, command_queue, channels, baselines, allocator=None):
+    def __init__(self, template: BackgroundMedianFilterDeviceTemplate,
+                 command_queue: AbstractCommandQueue,
+                 channels: int, baselines: int,
+                 allocator: Optional[AbstractAllocator] = None) -> None:
         super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('background_median_filter')
@@ -194,7 +256,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
         elif template.use_flags == BackgroundFlags.CHANNEL:
             self.slots['flags'] = accel.IOSlot((channels,), np.uint8)
 
-    def _run(self):
+    def _run(self) -> None:
         VT = accel.divup(self.channels, self.template.csplit)
         xblocks = accel.divup(self.baselines, self.template.wgs)
         yblocks = accel.divup(self.channels, VT)
@@ -213,7 +275,7 @@ class BackgroundMedianFilterDevice(accel.Operation):
             global_size=(xblocks * self.template.wgs, yblocks),
             local_size=(self.template.wgs, 1))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
             'width': self.template.width,
             'use_flags': self.template.use_flags.name,
@@ -222,14 +284,15 @@ class BackgroundMedianFilterDevice(accel.Operation):
         }
 
 
-class NoiseEstHostFromDevice:
+class NoiseEstHostFromDevice(host.AbstractNoiseEstHost):
     """Wrap a device-side noise estimator template to present the host interface."""
 
-    def __init__(self, template, command_queue):
+    def __init__(self, template: AbstractNoiseEstDeviceTemplate,
+                 command_queue: AbstractCommandQueue) -> None:
         self.template = template
         self.command_queue = command_queue
 
-    def __call__(self, deviations):
+    def __call__(self, deviations: np.ndarray) -> accel.HostArray:
         (channels, baselines) = deviations.shape
         transposed = self.template.transposed
         if transposed:
@@ -245,16 +308,16 @@ class NoiseEstHostFromDevice:
         return noise
 
 
-class NoiseEstMADDeviceTemplate:
+class NoiseEstMADDeviceTemplate(AbstractNoiseEstDeviceTemplate):
     """Estimate noise using the median of non-zero absolute deviations.
 
-    In most cases NoiseEstMADTDeviceTemplate is more efficient.
+    In most cases :class:`NoiseEstMADTDeviceTemplate` is more efficient.
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    tuning : mapping, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -265,7 +328,8 @@ class NoiseEstMADDeviceTemplate:
     host_class = host.NoiseEstMADHost
     transposed = False
 
-    def __init__(self, context, tuning=None):
+    def __init__(self, context: AbstractContext,
+                 tuning: Optional[Mapping[str, Any]] = None) -> None:
         if tuning is None:
             tuning = self.autotune(context)
         self.context = context
@@ -276,16 +340,18 @@ class NoiseEstMADDeviceTemplate:
 
     @classmethod
     @tune.autotuner(test={'wgsx': 32, 'wgsy': 8})
-    def autotune(cls, context):
+    def autotune(cls, context: AbstractContext) -> Mapping[str, Any]:
         # TODO: do real autotuning
         return {'wgsx': 32, 'wgsy': 8}
 
-    def instantiate(self, *args, **kwargs):
+    def instantiate(self, command_queue: AbstractCommandQueue,
+                    channels: int, baselines: int,
+                    allocator: Optional[AbstractAllocator] = None) -> 'NoiseEstMADDevice':
         """Create an instance. See :class:`NoiseEstMADDevice`."""
-        return NoiseEstMADDevice(self, *args, **kwargs)
+        return NoiseEstMADDevice(self, command_queue, channels, baselines, allocator)
 
 
-class NoiseEstMADDevice(accel.Operation):
+class NoiseEstMADDevice(AbstractNoiseEstDevice):
     """Concrete instantiation of :class:`NoiseEstMADDeviceTemplate`.
 
     .. rubric:: Slots
@@ -297,19 +363,22 @@ class NoiseEstMADDevice(accel.Operation):
 
     Parameters
     ----------
-    template : :class:`NoiseEstMADDeviceTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command-queue in which work will be enqueued
-    channels, baselines : int
+    channels, baselines
         Shape of the visibility array
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+    allocator
         Allocator used to allocate unbound slots
     """
 
     transposed = False
 
-    def __init__(self, template, command_queue, channels, baselines, allocator=None):
+    def __init__(self, template: NoiseEstMADDeviceTemplate,
+                 command_queue: AbstractCommandQueue,
+                 channels: int, baselines: int,
+                 allocator: Optional[AbstractAllocator] = None) -> None:
         super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('madnz')
@@ -319,7 +388,7 @@ class NoiseEstMADDevice(accel.Operation):
         self.slots['noise'] = accel.IOSlot((baselines_dim,), np.float32)
         self.slots['deviations'] = accel.IOSlot((channels, baselines_dim), np.float32)
 
-    def _run(self):
+    def _run(self) -> None:
         blocks = accel.divup(self.baselines, self.template.wgsx)
         vt = accel.divup(self.channels, self.template.wgsy)
         deviations = self.buffer('deviations')
@@ -334,14 +403,14 @@ class NoiseEstMADDevice(accel.Operation):
             global_size=(blocks * self.template.wgsx, self.template.wgsy),
             local_size=(self.template.wgsx, self.template.wgsy))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
             'channels': self.channels,
             'baselines': self.baselines
         }
 
 
-class NoiseEstMADTDeviceTemplate:
+class NoiseEstMADTDeviceTemplate(AbstractNoiseEstDeviceTemplate):
     """Device-side noise estimation by median of absolute deviations.
 
     It should give the same results as :class:`NoiseEstMADHost`, up to
@@ -358,12 +427,12 @@ class NoiseEstMADTDeviceTemplate:
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    max_channels : int
+    max_channels
         Maximum number of channels. Choosing too large a value will
         reduce performance.
-    tuning : mapping, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -373,7 +442,8 @@ class NoiseEstMADTDeviceTemplate:
     host_class = host.NoiseEstMADHost
     transposed = True
 
-    def __init__(self, context, max_channels, tuning=None):
+    def __init__(self, context: AbstractContext, max_channels: int,
+                 tuning: Optional[Mapping[str, Any]] = None) -> None:
         self.context = context
         self.max_channels = max_channels
         if tuning is None:
@@ -384,13 +454,13 @@ class NoiseEstMADTDeviceTemplate:
 
     @classmethod
     @tune.autotuner(test={'wgsx': 128})
-    def autotune(cls, context, max_channels):
+    def autotune(cls, context: AbstractContext, max_channels: int) -> Mapping[str, Any]:
         queue = context.create_tuning_command_queue()
         baselines = 128
         rs = np.random.RandomState(seed=1)
         host_deviations = rs.uniform(size=(baselines, max_channels)).astype(np.float32)
 
-        def generate(**tuning):
+        def generate(**tuning) -> Callable[[int], float]:
             # Very large values of VT cause the AMD compiler to choke and segfault
             if max_channels > 256 * tuning['wgsx']:
                 raise ValueError('wgsx is too small')
@@ -402,12 +472,13 @@ class NoiseEstMADTDeviceTemplate:
 
         return tune.autotune(generate, wgsx=[32, 64, 128, 256, 512, 1024])
 
-    def instantiate(self, *args, **kwargs):
+    def instantiate(self, command_queue: AbstractCommandQueue, channels: int, baselines: int,
+                    allocator: Optional[AbstractAllocator] = None) -> 'NoiseEstMADTDevice':
         """Create an instance. See :class:`NoiseEstMADTDevice`."""
-        return NoiseEstMADTDevice(self, *args, **kwargs)
+        return NoiseEstMADTDevice(self, command_queue, channels, baselines, allocator)
 
 
-class NoiseEstMADTDevice(accel.Operation):
+class NoiseEstMADTDevice(AbstractNoiseEstDevice):
     """Concrete instance of :class:`NoiseEstMADTDeviceTemplate`.
 
     .. rubric:: Slots
@@ -419,19 +490,22 @@ class NoiseEstMADTDevice(accel.Operation):
 
     Parameters
     ----------
-    template : :class:`NoiseEstMADTDeviceTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command-queue in which work will be enqueued
-    channels, baselines : int
+    channels, baselines
         Shape of the visibility array
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+    allocator
         Allocator used to allocate unbound slots
     """
 
     transposed = True
 
-    def __init__(self, template, command_queue, channels, baselines, allocator=None):
+    def __init__(self, template: NoiseEstMADTDeviceTemplate,
+                 command_queue: AbstractCommandQueue,
+                 channels: int, baselines: int,
+                 allocator: Optional[AbstractAllocator] = None) -> None:
         super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('madnz_t')
@@ -442,7 +516,7 @@ class NoiseEstMADTDevice(accel.Operation):
         self.slots['noise'] = accel.IOSlot((baselines,), np.float32)
         self.slots['deviations'] = accel.IOSlot((baselines, channels), np.float32)
 
-    def _run(self):
+    def _run(self) -> None:
         deviations = self.buffer('deviations')
         noise = self.buffer('noise')
         self.command_queue.enqueue_kernel(
@@ -454,7 +528,7 @@ class NoiseEstMADTDevice(accel.Operation):
             global_size=(self.template.wgsx, self.baselines),
             local_size=(self.template.wgsx, 1))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
             'max_channels': self.template.max_channels,
             'baselines': self.baselines,
@@ -462,22 +536,24 @@ class NoiseEstMADTDevice(accel.Operation):
         }
 
 
-class ThresholdHostFromDevice:
+class ThresholdHostFromDevice(host.AbstractThresholdHost):
     """Wrap a device-side thresholder template to present the host interface."""
 
-    def __init__(self, template, command_queue, *args, **kwargs):
+    def __init__(self, template: AbstractThresholdDeviceTemplate,
+                 command_queue: AbstractCommandQueue, *args, **kwargs) -> None:
         self.template = template
         self.command_queue = command_queue
         self.args = args
         self.kwargs = kwargs
 
-    def __call__(self, deviations, noise):
+    def __call__(self, deviations: np.ndarray, noise: np.ndarray) -> accel.HostArray:
         (channels, baselines) = deviations.shape
         transposed = self.template.transposed
         if transposed:
             deviations = deviations.T
 
-        fn = self.template.instantiate(self.command_queue, channels, baselines,
+        fn = self.template.instantiate(self.command_queue,
+                                       channels, baselines,
                                        *self.args, **self.kwargs)
         # Allocate memory and copy data
         fn.ensure_all_bound()
@@ -492,7 +568,7 @@ class ThresholdHostFromDevice:
         return flags
 
 
-class ThresholdSimpleDeviceTemplate:
+class ThresholdSimpleDeviceTemplate(AbstractThresholdDeviceTemplate):
     """Device-side thresholding, operating independently on each sample.
 
     It should give the same results as :class:`ThresholdSimpleHost`, up to
@@ -503,13 +579,13 @@ class ThresholdSimpleDeviceTemplate:
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    transposed : boolean
+    transposed
         Whether inputs and outputs are transposed
-    flag_value : int
+    flag_value
         Number stored in returned value to indicate RFI
-    tuning : mapping, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -519,7 +595,8 @@ class ThresholdSimpleDeviceTemplate:
 
     host_class = host.ThresholdSimpleHost
 
-    def __init__(self, context, transposed, flag_value=1, tuning=None):
+    def __init__(self, context: AbstractContext, transposed: bool,
+                 flag_value: int = 1, tuning: Optional[Mapping[str, Any]] = None) -> None:
         if tuning is None:
             tuning = self.autotune(context)
         self.context = context
@@ -538,16 +615,18 @@ class ThresholdSimpleDeviceTemplate:
 
     @classmethod
     @tune.autotuner(test={'wgsx': 32, 'wgsy': 4})
-    def autotune(cls, context):
+    def autotune(cls, context: AbstractContext) -> Mapping[str, Any]:
         # TODO: do real autotuning
         return {'wgsx': 32, 'wgsy': 4}
 
-    def instantiate(self, *args, **kwargs):
+    def instantiate(self, command_queue: AbstractCommandQueue,
+                    channels: int, baselines: int, n_sigma: float,
+                    allocator: Optional[AbstractAllocator] = None) -> 'ThresholdSimpleDevice':
         """Create an instance. See :class:`ThresholdSimpleDevice`."""
-        return ThresholdSimpleDevice(self, *args, **kwargs)
+        return ThresholdSimpleDevice(self, command_queue, channels, baselines, n_sigma, allocator)
 
 
-class ThresholdSimpleDevice(accel.Operation):
+class ThresholdSimpleDevice(AbstractThresholdDevice):
     """Concrete instance of :class:`ThresholdSimpleDeviceTemplate`.
 
     .. rubric:: Slots
@@ -561,19 +640,22 @@ class ThresholdSimpleDevice(accel.Operation):
 
     Parameters
     ----------
-    template : :class:`ThresholdSimpleDeviceTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command-queue in which work will be enqueued
-    n_sigma : float
-        Number of (estimated) standard deviations for the threshold
-    channels, baselines : int
+    channels, baselines
         Shape of the visibility array
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+    n_sigma
+        Number of (estimated) standard deviations for the threshold
+    allocator
         Allocator used to allocate unbound slots
     """
 
-    def __init__(self, template, command_queue, channels, baselines, n_sigma, allocator=None):
+    def __init__(self, template: ThresholdSimpleDeviceTemplate,
+                 command_queue: AbstractCommandQueue,
+                 channels: int, baselines: int, n_sigma: float,
+                 allocator: Optional[AbstractAllocator] = None) -> None:
         super().__init__(command_queue, allocator)
         self.template = template
         if template.transposed:
@@ -595,7 +677,7 @@ class ThresholdSimpleDevice(accel.Operation):
         self.slots['noise'] = accel.IOSlot((noise_dim,), np.float32)
         self.slots['flags'] = accel.IOSlot(dims, np.uint8)
 
-    def _run(self):
+    def _run(self) -> None:
         deviations = self.buffer('deviations')
         noise = self.buffer('noise')
         flags = self.buffer('flags')
@@ -613,7 +695,7 @@ class ThresholdSimpleDevice(accel.Operation):
             global_size=(global_x, global_y),
             local_size=(self.template.wgsx, self.template.wgsy))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
             'n_sigma': self.n_sigma,
             'flag_value': self.template.flag_value,
@@ -623,7 +705,7 @@ class ThresholdSimpleDevice(accel.Operation):
         }
 
 
-class ThresholdSumDeviceTemplate:
+class ThresholdSumDeviceTemplate(AbstractThresholdDeviceTemplate):
     """A device version of :class:`katsdpsigproc.rfi.host.ThresholdSumHost`.
 
     It uses transposed data. Performance will be best with a large work
@@ -631,13 +713,13 @@ class ThresholdSumDeviceTemplate:
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    n_windows : int
+    n_windows
         Number of window sizes to use
-    flag_value : int
+    flag_value
         Number stored in returned value to indicate RFI
-    tuning : mapping, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -648,7 +730,8 @@ class ThresholdSumDeviceTemplate:
     host_class = host.ThresholdSumHost
     transposed = True
 
-    def __init__(self, context, n_windows=4, flag_value=1, tuning=None):
+    def __init__(self, context: AbstractContext, n_windows: int = 4, flag_value: int = 1,
+                 tuning: Optional[Mapping[str, Any]] = None) -> None:
         if tuning is None:
             tuning = self.autotune(context, n_windows)
         wgs = tuning['wgs']
@@ -670,7 +753,7 @@ class ThresholdSumDeviceTemplate:
 
     @classmethod
     @tune.autotuner(test={'wgs': 128, 'vt': 3})
-    def autotune(cls, context, n_windows):
+    def autotune(cls, context: AbstractContext, n_windows: int) -> Mapping[str, Any]:
         queue = context.create_tuning_command_queue()
         channels = 4096
         baselines = 128
@@ -682,7 +765,7 @@ class ThresholdSumDeviceTemplate:
         noise.set(queue, rs.uniform(high=0.1, size=noise.shape).astype(np.float32))
         flags = DeviceArray(context, shape, dtype=np.uint8)
 
-        def generate(**tuning):
+        def generate(**tuning) -> Callable[[int], float]:
             template = cls(context, n_windows=n_windows, tuning=tuning)
             fn = template.instantiate(queue, channels, baselines, 11.0)
             fn.bind(deviations=deviations, noise=noise, flags=flags)
@@ -692,12 +775,16 @@ class ThresholdSumDeviceTemplate:
                              wgs=[32, 64, 128, 256, 512],
                              vt=[1, 2, 3, 4, 8, 16])
 
-    def instantiate(self, *args, **kwargs):
+    def instantiate(self, command_queue: AbstractCommandQueue,
+                    channels: int, baselines: int, n_sigma: float,
+                    threshold_falloff: float = _THRESHOLD_SUM_DEFAULT_THRESHOLD_FALLOFF,
+                    allocator: Optional[AbstractAllocator] = None) -> 'ThresholdSumDevice':
         """Create an instance. See :class:`ThresholdSumDevice`."""
-        return ThresholdSumDevice(self, *args, **kwargs)
+        return ThresholdSumDevice(self, command_queue, channels, baselines, n_sigma,
+                                  threshold_falloff, allocator)
 
 
-class ThresholdSumDevice(accel.Operation):
+class ThresholdSumDevice(AbstractThresholdDevice):
     """Concrete instance of :class:`ThresholdSumDeviceTemplate`.
 
     .. rubric:: Slots
@@ -711,25 +798,29 @@ class ThresholdSumDevice(accel.Operation):
 
     Parameters
     ----------
-    template : :class:`ThresholSumDeviceTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command-queue in which work will be enqueued
-    channels, baselines : int
+    channels, baselines
         Shape of the visibility array
-    n_sigma : float
+    n_sigma
         Number of (estimated) standard deviations for the threshold
-    threshold_falloff : float, optional
+    threshold_falloff
         Controls rate at which thresholds decrease (ρ in Offringa 2010)
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
+    allocator
         Allocator used to allocate unbound slots
     """
 
     host_class = host.ThresholdSumHost
     transposed = True
+    DEFAULT_THRESHOLD_FALLOFF = _THRESHOLD_SUM_DEFAULT_THRESHOLD_FALLOFF
 
-    def __init__(self, template, command_queue, channels, baselines, n_sigma, threshold_falloff=1.2,
-                 allocator=None):
+    def __init__(self, template: ThresholdSumDeviceTemplate,
+                 command_queue: AbstractCommandQueue,
+                 channels: int, baselines: int, n_sigma: float,
+                 threshold_falloff: float = DEFAULT_THRESHOLD_FALLOFF,
+                 allocator: Optional[AbstractAllocator] = None) -> None:
         super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('threshold_sum')
@@ -745,7 +836,7 @@ class ThresholdSumDevice(accel.Operation):
         self.slots['noise'] = accel.IOSlot((baselines,), np.float32)
         self.slots['flags'] = accel.IOSlot(dims, np.uint8)
 
-    def _run(self):
+    def _run(self) -> None:
         deviations = self.buffer('deviations')
         noise = self.buffer('noise')
         flags = self.buffer('flags')
@@ -759,7 +850,7 @@ class ThresholdSumDevice(accel.Operation):
             global_size=(blocks * self.template.wgs, self.baselines),
             local_size=(self.template.wgs, 1))
 
-    def parameters(self):
+    def parameters(self) -> Mapping[str, Any]:
         return {
             'n_sigma': self.n_sigma,
             'flag_value': self.template.flag_value,
@@ -777,11 +868,14 @@ class FlaggerDeviceTemplate:
 
     Parameters
     ----------
-    background, noise_est, threshold : template types
+    background, noise_est, threshold
         The templates for the individual steps
     """
 
-    def __init__(self, background, noise_est, threshold):
+    def __init__(self,
+                 background: AbstractBackgroundDeviceTemplate,
+                 noise_est: AbstractNoiseEstDeviceTemplate,
+                 threshold: AbstractThresholdDeviceTemplate) -> None:
         self.background = background
         self.noise_est = noise_est
         self.threshold = threshold
@@ -792,17 +886,29 @@ class FlaggerDeviceTemplate:
 
         # Create transposition operations if needed
         if noise_est.transposed or threshold.transposed:
-            self.transpose_deviations = transpose.TransposeTemplate(context, np.float32, 'float')
+            self.transpose_deviations = \
+                transpose.TransposeTemplate(
+                    context, np.float32, 'float')   # type: Optional[transpose.TransposeTemplate]
         else:
             self.transpose_deviations = None
         if threshold.transposed:
-            self.transpose_flags = transpose.TransposeTemplate(context, np.uint8, 'unsigned char')
+            self.transpose_flags = \
+                transpose.TransposeTemplate(
+                    context, np.uint8,
+                    'unsigned char')      # type: Optional[transpose.TransposeTemplate]
         else:
             self.transpose_flags = None
 
-    def instantiate(self, *args, **kwargs):
+    def instantiate(self, command_queue: AbstractCommandQueue,
+                    channels: int, baselines: int,
+                    background_args: Mapping[str, Any] = {},
+                    noise_est_args: Mapping[str, Any] = {},
+                    threshold_args: Mapping[str, Any] = {},
+                    allocator: Optional[AbstractAllocator] = None) -> 'FlaggerDevice':
         """Create an instance (see :class:`FlaggerDevice`)."""
-        return FlaggerDevice(self, *args, **kwargs)
+        return FlaggerDevice(self, command_queue, channels, baselines,
+                             background_args, noise_est_args, threshold_args,
+                             allocator)
 
 
 class FlaggerDevice(accel.OperationSequence):
@@ -838,39 +944,43 @@ class FlaggerDevice(accel.OperationSequence):
 
     Parameters
     ----------
-    template : :class:`FlaggerDeviceTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command queue for the operation
-    channels, baselines : int
+    channels, baselines
         Shape of the visibilities array
-    background_args : dict, optional
+    background_args
         Extra keyword arguments to pass to the background instantiation
-    noise_est_args : dict, optional
+    noise_est_args
         Extra keyword arguments to pass to the noise estimation instantiation
-    threshold_args : dict, optional
+    threshold_args
         Extra keyword arguments to pass to the threshold instantiation
-    allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`
+    allocator
         Allocator used to allocate unbound slots
     """
 
-    def __init__(self, template, command_queue, channels, baselines,
-                 background_args={}, noise_est_args={}, threshold_args={},
-                 allocator=None):
+    def __init__(self, template: FlaggerDeviceTemplate,
+                 command_queue: AbstractCommandQueue,
+                 channels: int, baselines: int,
+                 background_args: Mapping[str, Any] = {},
+                 noise_est_args: Mapping[str, Any] = {},
+                 threshold_args: Mapping[str, Any] = {},
+                 allocator: Optional[AbstractAllocator] = None) -> None:
         self.template = template
         self.channels = channels
         self.baselines = baselines
-        self.background = self.template.background.instantiate(
+        self.background = self.template.background.instantiate(    # type: ignore
             command_queue, channels, baselines, allocator=allocator, **background_args)
-        self.noise_est = self.template.noise_est.instantiate(
+        self.noise_est = self.template.noise_est.instantiate(      # type: ignore
             command_queue, channels, baselines, allocator=allocator, **noise_est_args)
-        self.threshold = self.template.threshold.instantiate(
+        self.threshold = self.template.threshold.instantiate(      # type: ignore
             command_queue, channels, baselines, allocator=allocator, **threshold_args)
 
         noise_est_suffix = '_t' if self.noise_est.transposed else ''
         threshold_suffix = '_t' if self.threshold.transposed else ''
 
-        operations = []
+        operations = []     # type: List[Tuple[str, accel.Operation]]
         compounds = {
             'vis': ['background:vis'],
             'input_flags': ['background:flags'],
@@ -900,7 +1010,7 @@ class FlaggerDevice(accel.OperationSequence):
             command_queue, operations, compounds, allocator=allocator)
 
 
-class FlaggerHostFromDevice:
+class FlaggerHostFromDevice(host.AbstractFlaggerHost):
     """Wrapper that makes a :class:`FlaggerDeviceTemplate` look like a :class:`FlaggerHost`.
 
     This is intended only for ease of use. It is not efficient, because it
@@ -908,27 +1018,31 @@ class FlaggerHostFromDevice:
 
     Parameters
     ----------
-    template : :class:`FlaggerDeviceTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command queue for the operation
-    background_args : dict, optional
+    background_args
         Extra keyword arguments to pass to the background instantiation
-    noise_est_args : dict, optional
+    noise_est_args
         Extra keyword arguments to pass to the noise estimation instantiation
-    threshold_args : dict, optional
+    threshold_args
         Extra keyword arguments to pass to the threshold instantiation
     """
 
-    def __init__(self, template, command_queue,
-                 background_args={}, noise_est_args={}, threshold_args={}):
+    def __init__(self, template: FlaggerDeviceTemplate,
+                 command_queue: AbstractCommandQueue,
+                 background_args: Mapping[str, Any] = {},
+                 noise_est_args: Mapping[str, Any] = {},
+                 threshold_args: Mapping[str, Any] = {}) -> None:
         self.template = template
         self.command_queue = command_queue
         self.background_args = dict(background_args)
         self.noise_est_args = dict(noise_est_args)
         self.threshold_args = dict(threshold_args)
 
-    def __call__(self, vis, input_flags=None):
+    def __call__(self, vis: np.ndarray,
+                 input_flags: Optional[np.ndarray] = None) -> accel.HostArray:
         if input_flags is not None and not self.template.background.use_flags:
             raise TypeError("channel flags were provided but not included in the template")
         if input_flags is None and self.template.background.use_flags:
