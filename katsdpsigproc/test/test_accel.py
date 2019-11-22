@@ -38,7 +38,7 @@ def _prepare_device_test() -> Tuple[AbstractContext, AbstractCommandQueue]:
         try:
             _test_context = accel.create_some_context(False)
             _test_command_queue = _test_context.create_command_queue()
-            print("Testing on {0} ({1})".format(
+            print("Testing on {} ({})".format(
                 _test_context.device.name, _test_context.device.platform_name),
                 file=sys.stderr)
         except RuntimeError:
@@ -346,7 +346,7 @@ class TestPinnedAMD(TestDeviceArray):
     @device_test
     def setup(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         context._force_pinned_amd = True        # type: ignore
-        super(TestPinnedAMD, self).setup()
+        super().setup()
 
     @device_test
     def teardown(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
@@ -366,7 +366,7 @@ class TestSVMArrayHost(TestHostArray):
     @cuda_test
     def setup(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         self.context = context
-        super(TestSVMArrayHost, self).setup()
+        super().setup()
 
 
 class TestSVMArray(TestDeviceArray):
@@ -380,7 +380,7 @@ class TestSVMArray(TestDeviceArray):
     @device_test
     @cuda_test
     def setup(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
-        super(TestSVMArray, self).setup()
+        super().setup()
 
     @device_test
     @cuda_test

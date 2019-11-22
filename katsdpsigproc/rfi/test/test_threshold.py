@@ -33,7 +33,7 @@ def check_host_class(cls, n_sigma):
     np.testing.assert_equal(flags.astype(np.bool_), _spikes)
 
 
-class BaseTestDeviceClass(object):
+class BaseTestDeviceClass:
     @device_test
     def test_result(self, context, queue):
         n_sigma = 11.0

@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Reduction algorithms"""
+"""Reduction algorithms."""
 
 from typing import Tuple, Mapping, Callable, Optional, Any, cast
 from typing_extensions import TypedDict
@@ -15,8 +15,9 @@ _TuningDict = TypedDict('_TuningDict', {'wgsx': int, 'wgsy': int})
 
 
 class HReduceTemplate:
-    """Performs reduction along rows in a 2D array. Only commutative reduction
-    operators are supported.
+    """Performs reduction along rows in a 2D array.
+
+    Only commutative reduction operators are supported.
 
     Parameters
     ----------
@@ -39,6 +40,7 @@ class HReduceTemplate:
         - wgsx: number of workitems per workgroup per row
         - wgsy: number of rows to handle per workgroup
     """
+
     def __init__(self, context: AbstractContext, dtype: np.dtype, ctype: str,
                  op: str, identity: str, extra_code: str = '',
                  tuning: Optional[_TuningDict] = None) -> None:
@@ -87,10 +89,10 @@ class HReduceTemplate:
 
 
 class HReduce(accel.Operation):
-    """
-    Concrete instance of :class:`HReduceTemplate`. In each row, the
-    elements in the specified column range are reduced using the reduction
-    operator supplied to the template.
+    """Concrete instance of :class:`HReduceTemplate`.
+
+    In each row, the elements in the specified column range are reduced using
+    the reduction operator supplied to the template.
 
     .. rubric:: Slots
 
@@ -112,6 +114,7 @@ class HReduce(accel.Operation):
     allocator
         Allocator used to allocate unbound slots
     """
+
     def __init__(self, template: HReduceTemplate, command_queue: AbstractCommandQueue,
                  shape: Tuple[int, int], column_range: Optional[Tuple[int, int]] = None,
                  allocator: Optional[accel.AbstractAllocator] = None) -> None:
@@ -124,7 +127,7 @@ class HReduce(accel.Operation):
         if column_range[0] >= column_range[1]:
             raise ValueError('column range is empty')
 
-        super(HReduce, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel('hreduce')
         self.column_range = column_range

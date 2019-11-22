@@ -107,17 +107,18 @@ class Device(AbstractDevice['Context']):
 
 
 class _RawManaged:
-    """Wraps a PyCUDA managed allocation into an opaque object.
+    """Wrap a PyCUDA managed allocation into an opaque object.
 
     The managed memory API is different to the device memory API, in that one
     cannot allocate a raw pointer. Thus, "raw" allocations are wrapped in this
     class so that they are not accidentally used as numpy arrays.
     """
+
     def __init__(self, wrapped: np.ndarray) -> None:
         self._wrapped = wrapped
 
     def get_array(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
-        """Returns a view of (a prefix of) the memory, with the given shape and type."""
+        """Return a view of (a prefix of) the memory, with the given shape and type."""
         size = int(np.product(shape)) * np.dtype(dtype).itemsize
         return self._wrapped[:size].view(dtype).reshape(shape)
 
@@ -213,7 +214,7 @@ class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event
 
     @staticmethod
     def _get_device_pointer(buffer: _AnyBuffer) -> int:
-        """Retrieves the device pointer from either a GPUArray or a managed memory allocation."""
+        """Retrieve the device pointer from either a GPUArray or a managed memory allocation."""
         if isinstance(buffer, pycuda.gpuarray.GPUArray):
             return int(buffer.gpudata)
         else:
@@ -255,7 +256,7 @@ class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event
 
     @classmethod
     def _byte_buffer(cls, data: np.ndarray) -> np.ndarray:
-        """Reinterpret a contiguous array as an array of bytes"""
+        """Reinterpret a contiguous array as an array of bytes."""
         view = data.view()
         view.shape = data.size   # Reshape while disallowing copy
         return view.view(np.uint8)
@@ -379,7 +380,7 @@ class TuningCommandQueue(CommandQueue,
                          AbstractTuningCommandQueue[pycuda.gpuarray.GPUArray,
                                                     Context, Event, Kernel]):
     def __init__(self, *args, **kwargs) -> None:
-        super(TuningCommandQueue, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.is_tuning = False
         self._start_event = None    # type: Optional[Event]
 

@@ -1,4 +1,4 @@
-"""Fill device array with a constant value"""
+"""Fill device array with a constant value."""
 
 from typing import Tuple, Mapping, Callable, Optional, Any
 
@@ -10,9 +10,9 @@ from .abc import AbstractContext, AbstractCommandQueue
 
 
 class FillTemplate:
-    """
-    Fills a device array with a constant value. The pad elements are also
-    filled with this value.
+    """Fill a device array with a constant value.
+
+    The pad elements are also filled with this value.
 
     .. note::
         To fill with zeros, use :meth:`katsdpsigproc.DeviceArray.zero`
@@ -87,7 +87,7 @@ class Fill(accel.Operation):
     def __init__(self, template: FillTemplate, command_queue: AbstractCommandQueue,
                  shape: Tuple[int, ...],
                  allocator: Optional[accel.AbstractAllocator] = None) -> None:
-        super(Fill, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("fill")
         self.shape = shape

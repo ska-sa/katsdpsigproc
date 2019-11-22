@@ -1,4 +1,4 @@
-"""On-device percentile calculation of 2D arrays"""
+"""Perform on-device percentile calculation of 2D arrays."""
 # see scripts/maskedsumtest.py for an example
 
 from typing import Tuple, Mapping, Callable, Optional, Any, cast
@@ -93,10 +93,11 @@ class MaskedSum(accel.Operation):
         Output type complex64
         Shape is (number of columns of input)
     """
+
     def __init__(self, template: MaskedSumTemplate, command_queue: AbstractCommandQueue,
                  shape: Tuple[int, int],
                  allocator: Optional[accel.AbstractAllocator] = None) -> None:
-        super(MaskedSum, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("maskedsum_float")
         self.shape = shape

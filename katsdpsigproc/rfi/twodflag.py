@@ -12,8 +12,7 @@ from . import MAD_NORMAL
 
 
 def _as_min_dtype(value):
-    """Convert a non-negative integer into a numpy scalar of the narrowest
-    type will hold it.
+    """Convert a non-negative integer into a numpy scalar of the narrowest type will hold it.
 
     This is used because in some cases an array must be allocated of the
     same type later, and using the narrowest type saves memory in that array.
@@ -51,7 +50,7 @@ def _asbool(data):
 
 @numba.jit(nopython=True, nogil=True)
 def _average_freq(in_data, in_flags, factor):
-    """Does several preconditioning steps:
+    """Do several preconditioning steps.
 
     1. Converts complex data to real.
     2. Flags data with non-finite values.
@@ -103,9 +102,10 @@ def _average_freq(in_data, in_flags, factor):
 
 @numba.jit(nopython=True, nogil=True)
 def _time_median(data, flags):
-    """Independently for each channel, compute the median of the unflagged
-    values. If all values for a channel are flagged, 0 is used instead, and
-    the result is flagged.
+    """Independently for each channel, compute the median of the unflagged values.
+
+    If all values for a channel are flagged, 0 is used instead, and the result
+    is flagged.
 
     The time dimension is kept in the result as a length-1 dimension.
 
@@ -389,11 +389,12 @@ def masked_gaussian_filter(data, flags, sigma, out, passes=4):
 
 @numba.jit(nopython=True, nogil=True)
 def _get_background2d(data, flags, iterations, spike_width, reject_threshold, freq_chunk_ends):
-    """Determine a smooth background over a 2D array by iteratively convolving
-    the data with elliptical Gaussians with linearly decreasing width from
-    `iterations`*`spike_width` down to `spike width`. Outliers greater than
-    `reject_threshold`*sigma from the background are masked on each
-    iteration.
+    """Determine a smooth background over a 2D array.
+
+    This is done by iteratively convolving the data with elliptical Gaussians
+    with linearly decreasing width from `iterations`*`spike_width` down to
+    `spike width`. Outliers greater than `reject_threshold`*sigma from the
+    background are masked on each iteration.
 
     Initial weights are set to zero at positions specified in `in_flags` if given.
     After the final iteration a final Gaussian smoothed background is computed
@@ -418,7 +419,6 @@ def _get_background2d(data, flags, iterations, spike_width, reject_threshold, fr
         independently. This array must start with 0 and end of the number of
         channels, and be strictly increasing.
     """
-
     n_time, n_freq = data.shape
     flags = flags.copy()   # Gets modified
     background = np.empty_like(data)
@@ -540,8 +540,7 @@ def _sum_threshold1d(input_data, input_flags, output_flags, windows, outlier_nsi
 
 @numba.jit(nopython=True, nogil=True)
 def _sum_threshold(input_data, input_flags, axis, windows, outlier_nsigma, rho, chunks=None):
-    """Apply the SumThreshold method along the given axis of
-    `input_data`.
+    """Apply the SumThreshold method along the given axis of `input_data`.
 
     Parameters
     ----------
@@ -667,7 +666,8 @@ def _combine_flags(spec_flags, time_flags, freq_flags, time_extend, out):
 
 @numba.jit(nopython=True, nogil=True)
 def _unaverage_freq(flags, freq_extend, average_freq, flag_all_time_frac, flag_all_freq_frac, out):
-    """Final processing for a single baseline:
+    """Perform final processing for a single baseline.
+
     1. Flags are replicated to undo the effect of frequency averaging.
     2. Flags are smeared, using a kernel of width `flag_all_freq_frac`.
     3. Times and frequencies where more than `flag_all_freq_frac` or
@@ -714,8 +714,10 @@ def _get_baseline_flags(
         spike_width_time, spike_width_freq, time_extend, freq_extend,
         freq_chunk_ends, average_freq, flag_all_time_frac, flag_all_freq_frac,
         rho):
-    """Compute flags for a single baseline. It is called after frequency
-    averaging, but writes back un-averaged results.
+    """Compute flags for a single baseline.
+
+    It is called after frequency averaging, but writes back un-averaged
+    results.
 
     Parameters
     ----------
@@ -763,17 +765,19 @@ def _get_baseline_flags(
 
 
 def _get_flags_mp(in_data, in_flags, flagger):
-    """Callback function for ProcessPoolExecutor. It allocates its own storage
-    for the output.
+    """Callback function for ProcessPoolExecutor.
+
+    It allocates its own storage for the output.
     """
     out_flags = np.empty_like(in_flags)
     flagger._get_flags(in_data, in_flags, out_flags)
     return out_flags
 
 
-class SumThresholdFlagger(object):
-    """Flagger that uses the SumThreshold method (Offringa, A., MNRAS, 405, 155-167, 2010)
-    to detect spikes in both frequency and time axes.
+class SumThresholdFlagger:
+    """Flagger that detects spikes in both frequency and time axes.
+
+    It uses the SumThreshold method (Offringa, A., MNRAS, 405, 155-167, 2010).
     The full algorithm does the following:
 
         1. Average the data in the frequency dimension (axis 1) into bins of
@@ -792,7 +796,6 @@ class SumThresholdFlagger(object):
 
     Parameters
     ----------
-
     outlier_nsigma : float
         Number of sigma to reject outliers when thresholding
     windows_time : array, int
@@ -827,6 +830,7 @@ class SumThresholdFlagger(object):
     rho : float
         Falloff exponent for SumThreshold
     """
+
     def __init__(self, outlier_nsigma=4.5, windows_time=[1, 2, 4, 8],
                  windows_freq=[1, 2, 4, 8], background_reject=2.0, background_iterations=1,
                  spike_width_time=12.5, spike_width_freq=10.0, time_extend=3, freq_extend=3,
@@ -883,9 +887,10 @@ class SumThresholdFlagger(object):
             self.rho)
 
     def get_flags(self, data, flags, pool=None, chunk_size=None, is_multiprocess=None):
-        """Get flags in data array, with optional input flags of same shape
-        that denote samples in data to ignore when backgrounding and deriving
-        thresholds.
+        """Compute flags in data array.
+
+        It has optional input `flags` of the same shape that denote samples in
+        `data` to ignore when backgrounding and deriving thresholds.
 
         This can run in parallel if given a
         :class:`concurrent.futures.Executor`. Performance is generally better

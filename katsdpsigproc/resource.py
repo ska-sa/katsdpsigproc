@@ -145,6 +145,7 @@ class Resource(Generic[_T]):
     value : object
         Underlying resource passed to the constructor
     """
+
     def __init__(self, value: _T, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         if loop is None:
             loop = asyncio.get_event_loop()
@@ -168,7 +169,7 @@ class Resource(Generic[_T]):
 
 
 class JobQueue:
-    """Maintains a list of in-flight asynchronous jobs."""
+    """Maintain a list of in-flight asynchronous jobs."""
 
     def __init__(self) -> None:
         self._jobs = collections.deque()   # type: Deque[asyncio.Future]
@@ -176,7 +177,8 @@ class JobQueue:
     def add(self, job: Awaitable) -> None:
         """Append a job to the list.
 
-        If `job` is a coroutine, it is automatically wrapped in a task."""
+        If `job` is a coroutine, it is automatically wrapped in a task.
+        """
         self._jobs.append(asyncio.ensure_future(job))
 
     def clean(self) -> None:
@@ -185,8 +187,7 @@ class JobQueue:
             self._jobs.popleft().result()     # Re-throws any exception
 
     async def finish(self, max_remaining: int = 0) -> None:
-        """Wait for jobs to finish until there are at most `max_remaining` in
-        the queue.
+        """Wait for jobs to finish until there are at most `max_remaining` in the queue.
 
         This is a coroutine.
         """

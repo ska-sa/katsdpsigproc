@@ -50,7 +50,7 @@ def test_autotune_some_raise() -> None:
 
 
 def generate_raise(x: Any) -> NoReturn:
-    raise CustomError('x = {0}'.format(x))
+    raise CustomError('x = {}'.format(x))
 
 
 def test_autotune_all_raise() -> None:

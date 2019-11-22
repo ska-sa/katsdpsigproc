@@ -7,9 +7,8 @@ import pandas as pd
 from . import MAD_NORMAL
 
 
-class BackgroundMedianFilterHost(object):
-    """Host backgrounder that applies a median filter to each baseline
-    (by amplitude).
+class BackgroundMedianFilterHost:
+    """Host backgrounder that applies a median filter to each baseline (by amplitude).
 
     Parameters
     ----------
@@ -18,6 +17,7 @@ class BackgroundMedianFilterHost(object):
     amplitudes : boolean
         If `True`, the inputs are amplitudes rather than complex visibilities
     """
+
     def __init__(self, width, amplitudes=False):
         self.width = width
         self.amplitudes = amplitudes
@@ -43,7 +43,7 @@ class BackgroundMedianFilterHost(object):
         return deviation.values
 
 
-class NoiseEstMADHost(object):
+class NoiseEstMADHost:
     """Estimate noise using the median of non-zero absolute deviations."""
 
     def __call__(self, deviations):
@@ -68,7 +68,7 @@ class NoiseEstMADHost(object):
         return out * MAD_NORMAL
 
 
-class ThresholdSimpleHost(object):
+class ThresholdSimpleHost:
     """Threshold each element independently.
 
     Parameters
@@ -78,12 +78,13 @@ class ThresholdSimpleHost(object):
     flag_value : int
         Number stored in returned value to indicate RFI
     """
+
     def __init__(self, n_sigma, flag_value=1):
         self.n_sigma = n_sigma
         self.flag_value = flag_value
 
     def __call__(self, deviations, noise):
-        """Apply the thresholding
+        """Apply the thresholding.
 
         Parameters
         ----------
@@ -102,10 +103,11 @@ class ThresholdSimpleHost(object):
         return flags * self.flag_value
 
 
-class ThresholdSumHost(object):
-    """Thresholding using the Offringa Sum-Threshold algorithm, with
-    power-of-two sized windows. The initial (single-pixel) threshold
-    is determined by median of absolute deviations.
+class ThresholdSumHost:
+    """Thresholding using the Offringa Sum-Threshold algorithm, with power-of-two sized windows.
+
+    The initial (single-pixel) threshold is determined by median of absolute
+    deviations.
 
     At present, auto- and cross-correlations are treated the same.
 
@@ -129,6 +131,7 @@ class ThresholdSumHost(object):
 
     def apply_baseline(self, deviations, threshold1):
         """Apply the thresholding to a single baseline.
+
         The flags are returned as booleans, rather than
         `flag_value`.
 
@@ -139,7 +142,6 @@ class ThresholdSumHost(object):
         threshold1 : float
             Threshold for RFI on individual samples
         """
-
         # The data are modified, so use a copy
         deviations = deviations.copy()
         flags = np.zeros_like(deviations, dtype=np.bool)
@@ -158,7 +160,7 @@ class ThresholdSumHost(object):
         return flags
 
     def __call__(self, deviations, noise):
-        """Apply the thresholding
+        """Apply the thresholding.
 
         Parameters
         ----------
@@ -181,7 +183,7 @@ class ThresholdSumHost(object):
         return flags
 
 
-class FlaggerHost(object):
+class FlaggerHost:
     """Combine host background and thresholding implementations to make a flagger."""
 
     def __init__(self, background, noise_est, threshold):

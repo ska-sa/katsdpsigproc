@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""RFI flagging package
+"""RFI flagging package.
 
 The package consists of a number of algorithms for *backgrounding*,
 *noise estimation* and *thresholding*. Backgrounding finds a smooth version of

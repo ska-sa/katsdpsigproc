@@ -1,4 +1,4 @@
-"""On-device transposition of 2D arrays"""
+"""Transpose 2D arrays on a device."""
 
 from typing import Tuple, Optional, Mapping, Callable, Any, cast
 from typing_extensions import TypedDict
@@ -14,7 +14,7 @@ _TuningDict = TypedDict('_TuningDict', {'block': int, 'vtx': int, 'vty': int})
 
 
 class TransposeTemplate:
-    """Kernel for transposing a 2D array of data
+    """Kernel for transposing a 2D array of data.
 
     Parameters
     ----------
@@ -93,9 +93,10 @@ class Transpose(accel.Operation):
     **dest**
         Output
     """
+
     def __init__(self, template: TransposeTemplate, command_queue: AbstractCommandQueue,
                  shape: Tuple[int, int], allocator: Optional[accel.AbstractAllocator] = None):
-        super(Transpose, self).__init__(command_queue, allocator)
+        super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("transpose")
         self.shape = shape
