@@ -5,6 +5,12 @@ from ...test.test_accel import device_test, force_autotune
 from .. import device
 
 
+_vis = np.array([])
+_vis_big = np.array([])
+_flags = np.array([])
+_flags_big = np.array([])
+
+
 def setup():
     global _vis, _vis_big, _flags, _flags_big
     shape = (417, 313)
@@ -20,15 +26,15 @@ def setup():
 
 
 class TestBackgroundMedianFilterHost:
-    def setup(self):
+    def setup(self) -> None:
         self.background = host.BackgroundMedianFilterHost(3)
 
-    def test(self):
+    def test(self) -> None:
         out = self.background(_vis)
         ref = np.array([[-0.125, 0.25, -0.5, 0.25, -0.25, 0.125]]).T.astype(np.float32)
         np.testing.assert_equal(ref, out)
 
-    def test_flags(self):
+    def test_flags(self) -> None:
         out = self.background(_vis, _flags)
         ref = np.array([[-0.125, 0.125, 0.0, 0.125, -0.125, 0.0]]).T.astype(np.float32)
         np.testing.assert_equal(ref, out)

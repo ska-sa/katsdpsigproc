@@ -1,28 +1,89 @@
 # coding: utf-8
 """RFI flagging algorithms that run on the CPU."""
 
+from abc import ABC, abstractmethod
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 
 from . import MAD_NORMAL
 
 
-class BackgroundMedianFilterHost:
+class AbstractBackgroundHost(ABC):
+    @abstractmethod
+    def __call__(self, vis: np.ndarray, flags: Optional[np.ndarray] = None) -> np.ndarray:
+        """Subtract an estimate of background signal (without RFI).
+
+        Parameters
+        ----------
+        vis : array-like, float or complex
+            Visibilities, either as complex values or amplitudes, depending on
+            how the class was constructed.
+        flags : array-like, int
+            Initial flags, indicating data known to be bad prior to RFI flagging.
+
+        Returns
+        -------
+        deviations
+            Amplitude of signal after subtracting background.
+        """
+
+
+class AbstractNoiseEstHost(ABC):
+    @abstractmethod
+    def __call__(self, deviations: np.ndarray) -> np.ndarray:
+        """Compute the estimated standard deviation of noise per baseline.
+
+        Parameters
+        ----------
+        deviations
+            Deviations from the background amplitude, indexed by channel
+            then baseline.
+
+        Returns
+        -------
+        noise
+            1D array of `np.float32`, containing the noise estimate for each channel
+        """
+
+
+class AbstractThresholdHost(ABC):
+    @abstractmethod
+    def __call__(self, deviations: np.ndarray, noise: np.ndarray) -> np.ndarray:
+        """Apply the thresholding.
+
+        Parameters
+        ----------
+        deviations : array-like, real
+            Deviations from the background amplitude, indexed by channel
+            then baseline.
+        noise : array-like, real
+            Per-baseline estimate of the standard deviation for noise
+
+        Returns
+        -------
+        array-like
+            Array of `np.uint8`, containing the flag value or 0
+        """
+
+
+class BackgroundMedianFilterHost(AbstractBackgroundHost):
     """Host backgrounder that applies a median filter to each baseline (by amplitude).
 
     Parameters
     ----------
-    width : int
+    width
         The kernel width (must be odd)
-    amplitudes : boolean
+    amplitudes
         If `True`, the inputs are amplitudes rather than complex visibilities
     """
 
-    def __init__(self, width, amplitudes=False):
+    def __init__(self, width: int, amplitudes: bool = False) -> None:
         self.width = width
         self.amplitudes = amplitudes
 
-    def __call__(self, vis, flags=None):
+    def __call__(self, vis: np.ndarray, flags: Optional[np.ndarray] = None) -> np.ndarray:
         if self.amplitudes:
             amp = pd.DataFrame(vis)
         else:
@@ -43,23 +104,10 @@ class BackgroundMedianFilterHost:
         return deviation.values
 
 
-class NoiseEstMADHost:
+class NoiseEstMADHost(AbstractNoiseEstHost):
     """Estimate noise using the median of non-zero absolute deviations."""
 
-    def __call__(self, deviations):
-        """Compute the estimated standard deviation of noise per baseline.
-
-        Parameters
-        ----------
-        deviations : array-like, real
-            Deviations from the background amplitude, indexed by channel
-            then baseline.
-
-        Returns
-        -------
-        array-like
-            1D array of `np.float32`, containing the noise estimate for each channel
-        """
+    def __call__(self, deviations: np.ndarray) -> np.ndarray:
         baselines = deviations.shape[1]
         out = np.empty(baselines)
         for i in range(baselines):
@@ -68,42 +116,27 @@ class NoiseEstMADHost:
         return out * MAD_NORMAL
 
 
-class ThresholdSimpleHost:
+class ThresholdSimpleHost(AbstractThresholdHost):
     """Threshold each element independently.
 
     Parameters
     ----------
-    n_sigma : float
+    n_sigma
         Number of (estimated) standard deviations for the threshold
-    flag_value : int
+    flag_value
         Number stored in returned value to indicate RFI
     """
 
-    def __init__(self, n_sigma, flag_value=1):
+    def __init__(self, n_sigma: float, flag_value: int = 1) -> None:
         self.n_sigma = n_sigma
         self.flag_value = flag_value
 
-    def __call__(self, deviations, noise):
-        """Apply the thresholding.
-
-        Parameters
-        ----------
-        deviations : array-like, real
-            Deviations from the background amplitude, indexed by channel
-            then baseline.
-        noise : array-like, real
-            Per-baseline estimate of the standard deviation for noise
-
-        Returns
-        -------
-        array-like
-            Array of `np.uint8`, containing the flag value or 0
-        """
+    def __call__(self, deviations: np.ndarray, noise: np.ndarray) -> np.ndarray:
         flags = (deviations > self.n_sigma * noise).astype(np.uint8)
         return flags * self.flag_value
 
 
-class ThresholdSumHost:
+class ThresholdSumHost(AbstractThresholdHost):
     """Thresholding using the Offringa Sum-Threshold algorithm, with power-of-two sized windows.
 
     The initial (single-pixel) threshold is determined by median of absolute
@@ -113,23 +146,24 @@ class ThresholdSumHost:
 
     Parameters
     ----------
-    n_sigma : float
+    n_sigma
         Number of (estimated) standard deviations for the threshold
-    n_windows : int
+    n_windows
         Number of window sizes to use
-    threshold_falloff : float
+    threshold_falloff
         Controls rate at which thresholds decrease (ρ in Offringa 2010)
-    flag_value : int
+    flag_value
         Number stored in returned value to indicate RFI
     """
 
-    def __init__(self, n_sigma, n_windows=4, threshold_falloff=1.2, flag_value=1):
+    def __init__(self, n_sigma: float, n_windows: int = 4,
+                 threshold_falloff: float = 1.2, flag_value: int = 1) -> None:
         self.n_sigma = n_sigma
         self.windows = [2 ** i for i in range(n_windows)]
         self.threshold_scales = [pow(threshold_falloff, -i) for i in range(n_windows)]
         self.flag_value = flag_value
 
-    def apply_baseline(self, deviations, threshold1):
+    def apply_baseline(self, deviations: np.ndarray, threshold1: float) -> np.ndarray:
         """Apply the thresholding to a single baseline.
 
         The flags are returned as booleans, rather than
@@ -139,7 +173,7 @@ class ThresholdSumHost:
         ----------
         deviations : 1D array, float
             Deviations from the background
-        threshold1 : float
+        threshold1
             Threshold for RFI on individual samples
         """
         # The data are modified, so use a copy
@@ -159,22 +193,7 @@ class ThresholdSumHost:
             flags |= np.convolve(sum_flags, weight)
         return flags
 
-    def __call__(self, deviations, noise):
-        """Apply the thresholding.
-
-        Parameters
-        ----------
-        deviations : array-like, real
-            Deviations from the background amplitude, indexed by channel
-            then baseline.
-        noise : array-like, real
-            Per-baseline estimate of the standard deviation for noise
-
-        Returns
-        -------
-        array-like
-            Array of `np.uint8`, containing the flag value or 0
-        """
+    def __call__(self, deviations: np.ndarray, noise: np.ndarray) -> np.ndarray:
         flags = np.empty_like(deviations, dtype=np.uint8)
         baselines = deviations.shape[1]
         for i in range(baselines):
@@ -186,27 +205,29 @@ class ThresholdSumHost:
 class FlaggerHost:
     """Combine host background and thresholding implementations to make a flagger."""
 
-    def __init__(self, background, noise_est, threshold):
+    def __init__(self, background: AbstractBackgroundHost, noise_est: AbstractNoiseEstHost,
+                 threshold: AbstractThresholdHost):
         self.background = background
         self.noise_est = noise_est
         self.threshold = threshold
 
-    def __call__(self, vis, input_flags=None):
+    def __call__(self, vis: np.ndarray, input_flags: Optional[np.ndarray] = None) -> np.ndarray:
         """Perform the flagging.
 
         Parameters
         ----------
-        vis : array-like
-            The input visibilities as a 2D array of complex64, indexed
-            by channel and baseline.
-        input_flags : array-like
+        vis
+            The input visibilities as a 2D array of complex64 (or float, if
+            that's what the backgrounder expects), indexed by channel and
+            baseline.
+        input_flags
             Predefined flags as an array of uint8. These can be either
             a 1D array of per-channel flags or a 2D array with the same
             shape as `vis`.
 
         Returns
         -------
-        :class:`numpy.ndarray`
+        flags
             Flags of the same shape as `vis`. Note that `input_flags`
             are not copied into the output.
         """
