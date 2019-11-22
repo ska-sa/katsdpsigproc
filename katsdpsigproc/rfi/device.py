@@ -22,6 +22,9 @@ from ..accel import DeviceArray, AbstractAllocator
 from . import host
 
 
+_THRESHOLD_SUM_DEFAULT_THRESHOLD_FALLOFF = 1.2
+
+
 class BackgroundFlags(enum.Enum):
     NONE = 0
     CHANNEL = 1
@@ -774,7 +777,7 @@ class ThresholdSumDeviceTemplate(AbstractThresholdDeviceTemplate):
 
     def instantiate(self, command_queue: AbstractCommandQueue,
                     channels: int, baselines: int, n_sigma: float,
-                    threshold_falloff: float = 1.2,
+                    threshold_falloff: float = _THRESHOLD_SUM_DEFAULT_THRESHOLD_FALLOFF,
                     allocator: Optional[AbstractAllocator] = None) -> 'ThresholdSumDevice':
         """Create an instance. See :class:`ThresholdSumDevice`."""
         return ThresholdSumDevice(self, command_queue, channels, baselines, n_sigma,
@@ -811,11 +814,12 @@ class ThresholdSumDevice(AbstractThresholdDevice):
 
     host_class = host.ThresholdSumHost
     transposed = True
+    DEFAULT_THRESHOLD_FALLOFF = _THRESHOLD_SUM_DEFAULT_THRESHOLD_FALLOFF
 
     def __init__(self, template: ThresholdSumDeviceTemplate,
                  command_queue: AbstractCommandQueue,
                  channels: int, baselines: int, n_sigma: float,
-                 threshold_falloff: float = 1.2,
+                 threshold_falloff: float = DEFAULT_THRESHOLD_FALLOFF,
                  allocator: Optional[AbstractAllocator] = None) -> None:
         super().__init__(command_queue, allocator)
         self.template = template
