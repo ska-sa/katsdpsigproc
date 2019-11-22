@@ -76,6 +76,30 @@ class AbstractThresholdHost(ABC):
         """
 
 
+class AbstractFlaggerHost(ABC):
+    @abstractmethod
+    def __call__(self, vis: np.ndarray, input_flags: Optional[np.ndarray] = None) -> np.ndarray:
+        """Perform the flagging.
+
+        Parameters
+        ----------
+        vis
+            The input visibilities as a 2D array of complex64 (or float, if
+            that's what the backgrounder expects), indexed by channel and
+            baseline.
+        input_flags
+            Predefined flags as an array of uint8. These can be either
+            a 1D array of per-channel flags or a 2D array with the same
+            shape as `vis`.
+
+        Returns
+        -------
+        flags
+            Flags of the same shape as `vis`. Note that `input_flags`
+            are not copied into the output.
+        """
+
+
 class BackgroundMedianFilterHost(AbstractBackgroundHost):
     """Host backgrounder that applies a median filter to each baseline (by amplitude).
 
@@ -210,7 +234,7 @@ class ThresholdSumHost(AbstractThresholdHost):
         return flags
 
 
-class FlaggerHost:
+class FlaggerHost(AbstractFlaggerHost):
     """Combine host background and thresholding implementations to make a flagger."""
 
     def __init__(self, background: AbstractBackgroundHost, noise_est: AbstractNoiseEstHost,
@@ -220,25 +244,6 @@ class FlaggerHost:
         self.threshold = threshold
 
     def __call__(self, vis: np.ndarray, input_flags: Optional[np.ndarray] = None) -> np.ndarray:
-        """Perform the flagging.
-
-        Parameters
-        ----------
-        vis
-            The input visibilities as a 2D array of complex64 (or float, if
-            that's what the backgrounder expects), indexed by channel and
-            baseline.
-        input_flags
-            Predefined flags as an array of uint8. These can be either
-            a 1D array of per-channel flags or a 2D array with the same
-            shape as `vis`.
-
-        Returns
-        -------
-        flags
-            Flags of the same shape as `vis`. Note that `input_flags`
-            are not copied into the output.
-        """
         deviations = self.background(vis, input_flags)
         noise = self.noise_est(deviations)
         return self.threshold(deviations, noise)

@@ -710,13 +710,13 @@ class ThresholdSumDeviceTemplate(AbstractThresholdDeviceTemplate):
 
     Parameters
     ----------
-    context : |Context|
+    context
         Context for which kernels will be compiled
-    n_windows : int
+    n_windows
         Number of window sizes to use
-    flag_value : int
+    flag_value
         Number stored in returned value to indicate RFI
-    tuning : mapping, optional
+    tuning
         Kernel tuning parameters; if omitted, will autotune. The possible
         parameters are
 
@@ -1006,7 +1006,7 @@ class FlaggerDevice(accel.OperationSequence):
             command_queue, operations, compounds, allocator=allocator)
 
 
-class FlaggerHostFromDevice:
+class FlaggerHostFromDevice(host.AbstractFlaggerHost):
     """Wrapper that makes a :class:`FlaggerDeviceTemplate` look like a :class:`FlaggerHost`.
 
     This is intended only for ease of use. It is not efficient, because it
@@ -1014,27 +1014,31 @@ class FlaggerHostFromDevice:
 
     Parameters
     ----------
-    template : :class:`FlaggerDeviceTemplate`
+    template
         Operation template
-    command_queue : |CommandQueue|
+    command_queue
         Command queue for the operation
-    background_args : dict, optional
+    background_args
         Extra keyword arguments to pass to the background instantiation
-    noise_est_args : dict, optional
+    noise_est_args
         Extra keyword arguments to pass to the noise estimation instantiation
-    threshold_args : dict, optional
+    threshold_args
         Extra keyword arguments to pass to the threshold instantiation
     """
 
-    def __init__(self, template, command_queue,
-                 background_args={}, noise_est_args={}, threshold_args={}):
+    def __init__(self, template: FlaggerDeviceTemplate,
+                 command_queue: AbstractCommandQueue,
+                 background_args: Mapping[str, Any] = {},
+                 noise_est_args: Mapping[str, Any] = {},
+                 threshold_args: Mapping[str, Any] = {}) -> None:
         self.template = template
         self.command_queue = command_queue
         self.background_args = dict(background_args)
         self.noise_est_args = dict(noise_est_args)
         self.threshold_args = dict(threshold_args)
 
-    def __call__(self, vis, input_flags=None):
+    def __call__(self, vis: np.ndarray,
+                 input_flags: Optional[np.ndarray] = None) -> accel.HostArray:
         if input_flags is not None and not self.template.background.use_flags:
             raise TypeError("channel flags were provided but not included in the template")
         if input_flags is None and self.template.background.use_flags:

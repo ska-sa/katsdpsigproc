@@ -115,11 +115,6 @@ pygments_style = 'sphinx'
 # If true, keep warnings as "system message" paragraphs in the built documents.
 #keep_warnings = False
 
-rst_prolog = """
-.. |CommandQueue| replace:: :class:`.cuda.CommandQueue` or :class:`.opencl.CommandQueue`
-.. |Context| replace:: :class:`.cuda.Context` or :class:`.opencl.Context`
-"""
-
 # -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for

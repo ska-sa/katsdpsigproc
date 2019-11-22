@@ -321,18 +321,18 @@ class HostArray(np.ndarray):
 
     Parameters
     ----------
-    shape : tuple
+    shape
         Shape for the array
-    dtype : numpy dtype
+    dtype
         Data type for the array
-    padded_shape : tuple, optional
+    padded_shape
         Total size of memory allocation (defaults to `shape`)
-    context : |Context|, optional
+    context
         If specified, the memory will be allocated in a way that allows
         efficient copies to and from this context.
     """
 
-    def __new__(cls, shape: Tuple[int, ...], dtype: np.ndarray,
+    def __new__(cls, shape: Tuple[int, ...], dtype: np.dtype,
                 padded_shape: Optional[Tuple[int, ...]] = None,
                 context: Optional[AbstractContext] = None):
         if padded_shape is None:
@@ -743,14 +743,14 @@ class DeviceArray:
 
         Parameters
         ----------
-        command_queue : |CommandQueue|
+        command_queue
             Command queue for the operation.
-        ary : :class:`DeviceArray`
+        ary
             Source of the copy
-        device_region,ary_region : tuple
+        device_region,ary_region
             Index expressions constructed by `np.s_` or `np.index_exp`, to specify
             the target and source regions.
-        blocking : bool, optional
+        blocking
             If false, the operation will be asynchronous.
 
         Raises
