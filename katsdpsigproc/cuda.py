@@ -357,7 +357,7 @@ class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event
 
     def enqueue_marker(self) -> Event:
         with self.context:
-            event = pycuda.driver.Event()
+            event = pycuda.driver.Event(pycuda.driver.event_flags.BLOCKING_SYNC)
             event.record(self._pycuda_stream)
         return Event(event)
 
