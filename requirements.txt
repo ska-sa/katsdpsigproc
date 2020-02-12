@@ -1,5 +1,4 @@
 appdirs
-argparse
 cffi
 decorator
 funcsigs                   # Needed by numba
@@ -10,7 +9,6 @@ markupsafe
 numba
 numpy
 pandas
-pkginfo
 py
 pycparser
 pycuda
