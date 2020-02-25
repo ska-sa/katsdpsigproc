@@ -29,7 +29,7 @@ setup(
         "test": tests_require,
         "doc": ["sphinx>=1.3", "sphinxcontrib-asyncio", "sphinx-rtd-theme"]
     },
-    python_requires=">=3.5",
+    python_requires=">=3.6",
     tests_require=tests_require,
     zip_safe=False,
     use_katversion=True
