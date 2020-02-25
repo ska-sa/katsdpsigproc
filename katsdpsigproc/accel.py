@@ -285,7 +285,7 @@ def create_some_context(
     if interactive and len(devices) > 1 and sys.stdin.isatty():
         print("Select device:")
         for i, device in enumerate(devices):
-            print("    [{}]: {} ({})".format(i, device.name, device.platform_name))
+            print(f"    [{i}]: {device.name} ({device.platform_name})")
         print()
         choice_str = input('Enter selection: ')
         try:
@@ -619,7 +619,7 @@ class DeviceArray:
             if the source or destination regions are unsupported or out-of-range
         """
         if src.dtype != dest.dtype:
-            raise TypeError('dtypes do not match ({} and {})'.format(src.dtype, dest.dtype))
+            raise TypeError(f'dtypes do not match ({src.dtype} and {dest.dtype})')
         src_origin, src_shape, src_strides = cls._canonical_slice(
             src_region, src.shape, src.strides)
         dest_origin, dest_shape, dest_strides = cls._canonical_slice(
@@ -1438,7 +1438,7 @@ class Operation(ABC):
         for name, buffer in kwargs.items():
             slot = self.slots[name]
             if not isinstance(slot, IOSlot):
-                raise TypeError('Slot {} is not an IOSlot'.format(slot))
+                raise TypeError(f'Slot {slot} is not an IOSlot')
             slot.bind(buffer)
 
     def ensure_all_bound(self) -> None:
@@ -1554,7 +1554,7 @@ class OperationSequence(Operation):
                 if children:
                     for child in children:
                         if not isinstance(child, IOSlot):
-                            raise TypeError('Children of {} must all be IOSlots'.format(name))
+                            raise TypeError(f'Children of {name} must all be IOSlots')
                     self.slots[name] = CompoundIOSlot(cast(Iterable[IOSlot], children))
         if aliases is not None:
             for (name, child_names) in aliases.items():
@@ -1591,9 +1591,9 @@ def _slot_label(slot: IOSlotBase, name: str, hide_detail: bool) -> str:
     the details will appear on a parent.
     """
     if isinstance(slot, AliasIOSlot):
-        return '<b>{name}</b><br/><font color="red">alias slot</font>'.format(name=name)
+        return f'<b>{name}</b><br/><font color="red">alias slot</font>'
     elif hide_detail:
-        return '<b>{name}</b>'.format(name=name)
+        return f'<b>{name}</b>'
     else:
         assert isinstance(slot, IOSlot)
         shape = '×'.join(str(x) for x in slot.shape)

@@ -2,7 +2,6 @@
 
 """Test script that runs RFI flagging on random or real data."""
 
-from __future__ import division, print_function, absolute_import
 import argparse
 import time
 import sys
@@ -99,7 +98,7 @@ def benchmark2d(args, data):
     elif args.pool == 'thread':
         pool = concurrent.futures.ThreadPoolExecutor(args.workers)
     else:
-        raise argparse.ArgumentError('unhandled value {} for --pool'.format(args.pool))
+        raise argparse.ArgumentError(f'unhandled value {args.pool} for --pool')
     # Warmup
     try:
         flagger.get_flags(data[:2], in_flags[:2], pool=pool)

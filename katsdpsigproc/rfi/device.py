@@ -1,4 +1,3 @@
-# coding: utf-8
 """RFI flagging algorithms that run on an accelerator, using OpenCL or CUDA.
 
 The noise estimation and thresholding functions may take data in either
