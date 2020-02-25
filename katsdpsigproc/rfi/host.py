@@ -1,4 +1,3 @@
-# coding: utf-8
 """RFI flagging algorithms that run on the CPU."""
 
 from abc import ABC, abstractmethod

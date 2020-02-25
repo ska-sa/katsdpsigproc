@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # for nosetest: nosetests katsdpsigproc.test.test_maskedsumabs
 
-from __future__ import division, print_function, absolute_import
 import time
 import numpy as np
 from katsdpsigproc import accel

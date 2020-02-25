@@ -1,7 +1,5 @@
 """Library to contain 2d RFI flagging routines and other RFI related functions."""
 
-from __future__ import print_function, division, absolute_import
-
 import multiprocessing
 
 import concurrent.futures

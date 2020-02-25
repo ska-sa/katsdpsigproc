@@ -23,8 +23,6 @@ corresponding to each autotuning method. The table has the following columns:
 The database is stored in the user cache directory.
 """
 
-from __future__ import division, print_function, absolute_import
-
 import itertools
 import inspect
 import os
@@ -112,14 +110,14 @@ def _query(conn: sqlite3.Connection, tablename: str,
         Keys and values for the query
     """
     try:
-        query = 'SELECT * FROM {} WHERE'.format(tablename)
+        query = f'SELECT * FROM {tablename} WHERE'
         query_args = []
         first = True
         for key, value in keys.items():
             if not first:
                 query += ' AND'
             first = False
-            query += ' {}=?'.format(key)
+            query += f' {key}=?'
             query_args.append(value)
         cursor = conn.cursor()
         cursor.execute(query, query_args)
@@ -140,7 +138,7 @@ def _query(conn: sqlite3.Connection, tablename: str,
 
 def _create_table(conn: sqlite3.Connection, tablename: str,
                   keys: Mapping[str, Any], values: Mapping[str, Any]) -> None:
-    command = 'CREATE TABLE IF NOT EXISTS {} ('.format(tablename)
+    command = f'CREATE TABLE IF NOT EXISTS {tablename} ('
     for name in itertools.chain(keys.keys(), values.keys()):
         command += name + ' NOT NULL, '
     command += 'PRIMARY KEY ({}) ON CONFLICT REPLACE)'.format(', '.join(keys.keys()))
@@ -196,7 +194,7 @@ def autotuner_impl(test: Mapping[str, Any],
     It is split into a separate function so that mocks can patch it.
     """
     cls = args[0]
-    classname = '{}.{}.{}'.format(cls.__module__, cls.__name__, fn.__name__)
+    classname = f'{cls.__module__}.{cls.__name__}.{fn.__name__}'
     tablename = classname.replace('.', '_') + \
         '__' + str(getattr(cls, 'autotune_version', 0))
     keys = _db_keys(fn, args, kwargs)
