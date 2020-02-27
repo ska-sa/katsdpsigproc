@@ -88,6 +88,9 @@ def zscale(samples: np.ndarray, contrast: float = 0.02, stretch: float = 5.0,
 
     # Grow rejected pixels in each iteration
     ngrow = max(1, int(npix * 0.01))
+    # Ensure ngrow is odd, so that growth is symmetric
+    if ngrow % 2 == 0:
+        ngrow -= 1
 
     if npix <= minpix:
         return zmin, zmax
@@ -130,8 +133,8 @@ def zscale(samples: np.ndarray, contrast: float = 0.02, stretch: float = 5.0,
         ngoodpix = np.sum(~badpix)
 
         # Convolve with a kernel of length ngrow
-        kernel = np.ones(ngrow, dtype=np.bool)
-        badpix = np.convolve(badpix, kernel, mode='same')
+        cum = np.cumsum(np.pad(badpix, (ngrow // 2 + 1, ngrow // 2)))
+        badpix[:] = cum[ngrow:] - cum[:-ngrow]
 
         niter += 1
 
