@@ -155,7 +155,7 @@ def zscale(samples: np.ndarray, contrast: float = 0.02, stretch: float = 5.0,
         ngoodpix = np.sum(~badpix)
 
         # Convolve with a kernel of length ngrow
-        cum = np.cumsum(np.pad(badpix, (ngrow // 2 + 1, ngrow // 2)))
+        cum = np.cumsum(np.pad(badpix, (ngrow // 2 + 1, ngrow // 2), mode='constant'))
         badpix[:] = cum[ngrow:] - cum[:-ngrow]
 
         niter += 1
