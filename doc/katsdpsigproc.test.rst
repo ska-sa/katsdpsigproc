@@ -76,6 +76,14 @@ katsdpsigproc.test.test\_tune module
    :undoc-members:
    :show-inheritance:
 
+katsdpsigproc.test.test\_zscale module
+--------------------------------------
+
+.. automodule:: katsdpsigproc.test.test_zscale
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 
 Module contents
 ---------------
