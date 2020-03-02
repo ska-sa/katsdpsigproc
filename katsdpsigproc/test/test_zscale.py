@@ -45,8 +45,9 @@ class TestZscale:
     def setup(self):
         rs = np.random.RandomState(seed=1)
         linear = np.linspace(4.0, 7.0, 1000)
+        noise = rs.normal(scale=1e-3, size=linear.shape)
         outliers = rs.uniform(-50.0, 100.0, 20)
-        self.samples = np.concatenate([linear, outliers])
+        self.samples = np.concatenate([linear + noise, outliers])
         rs.shuffle(self.samples)
 
     def test_simple(self):
