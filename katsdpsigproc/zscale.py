@@ -147,7 +147,7 @@ def zscale(samples: np.ndarray, *, contrast: float = 0.02, stretch: float = 5.0,
         flat = samples - fitted
 
         # Compute the k-sigma rejection threshold
-        sigma = np.std(flat[~badpix])
+        sigma = np.sqrt(np.mean(np.square(flat[~badpix])))
         threshold = sigma * sigma_rej
 
         # Detect and reject pixels further than k*sigma from the fitted line
