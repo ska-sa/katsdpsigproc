@@ -22,7 +22,7 @@ def sample_image(image: np.ndarray, max_samples: int = 100000,
         are discarded)
     random_offsets
         If true, the placement of the grid is chosen randomly; otherwise,
-        it start from the pixel at (0, 0). Enabling this is useful when
+        it starts from the pixel at (0, 0). Enabling this is useful when
         combining samples from multiple images. If an instance of
         :class:`np.random.RandomState` is provided, it is used to generate
         the random numbers.
