@@ -1,21 +1,16 @@
 appdirs
-cffi
 decorator
-funcsigs                   # Needed by numba
 katversion
-llvmlite                   # Needed by numba
+llvmlite                   # via numba
 mako
-markupsafe
+markupsafe                 # via mako
 numba
 numpy
 pandas
-py
-pycparser
 pycuda
 pyopencl
-pytest
-python-dateutil            # Needed by Pandas
+python-dateutil            # via Pandas
 pytools
-pytz                       # Needed by Pandas
+pytz                       # via Pandas
 scipy
 typing_extensions
