@@ -105,6 +105,9 @@ def zscale(samples: np.ndarray, *, contrast: float = 0.02, stretch: float = 5.0,
     """
     samples = np.sort(samples)
     npix = len(samples)
+    # Return nans if samples is empty
+    if npix == 0:
+        return np.nan, np.nan
     zmin = samples[0]
     zmax = samples[-1]
 
