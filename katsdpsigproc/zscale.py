@@ -101,10 +101,13 @@ def zscale(samples: np.ndarray, *, contrast: float = 0.02, stretch: float = 5.0,
     -------
     z1, z2 : float
         Minimum and maximum sample values to be mapped to the extremes
-        of a colour map.
+        of a colour map. These will be nans if samples is empty.
     """
     samples = np.sort(samples)
     npix = len(samples)
+    # Return nans if samples is empty
+    if npix == 0:
+        return np.nan, np.nan
     zmin = samples[0]
     zmax = samples[-1]
 

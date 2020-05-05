@@ -25,6 +25,11 @@ class TestSampleImage:
         sample = sample_image(self.image, 10000)
         np.testing.assert_array_equal(sample, np.arange(1.0, 30.0))
 
+    def test_all_nan(self):
+        self.image[:] = np.nan
+        sample = sample_image(self.image, 10000)
+        assert_equal(sample.size, 0)
+
     def test_random_offsets(self):
         image = np.arange(10000.0).reshape(100, 100)
         rs = np.random.RandomState(seed=1)
@@ -69,3 +74,8 @@ class TestZscale:
         z1, z2 = zscale(self.samples, contrast=0.2, stretch=2.0)
         np.testing.assert_allclose(z1, 5.5 - 1.5 / 0.2 / 2, rtol=1e-1)
         np.testing.assert_allclose(z2, 5.5 + 1.5 / 0.2 * 2, rtol=1e-1)
+
+    def test_empty_samples(self):
+        z1, z2 = zscale([])
+        np.testing.assert_equal(z1, np.nan)
+        np.testing.assert_equal(z2, np.nan)
