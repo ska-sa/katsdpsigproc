@@ -16,7 +16,6 @@ six
 snowballstemmer
 sphinx
 sphinxcontrib-applehelp
-sphinxcontrib-asyncio==0.2.0
 sphinxcontrib-devhelp
 sphinxcontrib-htmlhelp
 sphinxcontrib-jsmath
