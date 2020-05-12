@@ -11,4 +11,4 @@ pandas
 scipy
 
 # Pin version of sphinx
-sphinx==1.8.*
+sphinx==3.0.3
