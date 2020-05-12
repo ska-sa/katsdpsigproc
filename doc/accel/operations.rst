@@ -165,6 +165,17 @@ this level one may need to override the default ``__call__`` or provide
 additional methods to run individual pieces of the pipeline as needed, while
 still having the benefit of linking slots together.
 
+Kernel fusion
+-------------
+It should be noted that there is another way to combine operations, which is to
+write a single kernel that performs all of them. For example, if you have
+three arrays A, B and C, and want to compute (element-wise) A×B+C, then it is
+much more efficient to have a single kernel that does this combined
+combination on each element than to run a multiply kernel followed by an add
+kernel. Combining kernels in this way is referred to as "kernel fusion".
+Unfortunately, it is a hard problem and CUDA and OpenCL do not provide any
+support for it, and nor does katsdpsigproc.
+
 Visualization
 -------------
 As trees of operations get more complex it can become difficult to keep track
