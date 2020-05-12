@@ -105,3 +105,72 @@ There are some conventions used:
   safely call the same kernel object at the same time. With each operation
   having its own kernel object, it is safe for different threads to use
   different operations built from the same operation template.
+
+Composing operations
+--------------------
+It should be noted that while the operation we have shown consists of running
+a single kernel, there is no requirement that this should be the case. It
+would be entirely possible to compile multiple kernels and run them all in the
+:class:`_run` method. You could even define your own methods to run the
+kernels in different combinations.
+
+However, bundling multiple kernels into one operation is an inflexible way of
+doing composition, as it doesn't easily support recombining the kernels in
+different ways. In this section, we'll instead show how to create composite
+operations from individual ones.
+
+To keep the example small, we'll use two operations provided by katsdpsigproc:
+:class:`.Fill`, which fills an array with a constant; and :class:`.HReduce`,
+which sums along rows of a 2D array. This is obviously not a terribly useful
+combination, but it will illustrate the principles.
+
+.. literalinclude:: ../examples/fill_reduce.py
+
+This time the operation inherits from :class:`.OperationSequence`, which is a
+subclass of :class:`Operation` for composed operations. Its constructor takes
+two important arguments:
+
+- A list of child operations, as :samp:`({name}, {operation})` tuples. The
+  default implementation of `__call__` runs each of these operations in
+  sequence (hence the class name), although nothing stops you from overriding
+  it to provide other logic.
+
+- A dictionary specifying the slots of the compound operation. Each key in
+  this dictionary is the name of a slot of the compound operation. The value
+  associated with the key is a list of slots on the individual operations that
+  the compound slot corresponds to, in the form :samp:`{op-name}:{slot}`. In
+  this case we're indicating that the ``data`` slot on the fill operation and
+  the ``src`` slot on the reduction operation must point at the same buffer,
+  and from the outside that slot will be known as ``src``.
+
+  Sometimes the component operations might or might not have particular slots
+  depending on how they're configured. For convenience, non-existent slots are
+  silently ignored.
+
+  If a slot of a child is not listed here at all, it will be presented in the
+  parent as :samp:`{op-name}:{slot}`. It's recommended that this is avoided as
+  it exposes the internals of the implementation.
+
+The real power of :class:`.OperationSequence` is that it resolves all the
+padding requirements for the slots: any buffer bound to the ``src`` slot needs
+to satisfy the requirements of both the operations to which it is bound, but
+this is handled automatically.
+
+It is also possible for the child operations to themselves be instances of
+:class:`.OperationSequence` and thus create more and more complex operations,
+ending with a top-level operation that encapsulates an entire pipeline. At
+this level one may need to override the default ``__call__`` or provide
+additional methods to run individual pieces of the pipeline as needed, while
+still having the benefit of linking slots together.
+
+Visualization
+-------------
+As trees of operations get more complex it can become difficult to keep track
+of how everything is connected. To help with this, one can use
+:func:`.visualize_operation` to generate a PDF showing a visualization of an
+operation (refer to the documentation for how to use it). Here is what the
+output looks like for the fill-reduce example above. The two shapes shown for
+each buffer are the unpadded and padded shapes, which in this case happen to
+be the same.
+
+.. graphviz:: ../examples/fill_reduce.dot
