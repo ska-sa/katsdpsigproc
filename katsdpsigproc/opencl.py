@@ -250,7 +250,7 @@ class Context(AbstractContext[pyopencl.array.Array, pyopencl.Buffer, None,
         # triggering a warning.
         # TODO: can remove this now that it's Python 3-only.
         program = pyopencl.Program(self._pyopencl_context, str(source))
-        program.build(extra_flags)
+        program.build(extra_flags if extra_flags is not None else [])
         return Program(program)
 
     def allocate_raw(self, n_bytes: int) -> pyopencl.Buffer:
