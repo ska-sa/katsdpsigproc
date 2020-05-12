@@ -67,7 +67,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'katsdpsigproc'
-copyright = '2014, SKA South Africa'
+copyright = '2014-2020, National Research Foundation (SARAO)'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
