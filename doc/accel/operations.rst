@@ -77,6 +77,8 @@ For implementation reasons relating to composing operations, the buffer bound
 to a slot should be retrieved with :meth:`.Operation.buffer` rather than via
 the slots dictionary.
 
+.. _operation-templates:
+
 Operation templates
 -------------------
 The ``Multiply`` operation in our example is fine if we only want one of them,

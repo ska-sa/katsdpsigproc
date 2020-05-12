@@ -3,7 +3,6 @@ Advanced topics
 
 TODO
 
-- Autotuning (maybe make a section on its own)
 - Wrapping raw memory
 - Aliasing
 - SVM

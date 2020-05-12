@@ -9,4 +9,5 @@ Accelerator framework
   accel/buffers
   accel/kernels
   accel/operations
+  accel/autotune
   accel/advanced
