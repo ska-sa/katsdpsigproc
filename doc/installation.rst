@@ -33,6 +33,10 @@ is shown in parentheses; for NVIDIA GPUs this is confusingly "NVIDIA CUDA".
 If you want to use the device via the CUDA API, it is the one with just "CUDA"
 in parentheses.
 
-To avoid needing to manually do the
-selection every time, you can set the environment variable
-:envvar:`KATSDPSIGPROC_DEVICE` to the number of your chosen device.
+An environment variable can be used to specify a device so
+that you are not prompted every time:
+
+.. envvar:: KATSDPSIGPROC_DEVICE
+
+  Specify the device to use. The value must be a number, which matches the
+  numbering offered by the menu.

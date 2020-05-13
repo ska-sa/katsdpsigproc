@@ -38,4 +38,7 @@ context and cause all subsequent tests to fail too.
 If no devices are found, the test will be skipped. If multiple devices are
 found, then the first one will be used. You can use the
 :envvar:`KATSDPSIGPROC_DEVICE` environment variable to change which device is
-used (see :ref:`configuration`).
+used.
+
+See also :ref:`Testing autotuning <autotune-testing>` for information about how
+testing interacts with autotuning.
