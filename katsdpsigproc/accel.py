@@ -431,12 +431,12 @@ class DeviceArray:
 
     @property
     def ndim(self) -> int:
-        """Number of dimensions."""
+        """Return number of dimensions."""
         return len(self.shape)
 
     @property
     def strides(self) -> Tuple[int, ...]:
-        """Strides, as in numpy."""
+        """Return strides, as in numpy."""
         ans = [self.dtype.itemsize]
         for i in range(len(self.padded_shape) - 1, 0, -1):
             ans.append(ans[-1] * self.padded_shape[i])
@@ -883,6 +883,8 @@ class SVMArray(HostArray, DeviceArray):
 
 
 class AbstractAllocator(ABC, Generic[_RB]):
+    """Interface for allocating device memory."""
+
     context = None    # type: AbstractContext
 
     @abstractmethod
@@ -1126,14 +1128,14 @@ class IOSlotBase(ABC):
 
     @abstractmethod
     def required_bytes(self) -> int:
-        """Number of bytes of device storage required."""
+        """Return number of bytes of device storage required."""
 
     @abstractmethod
     def is_bound(self):
-        """Whether storage is currently attached to this slot."""
+        """Return whether storage is currently attached to this slot."""
 
     def attachable(self) -> bool:
-        """Whether this slot can be attached as a child to another."""
+        """Return whether this slot can be attached as a child to another."""
         return self.is_root and not self.is_bound()
 
     @abstractmethod
@@ -1255,7 +1257,7 @@ class IOSlot(IOSlotBase):
         self._bind(buffer)
 
     def required_padded_shape(self) -> Tuple[int, ...]:
-        """Padded shape required to satisfy only this slot."""
+        """Return padded shape required to satisfy only this slot."""
         return tuple(x.required_padded_size() for x in self.dimensions)
 
     def required_bytes(self) -> int:
@@ -1486,7 +1488,7 @@ class Operation(ABC):
             raise TypeError('slot ' + name + ' is an alias slot')
 
     def required_bytes(self) -> int:
-        """Number of bytes of device storage required."""
+        """Return number of bytes of device storage required."""
         return sum([x.required_bytes() for x in self.slots.values()])
 
     def parameters(self) -> Mapping[str, Any]:

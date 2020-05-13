@@ -119,7 +119,7 @@ class AbstractDevice(ABC, Generic[_C]):
     @property
     @abstractmethod
     def simd_group_size(self) -> int:
-        """The number of workitems that run in lock-step.
+        """Return the number of workitems that run in lock-step.
 
         This must only be used to tune performance parameters; there are no
         guarantees about memory coherency, forward progress etc.

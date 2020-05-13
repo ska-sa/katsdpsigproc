@@ -189,7 +189,7 @@ def _close_db(conn: sqlite3.Connection) -> None:
 def autotuner_impl(test: Mapping[str, Any],
                    fn: _TuningFunc,
                    *args: Any, **kwargs: Any) -> Mapping[str, Any]:
-    """Implementation of :func:`autotuner`.
+    """Implement :func:`autotuner`.
 
     It is split into a separate function so that mocks can patch it.
     """
@@ -217,7 +217,7 @@ def autotuner_impl(test: Mapping[str, Any],
 
 
 def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
-    r"""Decorator that marks a function as an autotuning function and caches the result.
+    r"""Decorate a function to make it an autotuning function that caches the result.
 
     The function must take a class and a context as the first two arguments.
     The remaining arguments form a cache key, along with properties of the
@@ -233,7 +233,7 @@ def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
     """
     @decorator
     def autotuner(fn: _TuningFunc, *args: Any, **kwargs: Any) -> Mapping[str, Any]:
-        r"""Decorator that marks a function as an autotuning function and caches the result.
+        r"""Decorate a function to make it an autotuning function that caches the result.
 
         The function must take a class and a context as the first two
         arguments. The remaining arguments form a cache key, along with
