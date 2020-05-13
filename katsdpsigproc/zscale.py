@@ -92,7 +92,7 @@ def zscale(samples: np.ndarray, *, contrast: float = 0.02, stretch: float = 5.0,
         Maximum number of iterations.
     max_reject
         Stop iterating if number of pixels left is less than
-        `max_reject`*npix.
+        `max_reject` * npix.
     min_npix: int
         Hard limit on the minimum number of pixels allowed in
         the sample and after rejection.

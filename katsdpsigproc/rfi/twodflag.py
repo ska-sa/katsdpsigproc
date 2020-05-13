@@ -892,7 +892,7 @@ class SumThresholdFlagger:
 
         This can run in parallel if given a
         :class:`concurrent.futures.Executor`. Performance is generally better
-        with a :class:`~current.futures.ThreadPoolExecutor`. While a
+        with a :class:`~concurrent.futures.ThreadPoolExecutor`. While a
         :class:`~concurrent.futures.ProcessPoolExecutor` is supported, it is
         usually limited by the speed at which the data can be pickled and
         transferred to the other processes.
