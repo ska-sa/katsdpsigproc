@@ -1,3 +1,5 @@
+"""Tests for :mod:`katsdpsigproc.transpose`."""
+
 from typing import Tuple, Callable, Generator, cast
 
 import numpy as np
@@ -17,7 +19,7 @@ class TestTranspose:
 
     @classmethod
     def pad_dimension(cls, dim: accel.Dimension, extra: int) -> None:
-        """Modifies `dim` to have at least `extra` padding"""
+        """Modify `dim` to have at least `extra` padding."""
         newdim = accel.Dimension(dim.size, min_padded_size=dim.size + extra)
         newdim.link(dim)
 
@@ -45,5 +47,5 @@ class TestTranspose:
     @device_test
     @force_autotune
     def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
-        """Check that the autotuner runs successfully"""
+        """Check that the autotuner runs successfully."""
         transpose.TransposeTemplate(context, np.uint8, 'unsigned char')

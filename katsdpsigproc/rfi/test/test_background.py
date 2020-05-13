@@ -1,3 +1,5 @@
+"""Test RFI background estimation."""
+
 from abc import ABC, abstractmethod
 
 import numpy as np

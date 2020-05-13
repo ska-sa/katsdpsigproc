@@ -1,6 +1,8 @@
-"""Tests for RFI flagging wrappers. The backgrounding and thresholding have
-separate tests - this module just tests that they can be glued together
-properly."""
+"""Tests for RFI flagging wrappers.
+
+The backgrounding and thresholding have separate tests - this module just tests
+that they can be glued together properly.
+"""
 
 import numpy as np
 
@@ -86,19 +88,19 @@ def test_flagger_device(context: AbstractContext, queue: AbstractCommandQueue) -
 @device_test
 def test_flagger_device_transpose_noise_est(context: AbstractContext,
                                             queue: AbstractCommandQueue) -> None:
-    """Test device flagger with a transposed noise estimator"""
+    """Test device flagger with a transposed noise estimator."""
     check_flagger_device(device.BackgroundFlags.CHANNEL, True, False, context, queue)
 
 
 @device_test
 def test_flagger_device_transpose_threshold(context: AbstractContext,
                                             queue: AbstractCommandQueue) -> None:
-    """Test device flagger with a transposed thresholder"""
+    """Test device flagger with a transposed thresholder."""
     check_flagger_device(device.BackgroundFlags.FULL, False, True, context, queue)
 
 
 @device_test
 def test_flagger_device_transpose_both(context: AbstractContext,
                                        queue: AbstractCommandQueue) -> None:
-    """Test device flagger with a transposed noise estimator and thresholder"""
+    """Test device flagger with a transposed noise estimator and thresholder."""
     check_flagger_device(device.BackgroundFlags.NONE, True, True, context, queue)

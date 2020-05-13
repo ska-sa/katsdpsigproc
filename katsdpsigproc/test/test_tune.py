@@ -1,3 +1,5 @@
+"""Tests for :mod:`katsdpsigproc.tune`."""
+
 import sys
 import traceback
 import threading
@@ -78,7 +80,8 @@ class TestAutotuner:
 
     We use mocking to substitute an in-memory database, which is made to
     persist for the test instead of being closed each time the decorator is
-    called."""
+    called.
+    """
 
     autotune_mock = mock.Mock()
 

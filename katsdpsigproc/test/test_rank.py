@@ -1,4 +1,4 @@
-"""Tests for rank.mako"""
+"""Tests for rank.mako."""
 
 from typing import Optional
 
@@ -63,7 +63,7 @@ def test_rank_parallel(context: AbstractContext, queue: AbstractCommandQueue) ->
 
 def run_float_func(context: AbstractContext, queue: AbstractCommandQueue,
                    kernel_name: str, data: np.ndarray, output_size: int) -> np.ndarray:
-    """Common code for testing find_min_float, find_max_float, median_non_zero_float"""
+    """Do common testing for find_min_float, find_max_float, median_non_zero_float."""
     size = 128  # Number of workitems
     assert _program is not None
     kernel = _program.get_kernel(kernel_name)

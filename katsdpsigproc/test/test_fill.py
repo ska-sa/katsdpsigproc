@@ -1,3 +1,5 @@
+"""Tests for :mod:`katsdpsigproc.fill`."""
+
 from typing import cast
 
 import numpy as np
@@ -11,7 +13,7 @@ from ..abc import AbstractContext, AbstractCommandQueue
 class TestFill:
     @classmethod
     def pad_dimension(cls, dim: accel.Dimension, extra: int) -> None:
-        """Modifies `dim` to have at least `extra` padding"""
+        """Modify `dim` to have at least `extra` padding."""
         newdim = accel.Dimension(dim.size, min_padded_size=dim.size + extra)
         newdim.link(dim)
 
@@ -36,5 +38,5 @@ class TestFill:
     @device_test
     @force_autotune
     def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
-        """Test that autotuner runs successfully"""
+        """Test that autotuner runs successfully."""
         fill.FillTemplate(context, np.uint8, 'unsigned char')

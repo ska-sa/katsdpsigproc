@@ -1,3 +1,5 @@
+"""Tests for :mod:`katsdpsigproc.maskedsum`."""
+
 from typing import Tuple, Generator, Callable, cast
 
 import numpy as np
@@ -21,7 +23,7 @@ class TestMaskedSum:
 
     @classmethod
     def pad_dimension(cls, dim: accel.Dimension, extra: int) -> None:
-        """Modifies `dim` to have at least `extra` padding"""
+        """Modify `dim` to have at least `extra` padding."""
         newdim = accel.Dimension(dim.size, min_padded_size=dim.size + extra)
         newdim.link(dim)
 
@@ -53,6 +55,6 @@ class TestMaskedSum:
     @device_test
     @force_autotune
     def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
-        """Check that the autotuner runs successfully"""
+        """Check that the autotuner runs successfully."""
         maskedsum.MaskedSumTemplate(context, False)
         maskedsum.MaskedSumTemplate(context, True)

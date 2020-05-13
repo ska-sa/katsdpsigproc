@@ -17,35 +17,35 @@ from ..abc import AbstractEvent
 
 class TestWaitUntil(asynctest.TestCase):
     async def test_result(self) -> None:
-        """wait_until returns before the timeout if a result is set"""
+        """wait_until returns before the timeout if a result is set."""
         future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
         self.loop.call_later(0.1, future.set_result, 42)
         result = await resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop)
         assert_equal(42, result)
 
     async def test_already_set(self) -> None:
-        """wait_until returns if a future has a result set before the call"""
+        """wait_until returns if a future has a result set before the call."""
         future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
         future.set_result(42)
         result = await resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop)
         assert_equal(42, result)
 
     async def test_exception(self) -> None:
-        """wait_until rethrows an exception set on the future"""
+        """wait_until rethrows an exception set on the future."""
         future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
         self.loop.call_later(0.1, future.set_exception, ValueError('test'))
         with assert_raises(ValueError):
             await resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop)
 
     async def test_timeout(self) -> None:
-        """wait_until throws `asyncio.TimeoutError` if it times out, and cancels the future"""
+        """wait_until throws `asyncio.TimeoutError` if it times out, and cancels the future."""
         future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
         with assert_raises(asyncio.TimeoutError):
             await resource.wait_until(future, self.loop.time() + 0.01, loop=self.loop)
         assert_true(future.cancelled())
 
     async def test_shield(self) -> None:
-        """wait_until does not cancel the future if it is wrapped in shield"""
+        """wait_until does not cancel the future if it is wrapped in shield."""
         future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
         with assert_raises(asyncio.TimeoutError):
             await resource.wait_until(asyncio.shield(future),
@@ -59,6 +59,7 @@ class DummyEvent(AbstractEvent):
     The :meth:`wait` method just sleeps for a small time and then appends the
     event to a queue.
     """
+
     def __init__(self, completed: queue.Queue) -> None:
         self.complete = False
         self.completed = completed
@@ -89,7 +90,7 @@ class TestResource(asynctest.TestCase):
             self.completed.put(acq)
 
     async def test_wait_events(self) -> None:
-        """Test :meth:`.ResourceAllocation.wait_events`"""
+        """Test :meth:`.ResourceAllocation.wait_events`."""
         r = resource.Resource(42, loop=self.loop)
         a0 = r.acquire()
         a1 = r.acquire()
@@ -108,9 +109,8 @@ class TestResource(asynctest.TestCase):
         assert_equal(order, [a0, e0, a1])
 
     async def test_context_manager_exception(self) -> None:
-        """Test using :class:`resource.ResourceAllocation` as a contextmanager
-        when an error is raised.
-        """
+        """Test using :class:`resource.ResourceAllocation` as a \
+        context manager when an error is raised."""
         r = resource.Resource(None, loop=self.loop)
         a0 = r.acquire()
         a1 = r.acquire()
@@ -124,10 +124,8 @@ class TestResource(asynctest.TestCase):
                 a1.ready()
 
     async def test_context_manager_no_ready(self) -> None:
-        """Test using :class:`resource.ResourceAllocation` as a context
-        manager when the user does not call
-        :meth:`.ResourceAllocation.ready`.
-        """
+        """Test using :class:`resource.ResourceAllocation` as a context \
+        manager when the user does not call :meth:`.ResourceAllocation.ready`."""
         with assert_logs('katsdpsigproc.resource', logging.WARNING) as cm:
             r = resource.Resource(None, loop=self.loop)
             a0 = r.acquire()

@@ -1,4 +1,4 @@
-"""Tests for RFI thresholding algorithms"""
+"""Tests for RFI thresholding algorithms."""
 
 from abc import ABC, abstractmethod
 from typing import Type
