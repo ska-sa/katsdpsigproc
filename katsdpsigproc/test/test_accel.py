@@ -77,10 +77,15 @@ def _device_test_async(test: Callable[..., Awaitable[_T]]) -> Callable[..., Awai
 
 
 def device_test(test: Callable[..., _T]) -> Callable[..., _T]:
-    """Decorator that causes a test to be skipped if a compute device is not
-    available, and which disables autotuning. If autotuning is desired, use
-    :func:`force_autotune` inside (hence, afterwards on the decorator list)
-    this one."""
+    """Decorator for on-device tests.
+
+    It provides a context and command queue to the test, skipping it if a
+    compute device is not available. It also disables autotuning, instead
+    using the `test` value provided for the autotune function.
+
+    If autotuning is desired, use :func:`force_autotune` inside (hence,
+    afterwards on the decorator list) this one.
+    """
     if inspect.iscoroutinefunction(test):
         return _device_test_async(test)    # type: ignore
     else:
@@ -88,8 +93,10 @@ def device_test(test: Callable[..., _T]) -> Callable[..., _T]:
 
 
 def cuda_test(test: _F) -> _F:
-    """Decorator that causes a test to be skipped if the device is not a CUDA
-    device. Put this *after* :meth:`device_test`."""
+    """Decorator that causes a test to be skipped if the device is not a CUDA device.
+
+    Put this *after* :meth:`device_test`.
+    """
     @functools.wraps(test)
     def wrapper(*args, **kwargs):
         global _test_context
@@ -101,8 +108,10 @@ def cuda_test(test: _F) -> _F:
 
 @decorator
 def force_autotune(test: Callable[..., _T], *args, **kw) -> _T:
-    """Decorator that disables autotuning for a test. Instead, the test
-    value specified for each class is returned."""
+    """Decorator that forces autotuning for a test.
+
+    It bypasses the autotuning cache so that the autotuning code always runs.
+    """
     with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.force_autotuner):
         return test(*args, **kw)
 

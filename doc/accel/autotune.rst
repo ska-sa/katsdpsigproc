@@ -151,8 +151,8 @@ might even still be used if the user downgrades back to the previous version.
 
 Testing
 -------
-The testing in general is addressed in TODO, but it is worth noting that
-autotuning causes some additional challenges in testing:
+The testing in general is addressed in :doc:`testing`, but it is worth noting
+that autotuning causes some additional challenges in testing:
 
 - One wants tests to be reproducible, but if different developers end up with
   different autotuning results, they will end up running different tests.
@@ -167,6 +167,6 @@ decorator. You should use an argument that is likely to work across a range of
 devices.
 
 To test the autotuning code itself, use the
-:class:`katsdpsigproc.test_accel.force_autotune` decorator (after the
+:class:`katsdpsigproc.test.test_accel.force_autotune` decorator (after the
 :func:`.device_tune` decorator). It overrides the behavior described above so
 that the autotuning function always runs with no caching.

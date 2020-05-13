@@ -16,6 +16,8 @@ This is sufficient for running the CPU code, but for acceleration using CUDA or
 OpenCL you will also need to install :mod:`pycuda` or :mod:`pyopencl`
 respectively.
 
+.. _configuration:
+
 Configuration
 -------------
 
