@@ -89,7 +89,7 @@ class TestResource(asynctest.TestCase):
             self.completed.put(acq)
 
     async def test_wait_events(self) -> None:
-        """Test :meth:`resource.ResourceAllocation.wait_events`"""
+        """Test :meth:`.ResourceAllocation.wait_events`"""
         r = resource.Resource(42, loop=self.loop)
         a0 = r.acquire()
         a1 = r.acquire()
@@ -126,7 +126,7 @@ class TestResource(asynctest.TestCase):
     async def test_context_manager_no_ready(self) -> None:
         """Test using :class:`resource.ResourceAllocation` as a context
         manager when the user does not call
-        :meth:`~resource.ResourceAllocation.ready`.
+        :meth:`.ResourceAllocation.ready`.
         """
         with assert_logs('katsdpsigproc.resource', logging.WARNING) as cm:
             r = resource.Resource(None, loop=self.loop)

@@ -345,7 +345,7 @@ def masked_gaussian_filter(data, flags, sigma, out, passes=4):
     Some values may be flagged and are ignored. Values outside the grid are
     also treated as if flagged.
 
-    See :func:`box_gaussian_filter` for a number of caveats. The result may
+    See :func:`_box_gaussian_filter` for a number of caveats. The result may
     contain non-finite values where the finite support of the Gaussian
     approximation contains no values without flags.
 

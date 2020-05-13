@@ -15,7 +15,7 @@ class FillTemplate:
     The pad elements are also filled with this value.
 
     .. note::
-        To fill with zeros, use :meth:`katsdpsigproc.DeviceArray.zero`
+        To fill with zeros, use :meth:`.DeviceArray.zero`
 
     Parameters
     ----------

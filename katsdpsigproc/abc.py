@@ -1,4 +1,4 @@
-"""Abstract base classes for :mod:`opencl` and :mod:`cuda`."""
+"""Abstract base classes for :mod:`.opencl` and :mod:`.cuda`."""
 
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Sequence, Optional, Any, Type, TypeVar, Generic
@@ -36,10 +36,10 @@ class AbstractProgram(ABC, Generic[_K]):
 class AbstractKernel(ABC, Generic[_P]):
     """Abstraction of a kernel object.
 
-    The object can be enqueued using :meth:`CommandQueue.enqueue_kernel`.
+    The object can be enqueued using :meth:`AbstractCommandQueue.enqueue_kernel`.
 
     The recommended way to create this object is via
-    :meth:`Program.get_kernel`.
+    :meth:`AbstractProgram.get_kernel`.
     """
 
     @abstractmethod

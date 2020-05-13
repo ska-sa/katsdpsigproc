@@ -15,7 +15,7 @@ _logger = logging.getLogger(__name__)
 
 async def wait_until(future: Awaitable, when: float,
                      loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
-    """Like :meth:`asyncio.wait_for`, but with an absolute timeout."""
+    """Like :func:`asyncio.wait_for`, but with an absolute timeout."""
     def ready(*args) -> None:
         if not waiter.done():
             waiter.set_result(None)

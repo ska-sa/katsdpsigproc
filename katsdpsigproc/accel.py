@@ -2,7 +2,7 @@
 
 Both OpenCL and CUDA are supported, as well as multiple devices.
 
-The modules :mod:`cuda` and :mod:`opencl` provide the abstraction layer,
+The modules :mod:`.cuda` and :mod:`.opencl` provide the abstraction layer,
 but most code will not import these directly (and it might not be possible
 to import them). Instead, use :func:`create_some_context` to set up a context
 on whatever device is available.
@@ -1681,7 +1681,9 @@ def _visualize_operation(
 def visualize_operation(operation: Operation, filename: str) -> None:
     """Write a visualization of an :class:`Operation` to file.
 
-    This requires :mod:`graphviz` to be installed.
+    This requires the `graphviz package`_ to be installed.
+
+    .. _graphviz package: https://graphviz.readthedocs.io/en/stable/
 
     Parameters
     ----------
