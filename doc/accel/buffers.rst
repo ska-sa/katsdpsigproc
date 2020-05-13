@@ -86,5 +86,5 @@ allocate the memory once.
 There are also :meth:`.DeviceArray.get_async` and
 :meth:`.DeviceArray.set_async` that perform asynchronous transfers: that is,
 the function call will return immediately but the transfer will only occur
-later. You will need to use synchronisation functions (covered later TODO)
+later. You will need to use :doc:`synchronization functions <sync>`
 to determine when it is safe to reuse the memory.

@@ -10,6 +10,7 @@ Accelerator framework
   accel/kernels
   accel/operations
   accel/autotune
+  accel/sync
   accel/testing
   accel/threads
   accel/advanced
