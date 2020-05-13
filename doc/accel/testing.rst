@@ -13,7 +13,7 @@ there is no specific pytest support yet.
 To write a test function, give it two extra arguments, which will be the
 context and command queue (you can call them anything as they are passed
 positionally). Then decorate the test with :func:`.device_test`. Here's a
-simple example test for the :class:`Multiply` operation we've developed in
+simple example test for the :class:`!Multiply` operation we've developed in
 previous sections.
 
 .. code:: python

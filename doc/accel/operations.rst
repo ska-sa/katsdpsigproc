@@ -101,7 +101,7 @@ There are some conventions used:
 - It has an ``instantiate`` method which returns an instance of the operation,
   passing all its arguments through.
 - The operation constructor takes the template as the first argument, and
-  assigns it to a :attr:`template` attribute.
+  assigns it to a :attr:`!template` attribute.
 - The call to :meth:`~.AbstractProgram.get_kernel` is only done in the
   operation, not the template. This is because in PyOpenCL, two threads cannot
   safely call the same kernel object at the same time. With each operation
@@ -113,7 +113,7 @@ Composing operations
 It should be noted that while the operation we have shown consists of running
 a single kernel, there is no requirement that this should be the case. It
 would be entirely possible to compile multiple kernels and run them all in the
-:class:`_run` method. You could even define your own methods to run the
+:meth:`!_run` method. You could even define your own methods to run the
 kernels in different combinations.
 
 However, bundling multiple kernels into one operation is an inflexible way of
@@ -129,7 +129,7 @@ combination, but it will illustrate the principles.
 .. literalinclude:: ../examples/fill_reduce.py
 
 This time the operation inherits from :class:`.OperationSequence`, which is a
-subclass of :class:`Operation` for composed operations. Its constructor takes
+subclass of :class:`.Operation` for composed operations. Its constructor takes
 two important arguments:
 
 - A list of child operations, as :samp:`({name}, {operation})` tuples. The

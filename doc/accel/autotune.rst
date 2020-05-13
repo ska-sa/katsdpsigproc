@@ -71,7 +71,7 @@ through it a step at a time.
 
 - A class method (:meth:`!autotune`) computes the optimal parameters for a given
   configuration. It has a decorator that tells the autotuning system to cache
-  the result, similar to :meth:`functools.lru_cache`. For our simple class there
+  the result, similar to :func:`functools.lru_cache`. For our simple class there
   is no configuration, but if this function takes additional arguments they
   form part of the database key so that different configurations are tuned
   separately. These types need to be simple types like numbers and strings
@@ -168,5 +168,5 @@ devices.
 
 To test the autotuning code itself, use the
 :class:`katsdpsigproc.test.test_accel.force_autotune` decorator (after the
-:func:`.device_tune` decorator). It overrides the behavior described above so
+:func:`.device_test` decorator). It overrides the behavior described above so
 that the autotuning function always runs with no caching.

@@ -6,12 +6,12 @@ katsdpsigproc's higher-level abstractions can remove some of the drudgery of
 GPU programming.
 
 Like OpenCL, but unlike CUDA C/C++, GPU code is compiled on the fly as the
-program is running. A context has a :class:`~.AbstractContext.build` method to
+program is running. A context has a :meth:`~.AbstractContext.compile` method to
 compile the code and return a :class:`.AbstractProgram`. At this level the
 code needs to be written in either CUDA or OpenCL, depending on which type of
 context you have. A program can consist of multiple kernels (functions written
 to be called from the host and run on the device); use
-:meth:`.AbstractProgram.get_program` to obtain the kernel with a specific
+:meth:`.AbstractProgram.get_kernel` to obtain the kernel with a specific
 name. Finally, use :meth:`.AbstractCommandQueue.enqueue_kernel` to run the
 code with arguments.
 
@@ -78,7 +78,7 @@ So what have we changed?
   katsdpsigproc. That file contains a lot of C macros and functions to provide
   portability between OpenCL and CUDA C. For example, it defines the
   ``KERNEL`` and ``GLOBAL`` macros, which expand to the appropriate keywords
-  for each API. On CUDA it also defines the :func:`get_global_id` function.
+  for each API. On CUDA it also defines the :func:`!get_global_id` function.
 - Instead of :meth:`.AbstractContext.compile`, we're now using
   :meth:`~katsdpsigproc.accel.build` to compile the code. This is a
   higher-level function that passes the code through mako.
