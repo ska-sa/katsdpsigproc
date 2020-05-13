@@ -42,13 +42,21 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
-    'sphinx.ext.graphviz'
+    'sphinx.ext.graphviz',
+    'sphinx.ext.intersphinx'
 ]
 
 # From numpy code: these warnings are harmless
 import warnings
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+    'pycuda': ('https://documen.tician.de/pycuda/', None),
+    'pyopencl': ('https://documen.tician.de/pyopencl', None)
+}
 
 # Prevents thousands of "toctree contains reference to nonexisting document" warnings
 numpydoc_class_members_toctree = False
