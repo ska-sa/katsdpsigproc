@@ -88,3 +88,7 @@ There are also :meth:`.DeviceArray.get_async` and
 the function call will return immediately but the transfer will only occur
 later. You will need to use :doc:`synchronization functions <sync>`
 to determine when it is safe to reuse the memory.
+
+It is also possible to copy sub-regions between host and device buffers or from
+one device buffer to another. See :meth:`.DeviceArray.get_region`,
+:meth:`.DeviceArray.set_region` and :meth:`.DeviceArray.copy_region`.

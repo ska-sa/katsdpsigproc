@@ -508,17 +508,8 @@ class DeviceArray:
                          strides: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...], Tuple[int, ...]]:
         """Transform a slice selection into a form that is easier to consume internally.
 
-        The source and destination region are specified using a limited subset
-        of numpy indexing syntax. The following are supported:
-
-        - slices with positive strides
-        - integers
-        - :code:`np.newaxis`
-        - If fewer indices than axes are specified, all elements on the
-          remaining axes are used.
-
-        Ellipses are not yet supported, but it would be straightforward to add
-        support.
+        See :meth:`copy_region` for a description of what slice
+        expressions are supported.
 
         Parameters
         ----------
@@ -667,8 +658,17 @@ class DeviceArray:
 
         If the source and destination memory overlap, the result is undefined.
 
-        See :meth:`_canonical_slice` for a description of what slice
-        expressions are supported.
+        The regions to copy are specified using a subset of numpy array
+        indexing syntax. The following are supported:
+
+        - slices with positive strides
+        - integers
+        - :data:`np.newaxis <numpy.newaxis>`
+        - If fewer indices than axes are specified, all elements on the
+          remaining axes are used.
+
+        Ellipses are not yet supported, but it would be straightforward to add
+        support.
 
         Parameters
         ----------
@@ -677,7 +677,8 @@ class DeviceArray:
         dest
             Target of the copy
         src_region,dest_region
-            Index expressions constructed by `np.s_` or `np.index_exp`.
+            Index expressions constructed by :data:`np.s_ <numpy.s_>` or
+            :data:`!np.index_exp`.
 
         Raises
         ------
@@ -699,8 +700,8 @@ class DeviceArray:
                    device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
         """Perform a device-to-host copy of a subregion of `self` to `ary`.
 
-        See :meth:`_canonical_slice` for a description of what slice
-        expressions are supported.
+        See :meth:`~DeviceArray.copy_region` for a description of how regions
+        are specified.
 
         Parameters
         ----------
@@ -709,8 +710,8 @@ class DeviceArray:
         ary
             Target of the copy
         device_region,ary_region
-            Index expressions constructed by `np.s_` or `np.index_exp`, to specify
-            the source and target regions.
+            Index expressions constructed by :data:`np.s_ <numpy.s_>` or
+            :data:`!np.index_exp`, to specify the source and target regions.
         blocking
             If false, the operation will be asynchronous.
 
@@ -738,8 +739,8 @@ class DeviceArray:
                    device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
         """Perform a host-to-device copy of a subregion `ary` to `self`.
 
-        See :meth:`_canonical_slice` for a description of what slice
-        expressions are supported.
+        See :meth:`~DeviceArray.copy_region` for a description of how regions
+        are specified.
 
         Parameters
         ----------
@@ -748,8 +749,8 @@ class DeviceArray:
         ary
             Source of the copy
         device_region,ary_region
-            Index expressions constructed by `np.s_` or `np.index_exp`, to specify
-            the target and source regions.
+            Index expressions constructed by :data:`np.s_ <numpy.s_>` or
+            :data:`!np.index_exp`, to specify the source and target regions.
         blocking
             If false, the operation will be asynchronous.
 
