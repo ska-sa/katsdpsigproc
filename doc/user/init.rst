@@ -21,7 +21,7 @@ command queue.
   queue = ctx.create_command_queue()
 
 If there are multiple devices found, it will prompt the user to select one.
-Refer to :doc:`../installation` for instructions on setting an environment
+Refer to :doc:`installation` for instructions on setting an environment
 variable to remember that choice. If you don't want the user to be prompted,
 you can pass ``interactive=False`` to
 :meth:`~katsdpsigproc.accel.create_some_context`, in which case the first

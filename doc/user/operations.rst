@@ -24,7 +24,7 @@ simple ones.
 
 Let's see an example before diving into the details:
 
-.. literalinclude:: ../examples/triple_op.py
+.. literalinclude:: examples/triple_op.py
 
 The kernel ``SOURCE`` is unchanged from the previous example. However, we've
 now encapsulated all the logic for multiplying a buffer by a constant into a
@@ -91,7 +91,7 @@ the same program.
 
 Let's see how that might look in our example:
 
-.. literalinclude:: ../examples/triple_op_template.py
+.. literalinclude:: examples/triple_op_template.py
 
 This doesn't use any new features of katsdpsigproc; we've simply refactored.
 There are some conventions used:
@@ -126,7 +126,7 @@ To keep the example small, we'll use two operations provided by katsdpsigproc:
 which sums along rows of a 2D array. This is obviously not a terribly useful
 combination, but it will illustrate the principles.
 
-.. literalinclude:: ../examples/fill_reduce.py
+.. literalinclude:: examples/fill_reduce.py
 
 This time the operation inherits from :class:`.OperationSequence`, which is a
 subclass of :class:`.Operation` for composed operations. Its constructor takes
@@ -186,4 +186,4 @@ output looks like for the fill-reduce example above. The two shapes shown for
 each buffer are the unpadded and padded shapes, which in this case happen to
 be the same.
 
-.. graphviz:: ../examples/fill_reduce.dot
+.. graphviz:: examples/fill_reduce.dot

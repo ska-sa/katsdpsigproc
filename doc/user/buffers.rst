@@ -63,7 +63,7 @@ complete, and you can immediate start changing the host array. It requires a
 a command queue (see :doc:`init`). For example, here is a way to fill a device
 array with ones.
 
-.. literalinclude:: ../examples/set_ones.py
+.. literalinclude:: examples/set_ones.py
 
 Of course, this is a very inefficient way to fill GPU memory with a constant,
 because we're first filling memory on the host, then copying it across a

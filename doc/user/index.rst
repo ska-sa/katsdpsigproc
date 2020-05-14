@@ -14,5 +14,15 @@ astronomy, with a focus on GPU acceleration. It consists of several pieces:
   :maxdepth: 1
 
   installation
-  accel
+  intro
+  init
+  buffers
+  kernels
+  operations
   builtin-ops
+  autotune
+  sync
+  testing
+  resource
+  threads
+  advanced

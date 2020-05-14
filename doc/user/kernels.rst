@@ -19,7 +19,7 @@ Let's jump in and see our first full example of running code on the GPU. It
 will load random data into a buffer, triple every element, and transfer the
 results back to the host. It will only work on OpenCL.
 
-.. literalinclude:: ../examples/triple.py
+.. literalinclude:: examples/triple.py
 
 This is now a fair amount of code, although the first half of it uses
 functionality we've seen before. We're allocating an array of 50 floats, but
@@ -69,7 +69,7 @@ to compile different variants of the same code, such as to specialize it for
 different types. But for now let's modify our example so that it will work on
 OpenCL and CUDA:
 
-.. literalinclude:: ../examples/triple_templ.py
+.. literalinclude:: examples/triple_templ.py
 
 So what have we changed?
 

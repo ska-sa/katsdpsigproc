@@ -1,7 +1,7 @@
 Built-in operations
 ===================
 
-There are a small number of built-in :doc:`accel/operations` provided. Some of them
+There are a small number of built-in :doc:`operations` provided. Some of them
 are quite general-purpose, which some others were developed for a specific
 radio-astronomy pipeline and might not be useful elsewhere, but could be seen
 as examples.
