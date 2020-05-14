@@ -12,5 +12,6 @@ Accelerator framework
   accel/autotune
   accel/sync
   accel/testing
+  accel/resource
   accel/threads
   accel/advanced
