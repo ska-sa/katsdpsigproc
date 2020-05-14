@@ -40,3 +40,30 @@ that you are not prompted every time:
 
   Specify the device to use. The value must be a number, which matches the
   numbering offered by the menu.
+
+Troubleshooting
+---------------
+
+CUDA on Linux
+_____________
+
+If the script above does not work or does not detect a CUDA device, the
+following steps will help isolate the problem.
+
+1. Check that :mod:`pycuda` is installed. If it is not, you won't get an
+   error, but CUDA devices will not be available.
+
+2. Run :program:`nvidia-smi`. This checks that the NVIDIA drivers are installed
+   and that the userspace component can talk to the kernel component. If not,
+   you might need to reinstall the drivers.
+
+3. Run a compiled CUDA program. For example, the CUDA installation will
+   usually offer to install samples. The :program:`deviceQuery` sample is a good
+   test since it'll show the devices detected. If this fails then there is
+   likely something wrong with your CUDA library installation.
+
+4. Run ``python -c 'import pycuda.autoinit'``. If that fails (and the previous
+   steps succeed) the error is most likely into your :mod:`pycuda`
+   installation. A common problem is that CUDA is upgraded but pycuda is still
+   linked against the old version. In this case you need to uninstall it,
+   remove any cached binary wheel, and reinstall it.
