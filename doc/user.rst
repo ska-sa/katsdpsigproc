@@ -15,3 +15,4 @@ astronomy, with a focus on GPU acceleration. It consists of several pieces:
 
   installation
   accel
+  builtin-ops
