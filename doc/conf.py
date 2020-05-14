@@ -53,7 +53,7 @@ warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
-    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+    'numpy': ('https://numpy.org/doc/stable', None),
     'pycuda': ('https://documen.tician.de/pycuda/', None),
     'pyopencl': ('https://documen.tician.de/pyopencl', None),
     'graphviz': ('https://graphviz.readthedocs.io/en/stable/', None)
