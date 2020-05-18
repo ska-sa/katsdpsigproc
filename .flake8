@@ -1,5 +1,5 @@
 [flake8]
-exclude = doc/conf.py doc/examples/*.py
+exclude = doc/conf.py doc/user/examples/*.py
 max-line-length = 100
 ignore =
     # whitespace before ':' - flake8 gets it wrong for : as binary operator
