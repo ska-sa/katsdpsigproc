@@ -174,7 +174,11 @@ much more efficient to have a single kernel that does this combined
 combination on each element than to run a multiply kernel followed by an add
 kernel. Combining kernels in this way is referred to as "kernel fusion".
 Unfortunately, it is a hard problem and CUDA and OpenCL do not provide any
-support for it, and nor does katsdpsigproc.
+support for it, and nor does katsdpsigproc in general.
+
+However, see :doc:`macros` for information about macros that help with
+writing kernels that fuse custom operations with standard ones like
+transposition.
 
 Visualization
 -------------

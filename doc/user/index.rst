@@ -24,5 +24,6 @@ astronomy, with a focus on GPU acceleration. It consists of several pieces:
   sync
   testing
   resource
+  macros
   threads
   advanced
