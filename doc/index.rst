@@ -9,7 +9,7 @@ Welcome to katsdpsigproc's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
 
    user/index
    changelog
