@@ -21,6 +21,7 @@ sphinxcontrib-htmlhelp
 sphinxcontrib-jsmath
 sphinxcontrib-qthelp
 sphinxcontrib-serializinghtml
+sphinxcontrib-tikz
 sphinxcontrib-websupport
 sphinx-rtd-theme
 urllib3

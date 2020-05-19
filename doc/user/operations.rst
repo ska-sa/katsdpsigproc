@@ -18,8 +18,44 @@ convenient:
 
 "Operations" are higher-level constructs that address these shortcomings. In
 the simplest case, an operation bundles a kernel together with information
-about requirements on the buffers they're used with and currently-bound
-buffers. Operations can also be composed to build more complex algorithms from
+about what sort of buffers they're used with. Each buffer requirement is called
+a "slot". For example, a transpose operation might have a "src" slot which
+requires a 10×5 buffer of int32 and a "dest" slot which requires a 5×10 buffer
+of int32.
+
+Each slot also requires a matching buffer to be bound to it. When the operation
+runs, it operates on the currently-bound buffers.
+
+.. tikz::
+  :libs: positioning, matrix
+
+  [
+    operation/.style={draw, minimum width=4cm, minimum height=3cm},
+    slot/.style={draw, fill=white},
+    buffer/.style={draw, minimum width=2cm, minimum height=1cm}
+  ]
+  \newcommand{\labelop}[1]{\node[below right] at (#1.north west) {Operation};}
+  \matrix[column sep=1cm] {
+    \node[operation] (op1) {};
+    \labelop{op1}
+    \node[slot, yshift=0.3cm, above] (slot1-1) at (op1.east) {slot};
+    \node[slot, yshift=-0.3cm, below] (slot1-2) at (op1.east) {slot};
+    &
+    \foreach \i in {1, 2} {
+      \node[buffer, right=of slot1-\i] (buffer\i) {Buffer};
+    }
+    &
+    \node[operation] (op2) {};
+    \node[slot, yshift=0.3cm, above] (slot2-1) at (op2.west) {slot};
+    \labelop{op2};
+    \\
+  };
+  \foreach \i in {1, 2} {
+    \draw[thick] (slot1-\i) -- (buffer\i);
+  }
+  \draw[thick] (slot2-1) -- (buffer1);
+
+Operations can also be composed to build more complex algorithms from
 simple ones.
 
 Let's see an example before diving into the details:
