@@ -13,7 +13,6 @@ astronomy, with a focus on GPU acceleration. It consists of several pieces:
 .. toctree::
   :maxdepth: 1
 
-  installation
   intro
   init
   buffers

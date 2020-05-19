@@ -24,7 +24,7 @@ Configuration
 To check that your drivers have been successfully detected, run the following
 script:
 
-.. literalinclude:: examples/hello_accel.py
+.. literalinclude:: user/examples/hello_accel.py
 
 If more than one device is detected, it will list them and prompt you to
 select one. This can happen even if you only have a single GPU, if it is
