@@ -25,3 +25,7 @@ Local memory      Private memory
 Shared memory     Local memory
 Device memory     Global memory
 ================  ===============
+
+The sections in the guide are organised from basics towards more advanced
+features, and later sections often build on knowledge from earlier ones, so
+new users are advised to read the guide in order rather than jumping ahead.
