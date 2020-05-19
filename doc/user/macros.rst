@@ -112,3 +112,78 @@ The examples above are all based on the built-in :class:`Transpose` operation
 (but slightly simplified), whose source is in :file:`transpose.mako`. It is
 recommended that you look at the source (both the Python and kernel code) as
 an example.
+
+Reductions
+----------
+Reductions are operations like sum or max that repeatedly apply a binary
+operator to turn an array of values into a single value. The namespace
+:file:`wg_reduce.mako` provides macros for performing reductions within a
+single work group. Larger-scale reductions are left to the user to implement
+e.g. by recursively applying work-group reductions or by transferring the
+results of a single round of reduction to the CPU.
+
+For efficiency, the implementation assumes that the binary operator is
+associative and commutative, and hence that the order of operations can be
+juggled. An example of a non-commutative operator is matrix multiplication.
+Floating-point addition is commutative, but not quite associative due to
+rounding errors; thus, summation may return a different result to a CPU
+summation, or to summation on a different GPU. However, for a specific system
+it is deterministic i.e., is not affected by random timing.
+
+This section covers the basics of defining a reduction across a whole work
+group with 1D shape. It is also possible to partition a work group into
+equally-sized pieces, each of which performs an independent reduction, but
+that is beyond the scope of this tutorial. Refer to the comments in
+:file:`wg_reduce.mako` for details.
+
+Here's a kernel where each work group just sums a section of the
+input array corresponding to the work group's global IDs. A `wgs` variable
+must be passed to indicate the work group size.
+
+.. literalinclude:: examples/sum.mako
+
+Similar to the transposition helpers, we need to define a struct to hold
+scratch data, with :c:macro:`!define_scratch`. It takes the type of data being
+reduced, the number of items in the reduction, and the name of the struct to
+define. We then define the function that does the reduction, using
+:c:macro:`!define_function`. It takes those same arguments, as well as the
+function name and a macro defining the binary operator. There are a few common
+operators provided (:c:macro:`!op_plus`, :c:macro:`!op_min`,
+:c:macro:`!op_max`, :c:macro:`!op_fmin`, :c:macro:`!op_fmax`), but you can
+easily define your own. The macro takes two values and the type and generates
+code for the result. For example, here is the definition of
+:c:macro:`!op_plus` [1]_.
+
+.. code::
+
+    <%def name="op_plus(a, b, type)">((${a}) + (${b}))</%def>
+
+.. [1] As with C preprocessor macros, parentheses should be used to ensure
+   that operations are ordered correctly if the arguments are
+   themselves expressions or if the macro result is used in a larger expression.
+
+Synchronization
+_______________
+The function defined by :c:macro:`!define_function` contains barriers. It's
+thus critical that all work items in the work group call the function
+collectively.
+
+Disabling broadcasting
+______________________
+By default, the return value is valid in all items in the work group. However,
+frequently only one work item actually uses the value, as seen in the example
+above. In this case one can pass ``broadcast=False`` to
+:c:macro:`define_function`, and only the first work item will receive the sum
+(others will receive an undefined value). This improves performance as the
+implementation naturally obtains the sum in the first work item and normally
+requires an extra step to broadcast it to the others.
+
+Shuffle optimization
+____________________
+In many cases the internals can be optimized using special CUDA instructions,
+but it is not done by default because it is only safe under certain
+conditions. The comments in :file:`wg_reduce.mako` have the full details, but
+if you use a 1D kernel and pass ``get_local_id(0)`` as the index (as is done
+in this example) then it is safe to enable this optimization. To do so, pass
+``shuffle=True`` to *both* :c:macro:`define_scratch` and
+:c:macro:`define_function`.
