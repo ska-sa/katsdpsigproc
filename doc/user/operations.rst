@@ -165,6 +165,31 @@ this level one may need to override the default ``__call__`` or provide
 additional methods to run individual pieces of the pipeline as needed, while
 still having the benefit of linking slots together.
 
+Aliasing scratch buffers
+__________________________
+In more complex (particularly composed) operations, it's not uncommon for some
+slots to represent internal scratch space rather than inputs or outputs. When
+such operations are themselves composed, this can lead to wasted memory as
+each operation has its own scratch space, even though they are not in use at
+the same time and a single scratch area could be reused. If the scratch
+slots have the same shape and dtype then this can be handled by connecting
+them to a single slot on the parent operation, but that's not always the
+case.
+
+To handle this case, the :class:`.OperationSequence` constructor takes an
+additional dictionary for mapping slots, similar to the one already seen. The
+restrictions are much weaker: the child slots that are grouped together do not
+need to match in shape or dtype. The tradeoff is that the resulting slot is
+not fully-fledged (it is an :class:`.AliasIOSlot` rather than an
+:class:`IOSlot`) so does not have a dtype, shape etc. It is normally not used
+directly, other than to serve as a source creating further alias slots if this
+operation is composed into an even higher-level one.
+
+It is recommended that you document scratch slots of your operations
+(including their sizes and anything unusual about data lifetime) so that users
+of your operation can decide how best to alias them with other scratch
+slots.
+
 Kernel fusion
 -------------
 It should be noted that there is another way to combine operations, which is to
