@@ -108,7 +108,7 @@ Note that once again `(r, c)` are the coordinates for external storage and
 `(lr, lc)` are the coordinates for internal storage; don't swap anything
 around as it's handled for you.
 
-The examples above are all based on the built-in :class:`Transpose` operation
+The examples above are all based on the built-in :class:`.Transpose` operation
 (but slightly simplified), whose source is in :file:`transpose.mako`. It is
 recommended that you look at the source (both the Python and kernel code) as
 an example.
@@ -173,7 +173,7 @@ ______________________
 By default, the return value is valid in all items in the work group. However,
 frequently only one work item actually uses the value, as seen in the example
 above. In this case one can pass ``broadcast=False`` to
-:c:macro:`define_function`, and only the first work item will receive the sum
+:c:macro:`!define_function`, and only the first work item will receive the sum
 (others will receive an undefined value). This improves performance as the
 implementation naturally obtains the sum in the first work item and normally
 requires an extra step to broadcast it to the others.
@@ -185,5 +185,5 @@ but it is not done by default because it is only safe under certain
 conditions. The comments in :file:`wg_reduce.mako` have the full details, but
 if you use a 1D kernel and pass ``get_local_id(0)`` as the index (as is done
 in this example) then it is safe to enable this optimization. To do so, pass
-``shuffle=True`` to *both* :c:macro:`define_scratch` and
-:c:macro:`define_function`.
+``shuffle=True`` to *both* :c:macro:`!define_scratch` and
+:c:macro:`!define_function`.

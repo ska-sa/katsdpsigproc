@@ -62,9 +62,9 @@ Let's see an example before diving into the details:
 
 .. literalinclude:: examples/triple_op.py
 
-The kernel ``SOURCE`` is unchanged from the previous example. However, we've
+The kernel :const:`!SOURCE` is unchanged from the previous example. However, we've
 now encapsulated all the logic for multiplying a buffer by a constant into a
-class ``Multiply``, which derives from :class:`.Operation`. The constructor
+class :class:`!Multiply`, which derives from :class:`.Operation`. The constructor
 builds the kernel much as before; what's new is the use of :class:`.IOSlot` and
 :class:`.Dimension`. We'll come to the details of those in the next section.
 
@@ -93,7 +93,7 @@ cases you may wish to construct two separate but identical dimension objects
 rather than re-using one object.
 
 The most common case for a padding requirement is to compensate for a kernel's
-``global_size`` being rounded up to a multiple of the work group size. This is
+`global_size` being rounded up to a multiple of the work group size. This is
 seen in the example above: ``Dimension(size, self.WGS)`` rounds ``size`` up to
 a multiple of ``self.WGS`` and makes it the minimum for the padded size
 (larger padded sizes are still permitted, even if not a multiple of
@@ -117,7 +117,7 @@ the slots dictionary.
 
 Operation templates
 -------------------
-The ``Multiply`` operation in our example is fine if we only want one of them,
+The :class:`!Multiply` operation in our example is fine if we only want one of them,
 but what if we want several with different sizes or scale factors? Each time
 we instantiate a new one we will need to re-run the template engine and the
 compiler, which is not very efficient. To avoid this overhead, it is
@@ -134,7 +134,7 @@ There are some conventions used:
 
 - The template class has the same name as the operation class, with
   ``Template`` appended.
-- It has an ``instantiate`` method which returns an instance of the operation,
+- It has an :meth:`!instantiate` method which returns an instance of the operation,
   passing all its arguments through.
 - The operation constructor takes the template as the first argument, and
   assigns it to a :attr:`!template` attribute.
@@ -197,7 +197,7 @@ this is handled automatically.
 It is also possible for the child operations to themselves be instances of
 :class:`.OperationSequence` and thus create more and more complex operations,
 ending with a top-level operation that encapsulates an entire pipeline. At
-this level one may need to override the default ``__call__`` or provide
+this level one may need to override the default :meth:`!__call__` or provide
 additional methods to run individual pieces of the pipeline as needed, while
 still having the benefit of linking slots together.
 
@@ -217,7 +217,7 @@ additional dictionary for mapping slots, similar to the one already seen. The
 restrictions are much weaker: the child slots that are grouped together do not
 need to match in shape or dtype. The tradeoff is that the resulting slot is
 not fully-fledged (it is an :class:`.AliasIOSlot` rather than an
-:class:`IOSlot`) so does not have a dtype, shape etc. It is normally not used
+:class:`.IOSlot`) so does not have a dtype, shape etc. It is normally not used
 directly, other than to serve as a source creating further alias slots if this
 operation is composed into an even higher-level one.
 

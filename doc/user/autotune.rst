@@ -144,8 +144,9 @@ be appropriate.
 
 To solve these issues, the table name also includes a version number. It
 defaults to zero, but can be overridden by define a class constant
-``autotune_version``. Old results will *not* be removed from the database, and
-might even still be used if the user downgrades back to the previous version.
+:const:`!autotune_version`. Old results will *not* be removed from the
+database, and might even still be used if the user downgrades back to the
+previous version.
 
 .. _autotune-testing:
 

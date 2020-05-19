@@ -30,8 +30,8 @@ When enqueueing the kernel, we pass a number of parameters:
 
 1. The kernel itself.
 2. A list of kernel arguments. Each argument corresponds to one of the
-   parameters of the ``multiply`` function in ``SOURCE``. For pointers we need
-   to provide a buffer. We pass ``buf.buffer``, which is the
+   parameters of the :c:func:`!multiply` function in :const:`!SOURCE`. For
+   pointers we need to provide a buffer. We pass ``buf.buffer``, which is the
    :class:`pyopencl.array.Array` that underpins the katsdpsigproc array. For
    scalar arguments we need to use sized numpy scalars rather than Python
    scalars, and they need to correspond to the type used in the kernel.
@@ -74,11 +74,12 @@ OpenCL and CUDA:
 So what have we changed?
 
 - The source code now contains that ``<%include>`` statement,
-  which tells mako to include the content of ``port.mako`` from
+  which tells mako to include the content of :file:`port.mako` from
   katsdpsigproc. That file contains a lot of C macros and functions to provide
   portability between OpenCL and CUDA C. For example, it defines the
-  ``KERNEL`` and ``GLOBAL`` macros, which expand to the appropriate keywords
-  for each API. On CUDA it also defines the :func:`!get_global_id` function.
+  :c:macro:`!KERNEL` and :c:macro:`!GLOBAL`` macros, which expand to the
+  appropriate keywords for each API. On CUDA it also defines the
+  :c:func:`!get_global_id` function.
 - Instead of :meth:`.AbstractContext.compile`, we're now using
   :meth:`~katsdpsigproc.accel.build` to compile the code. This is a
   higher-level function that passes the code through mako.
