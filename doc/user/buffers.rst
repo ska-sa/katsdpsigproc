@@ -30,7 +30,15 @@ padding elements, but their values should be considered as undefined. For
 example, commands that copy host data to the device might or might not
 overwrite the padding elements.
 
-TODO: picture of padding
+.. tikz::
+
+    [>=latex]
+    \draw[fill=gray!20!white] (0, 0) rectangle (8, 6);
+    \draw[fill=white] (0.1, 2) rectangle (4, 5.9);
+    \draw[<->] (0, -0.2) -- node[auto, swap] {padded\_shape[1]} (8, -0.2);
+    \draw[<->] (8.2, 0) -- node[auto, swap] {padded\_shape[0]} (8.2, 6);
+    \draw[<->] (0.1, 1.8) -- node[auto, swap] {shape[1]} (4, 1.8);
+    \draw[<->] (4.2, 2) -- node[auto, swap] {shape[0]} (4.2, 5.9);
 
 Host buffers
 ------------
