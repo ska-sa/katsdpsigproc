@@ -26,7 +26,7 @@ class Multiply(Operation):
         self.template = template
         self.kernel = template.program.get_kernel('multiply')
         self.scale = np.float32(scale)
-        self.slots['data'] = IOSlot((Dimension(size, self.template.WGS),), np.float32)
+        self.slots['data'] = IOSlot((Dimension(size, template.WGS),), np.float32)
 
     def _run(self):
         data = self.buffer('data')
