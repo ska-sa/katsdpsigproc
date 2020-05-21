@@ -23,7 +23,7 @@ results back to the host. It will only work on OpenCL.
 
 This is now a fair amount of code, although the first half of it uses
 functionality we've seen before. We're allocating an array of 50 floats, but
-padding it to 64 because we're using a work group size of 32 work items and 60
+padding it to 64 because we're using a work group size of 32 work items and 50
 is not a multiple of 32.
 
 When enqueueing the kernel, we pass a number of parameters:
