@@ -57,7 +57,7 @@ actually need to be ready. You could go home again to collect the documents
 you need for your transaction and come back later without losing your place in
 the queue. Unlike in real life, you won't be skipped, even if the teller is
 sitting idle waiting for you. That does mean that your ordering guarantee may
-come at the price of lower utilisation.
+come at the price of lower utilization.
 
 In our real-time pipeline example, one can ensure that chunks get their turns
 by performing all the calls to :meth:`.Resource.acquire` as soon as
@@ -71,7 +71,7 @@ called :meth:`~.ResourceAllocation.wait_events` rather than just
 :meth:`!wait`, and also be wondering why there is an explicit
 :meth:`~.ResourceAllocation.ready` function to unlock rather than letting
 the context manager handle it. The answer is that there are built-in utilities
-for synchronisation using events (see the section on :doc:`sync` for a
+for synchronization using events (see the section on :doc:`sync` for a
 description of events).
 
 Let's say that a resource is a device buffer, and you're locking it so that
