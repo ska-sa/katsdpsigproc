@@ -5,7 +5,7 @@ the GPU. We'll start at a low level, and in later sections see how
 katsdpsigproc's higher-level abstractions can remove some of the drudgery of
 GPU programming.
 
-Like OpenCL, but unlike CUDA C/C++, GPU code is compiled on the fly as the
+GPU code is compiled on the fly as the
 program is running. A context has a :meth:`~.AbstractContext.compile` method to
 compile the code and return a :class:`.AbstractProgram`. At this level the
 code needs to be written in either CUDA or OpenCL, depending on which type of
