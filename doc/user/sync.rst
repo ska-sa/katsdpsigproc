@@ -48,7 +48,7 @@ events for simple profiling, namely measuring the time elapsed (on the GPU)
 between two events. Note that if you are trying to tune your code, there may
 be vendor tools that give far more insight.
 
-To create a command queue that support profiling, use
+To create a command queue that supports profiling, use
 :meth:`.AbstractContext.create_tuning_command_queue` (instead of the usual
 :meth:`~.AbstractContext.create_command_queue`). Then use
 :meth:`.AbstractEvent.time_since` to get the time difference between events.
