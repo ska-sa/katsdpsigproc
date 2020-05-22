@@ -82,7 +82,7 @@ through it a step at a time.
 - The function uses :func:`katsdpsigproc.tune.autotune` to do the actual
   autotuning. It is passed a function to describe how to benchmark a
   specific set of parameters, and a keyword argument for each parameter to
-  tune (whose names much match the argument names to :func:`!generate`) with a list
+  tune (whose names must match the argument names to :func:`!generate`) with a list
   of values to try. The autotuner is not particularly clever: given multiple
   parameters to tune, it tries all combinations, so if there are many
   parameters you need to be careful not to cause a combinatorial explosion
