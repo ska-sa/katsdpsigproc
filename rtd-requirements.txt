@@ -9,6 +9,8 @@ nose
 numba
 pandas
 scipy
+rtd-tikz        # See https://tikz-in-readthedocs.readthedocs.io/
+typing_extensions
 
 # Pin version of sphinx
-sphinx==1.8.*
+sphinx==3.0.3

@@ -43,7 +43,7 @@ class TestAverageFreq:
         self.small_flags[2, 5, :] = 1
 
     def test_one(self):
-        """_average_freq with 1 channel must have no effect on unflagged data"""
+        """_average_freq with 1 channel must have no effect on unflagged data."""
         avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
                                                      twodflag._as_min_dtype(1))
         expected = self.small_data.copy()
@@ -54,7 +54,7 @@ class TestAverageFreq:
         np.testing.assert_array_equal(np.moveaxis(self.small_flags, -1, 0), avg_flags)
 
     def test_divides(self):
-        """Test _average_freq when averaging factor divides in exactly"""
+        """Test _average_freq when averaging factor divides in exactly."""
         expected_data = np.array([
             [
                 [0.5, 2.5, 5.0],
@@ -87,7 +87,7 @@ class TestAverageFreq:
         np.testing.assert_array_equal(expected_flags, avg_flags)
 
     def test_uneven(self):
-        """Test _average_freq when averaging factor does not divide number of channels"""
+        """Test _average_freq when averaging factor does not divide number of channels."""
         expected_data = np.array([
             [
                 [1.5, 5.0],
@@ -141,8 +141,8 @@ def test_time_median():
 
 
 class TestMedianAbs:
-    """Tests for :func:`katsdpsigproc.rfi.twodflag._median_abs` and
-    :func:`katsdpsigproc.rfi.twodflag._median_abs_axis0`."""
+    """Test :func:`.twodflag._median_abs` and :func:`.twodflag._median_abs_axis0`."""
+
     def setup(self):
         self.data = np.array([[-2.0, -6.0, 4.5], [1.5, 3.3, 0.5]], np.float32)
         self.flags = np.array([[0, 0, 0], [0, 1, 0]], np.uint8)
@@ -210,7 +210,7 @@ class TestLinearlyInterpolateNans:
 
 class TestBoxGaussianFilter:
     def test_one_pass(self):
-        """Test that _box_gaussian_filter1d places the box correctly"""
+        """Test that _box_gaussian_filter1d places the box correctly."""
         a = np.array([50.0, 10.0, 60.0, -70.0, 30.0, 20.0, -15.0], np.float32)
         b = np.empty_like(a)
         twodflag._box_gaussian_filter1d(a, 2, b, 1)
@@ -218,7 +218,7 @@ class TestBoxGaussianFilter:
             np.array([24.0, 10.0, 16.0, 10.0, 5.0, -7.0, 7.0], np.float32), b)
 
     def test_width(self):
-        """Impulse response must have approximately correct standard deviation,
+        """Impulse response must have approximately correct standard deviation, \
         and must be symmetric with sum 1."""
         a = np.zeros((1, 200), np.float32)
         a[:, a.size // 2] = 1.0
@@ -250,7 +250,7 @@ class TestBoxGaussianFilter:
         np.testing.assert_allclose(expected, actual, rtol=1e-1)
 
     def test_axes(self):
-        """Test that the axes are handled consistently"""
+        """Test that the axes are handled consistently."""
         rs = np.random.RandomState(seed=1)
         shape = (77, 53)
         data = rs.uniform(size=shape).astype(np.float32)
@@ -362,7 +362,7 @@ class TestGetBackground2D:
         np.testing.assert_allclose(expected, background, rtol=1e-5)
 
     def test_interpolate(self):
-        """Linear interpolation across completely flagged data"""
+        """Test linear interpolation across completely flagged data."""
         # Block of channels is 7.5, then a block is flagged (still 7.5), then
         # a block is 3.0.
         self.data[:, 70:] = 3.0
@@ -613,7 +613,7 @@ class TestSumThresholdFlagger:
         assert_equal(False, out_flags[200, 170, 0])
 
     def _test_parallel(self, pool):
-        """Test that parallel execution gets same results as serial"""
+        """Test that parallel execution gets same results as serial."""
         rs = np.random.RandomState(seed=1)
         data, in_flags, expected = self._make_data(self.flagger, rs, shape=(234, 512, 32))
         out_serial = self.flagger.get_flags(data, in_flags)

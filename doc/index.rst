@@ -9,8 +9,10 @@ Welcome to katsdpsigproc's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
 
+   installation
+   user/index
    changelog
    katsdpsigproc
 

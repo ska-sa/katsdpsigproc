@@ -1,3 +1,5 @@
+"""Tests for :mod:`katsdpsigproc.accel` and test utilities for other modules."""
+
 import sys
 import functools
 import inspect
@@ -77,10 +79,15 @@ def _device_test_async(test: Callable[..., Awaitable[_T]]) -> Callable[..., Awai
 
 
 def device_test(test: Callable[..., _T]) -> Callable[..., _T]:
-    """Decorator that causes a test to be skipped if a compute device is not
-    available, and which disables autotuning. If autotuning is desired, use
-    :func:`force_autotune` inside (hence, afterwards on the decorator list)
-    this one."""
+    """Decorate an on-device test.
+
+    It provides a context and command queue to the test, skipping it if a
+    compute device is not available. It also disables autotuning, instead
+    using the `test` value provided for the autotune function.
+
+    If autotuning is desired, use :func:`force_autotune` inside (hence,
+    afterwards on the decorator list) this one.
+    """
     if inspect.iscoroutinefunction(test):
         return _device_test_async(test)    # type: ignore
     else:
@@ -88,8 +95,10 @@ def device_test(test: Callable[..., _T]) -> Callable[..., _T]:
 
 
 def cuda_test(test: _F) -> _F:
-    """Decorator that causes a test to be skipped if the device is not a CUDA
-    device. Put this *after* :meth:`device_test`."""
+    """Skip a test if the device is not a CUDA device.
+
+    Put this *after* :meth:`device_test`.
+    """
     @functools.wraps(test)
     def wrapper(*args, **kwargs):
         global _test_context
@@ -101,8 +110,10 @@ def cuda_test(test: _F) -> _F:
 
 @decorator
 def force_autotune(test: Callable[..., _T], *args, **kw) -> _T:
-    """Decorator that disables autotuning for a test. Instead, the test
-    value specified for each class is returned."""
+    """Force autotuning for a test (decorator).
+
+    It bypasses the autotuning cache so that the autotuning code always runs.
+    """
     with mock.patch('katsdpsigproc.tune.autotuner_impl', new=tune.force_autotuner):
         return test(*args, **kw)
 
@@ -343,6 +354,7 @@ class TestDeviceArray:
 
 class TestPinnedAMD(TestDeviceArray):
     """Run DeviceArray tests forcing `_PinnedAMD` class for pinned memory."""
+
     @device_test
     def setup(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
         context._force_pinned_amd = True        # type: ignore
@@ -354,7 +366,7 @@ class TestPinnedAMD(TestDeviceArray):
 
 
 class TestSVMArrayHost(TestHostArray):
-    """Tests SVMArray using the HostArray tests"""
+    """Test SVMArray using the HostArray tests."""
 
     cls = SVMArray
 
@@ -370,7 +382,7 @@ class TestSVMArrayHost(TestHostArray):
 
 
 class TestSVMArray(TestDeviceArray):
-    """Tests SVMArray using the DeviceArray tests, plus some new ones"""
+    """Tests SVMArray using the DeviceArray tests, plus some new ones."""
 
     cls = SVMArray
 
@@ -427,7 +439,7 @@ class TestSVMAllocator:
 
 
 class TestDimension:
-    """Tests for :class:`katsdpsigproc.accel.Dimension`"""
+    """Tests for :class:`katsdpsigproc.accel.Dimension`."""
 
     def test_is_power2(self) -> None:
         assert accel.Dimension._is_power2(1)
@@ -439,7 +451,7 @@ class TestDimension:
         assert not accel.Dimension._is_power2(5)
 
     def test_min_padded_round(self) -> None:
-        """Constructor computes min padded size correctly"""
+        """Constructor computes min padded size correctly."""
         dim = accel.Dimension(17, min_padded_round=4)
         assert_equal(20, dim.min_padded_size)
         dim = accel.Dimension(20, min_padded_round=5)
@@ -456,7 +468,7 @@ class TestDimension:
         assert_equal(accel.Dimension.ALIGN_BYTES, dim.alignment_hint)
 
     def test_valid(self) -> None:
-        """Test `valid` method on non-exact dimension"""
+        """Test `valid` method on non-exact dimension."""
         dim = accel.Dimension(17, min_padded_round=8, alignment=4)
         assert dim.valid(24)
         assert not dim.valid(20)
@@ -464,7 +476,7 @@ class TestDimension:
         assert not dim.valid(30)
 
     def test_valid_exact(self) -> None:
-        """Test `valid` method on exact dimension"""
+        """Test `valid` method on exact dimension."""
         dim = accel.Dimension(20, alignment=4, exact=True)
         assert dim.valid(20)
         assert not dim.valid(24)
@@ -497,7 +509,7 @@ class TestDimension:
         assert_equal(False, dim1.exact)
 
     def test_link_bad_size(self) -> None:
-        """Linking dimensions with different sizes fails"""
+        """Linking dimensions with different sizes fails."""
         dim1 = accel.Dimension(22, min_padded_size=28, alignment=4)
         dim2 = accel.Dimension(23, min_padded_size=24, alignment=8, align_dtype=np.int32)
         with assert_raises(ValueError):
@@ -505,7 +517,7 @@ class TestDimension:
         assert dim1._root() is not dim2._root()
 
     def test_link_bad_exact(self) -> None:
-        """Linking dimensions into an unsatisfiable requirement fails"""
+        """Linking dimensions into an unsatisfiable requirement fails."""
         dim1 = accel.Dimension(22, exact=True)
         dim2 = accel.Dimension(22, min_padded_size=28)
         dim3 = accel.Dimension(22, alignment=4)
@@ -518,32 +530,32 @@ class TestDimension:
         assert dim1._root() is not dim3._root()
 
     def test_required_padded_size(self) -> None:
-        """The padded size is computed correctly"""
+        """The padded size is computed correctly."""
         dim = accel.Dimension(30, 7, alignment=4)
         assert_equal(36, dim.required_padded_size())
 
     def test_required_padded_size_dtype(self) -> None:
-        """The padded size is computed correctly when an alignment hint is given"""
+        """The padded size is computed correctly when an alignment hint is given."""
         dim = accel.Dimension(1100, 200, align_dtype=np.float32)
         assert_equal(1216, dim.required_padded_size())
 
     def test_required_padded_size_exact(self) -> None:
-        """The padded size is computed correctly for exact dimensions"""
+        """The padded size is computed correctly for exact dimensions."""
         dim = accel.Dimension(1100, align_dtype=np.float32, exact=True)
         assert_equal(1100, dim.required_padded_size())
 
     def test_required_padded_size_small(self) -> None:
-        """The alignment hint is ignored for small sizes"""
+        """The alignment hint is ignored for small sizes."""
         dim = accel.Dimension(18, alignment=8, align_dtype=np.uint8)
         assert_equal(24, dim.required_padded_size())
 
 
 class TestIOSlot:
-    """Tests for :class:`katsdpsigproc.accel.IOSlot`"""
+    """Tests for :class:`katsdpsigproc.accel.IOSlot`."""
 
     @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
     def test_allocate(self, DeviceArray: mock.Mock) -> None:
-        """IOSlot.allocate must correctly allocate a buffer"""
+        """IOSlot.allocate must correctly allocate a buffer."""
         dims = (
             accel.Dimension(50, min_padded_size=60, alignment=8),
             accel.Dimension(30, min_padded_size=50, alignment=4)
@@ -572,7 +584,7 @@ class TestIOSlot:
 
     @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
     def test_allocate_raw(self, DeviceArray: mock.Mock) -> None:
-        """Test IOSlot.allocate with a raw parameter"""
+        """Test IOSlot.allocate with a raw parameter."""
         shape = (50, 30)
         dtype = np.dtype(np.float32)
         raw = mock.sentinel.raw
@@ -594,7 +606,7 @@ class TestIOSlot:
             mock.sentinel.context, shape, dtype, shape, raw)
 
     def test_validate_shape(self) -> None:
-        """IOSlot.validate must check that the shape matches"""
+        """IOSlot.validate must check that the shape matches."""
         ary = mock.sentinel.ary
         ary.dtype = np.float32
         ary.shape = (5, 3)
@@ -612,7 +624,7 @@ class TestIOSlot:
             slot.bind(ary)
 
     def test_validate_dtype(self) -> None:
-        """IOSlot.validate must check that the dtype matches"""
+        """IOSlot.validate must check that the dtype matches."""
         ary = mock.sentinel.ary
         ary.dtype = np.float32
         ary.shape = (5, 3)
@@ -628,7 +640,7 @@ class TestIOSlot:
             slot.bind(ary)
 
     def test_validate_padded_shape(self) -> None:
-        """IOSlot.validate must check that the padded shape is valid"""
+        """IOSlot.validate must check that the padded shape is valid."""
         ary = mock.sentinel.ary
         ary.dtype = np.float32
         ary.shape = (5, 3)
@@ -648,7 +660,7 @@ class TestIOSlot:
         assert_equal(4 * 28 * 64, slot.required_bytes())
 
     def test_bind_none(self) -> None:
-        """IOSlot.bind must accept `None`"""
+        """IOSlot.bind must accept `None`."""
         ary = mock.sentinel.ary
         ary.dtype = np.float32
         ary.shape = (5, 3)
@@ -661,7 +673,7 @@ class TestIOSlot:
 
 
 class TestCompoundIOSlot:
-    """Tests for :class:`katsdpsigproc.accel.CompoundIOSlot`"""
+    """Tests for :class:`katsdpsigproc.accel.CompoundIOSlot`."""
 
     def setup(self) -> None:
         self.dims1 = (
@@ -678,26 +690,26 @@ class TestCompoundIOSlot:
         self.slot2 = accel.IOSlot(self.dims2, np.float32)
 
     def test_check_empty(self) -> None:
-        """CompoundIOSlot constructor must reject empty list"""
+        """:class:`.CompoundIOSlot` constructor must reject empty list."""
         with assert_raises(ValueError):
             accel.CompoundIOSlot([])
 
     def test_validate_shape(self) -> None:
-        """CompoundIOSlot must check that children have consistent shapes"""
+        """:class:`.CompoundIOSlot` must check that children have consistent shapes."""
         slot1 = accel.IOSlot((5, 3), np.float32)
         slot2 = accel.IOSlot((5, 4), np.float32)
         with assert_raises(ValueError):
             accel.CompoundIOSlot([slot1, slot2])
 
     def test_validate_dtype(self) -> None:
-        """CompoundIOSlot must check that children have consistent data types"""
+        """:class:`.CompoundIOSlot` must check that children have consistent data types."""
         slot1 = accel.IOSlot((5, 3), np.float32)
         slot2 = accel.IOSlot((5, 3), np.int32)
         with assert_raises(TypeError):
             accel.CompoundIOSlot([slot1, slot2])
 
     def test_attributes(self) -> None:
-        """CompoundIOSlot must correctly combine attributes"""
+        """:class:`.CompoundIOSlot` must correctly combine attributes."""
         slot = accel.CompoundIOSlot([self.slot1, self.slot2])
         assert_equal((13, 7, 22), slot.shape)
         assert_equal(np.float32, slot.dtype)
@@ -711,7 +723,7 @@ class TestCompoundIOSlot:
             TestDimension.assert_dimensions_equal(x, y)
 
     def test_bind(self) -> None:
-        """CompoundIOSlot.bind must bind children"""
+        """CompoundIOSlot.bind must bind children."""
         ary = mock.sentinel.ary
         ary.shape = (13, 7, 22)
         ary.dtype = np.float32
@@ -723,9 +735,8 @@ class TestCompoundIOSlot:
         assert_equal(ary, self.slot2.buffer)
 
     def test_bind_fail(self) -> None:
-        """CompoundIOSlot.bind must not have side effects if the array is not
-        valid for all children.
-        """
+        """CompoundIOSlot.bind must not have side effects if the array is \
+        not valid for all children."""
         ary = mock.sentinel.ary
         ary.shape = (13, 7, 22)
         ary.dtype = np.float32
@@ -744,7 +755,7 @@ class TestCompoundIOSlot:
 
 
 class TestAliasIOSlot:
-    """Tests for :class:`katsdpsigproc.accel.AliasIOSlot`"""
+    """Tests for :class:`katsdpsigproc.accel.AliasIOSlot`."""
 
     def setup(self) -> None:
         self.slot1 = accel.IOSlot((3, 7), np.float32)
@@ -776,6 +787,7 @@ class TestVisualizeOperation:
     This is just a basic smoke test to ensure that it runs without crashing.
     A real test requires a human to sanity-check the visual output.
     """
+
     class Inner(accel.Operation):
         def _run(self) -> None:
             pass

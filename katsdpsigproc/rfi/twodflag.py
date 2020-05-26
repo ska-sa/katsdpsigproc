@@ -235,7 +235,7 @@ def _linearly_interpolate_nans(data):
 
 @numba.jit(nopython=True, nogil=True)
 def _box_gaussian_filter1d(data, r, out, passes):
-    """Implementation of :func:`_box_gaussian_filter` along the first axis of an array.
+    """Implement :func:`_box_gaussian_filter` along the first axis of an array.
 
     It is safe to use this function in-place i.e. with `out` equal to `data`.
 
@@ -345,7 +345,7 @@ def masked_gaussian_filter(data, flags, sigma, out, passes=4):
     Some values may be flagged and are ignored. Values outside the grid are
     also treated as if flagged.
 
-    See :func:`box_gaussian_filter` for a number of caveats. The result may
+    See :func:`_box_gaussian_filter` for a number of caveats. The result may
     contain non-finite values where the finite support of the Gaussian
     approximation contains no values without flags.
 
@@ -357,13 +357,10 @@ def masked_gaussian_filter(data, flags, sigma, out, passes=4):
         True values correspond to elements of `data` to be ignored
     sigma : float or sequence of floats
         Standard deviation of the Gaussian filter, per axis
+    out : ndarray, 2D
+        Output array, with same shape as `data`
     passes : int
         Number of boxcar filters to apply
-
-    Returns
-    -------
-    ndarray
-        Output data, with the same shape as the input
     """
     if data.shape != flags.shape:
         raise ValueError('shape mismatch between data and flags')
@@ -407,6 +404,8 @@ def _get_background2d(data, flags, iterations, spike_width, reject_threshold, fr
         The input data array to be smoothed, with shape (time, frequency).
     flags : 2D ndarray, boolean
         Flags corresponding to `data`
+    iterations : int
+        Number of iterations of Gaussian filtering
     spike_width : ndarray, float
         Two-element array containing the 1-sigma radius of the Gaussian filter
         in each axis.
@@ -474,7 +473,10 @@ def _convolve_flags(in_values, scale, threshold, out_flags, window):
 
 @numba.jit(nopython=True, nogil=True)
 def _sum_threshold1d(input_data, input_flags, output_flags, windows, outlier_nsigma, rho, chunks):
-    """Implementation of :func:`_sum_threshold`. It operates along the first axis."""
+    """Implement :func:`_sum_threshold`.
+
+    It operates along the first axis.
+    """
     for ci in range(chunks.size - 1):
         chunk_slice = slice(chunks[ci], chunks[ci + 1])
         chunk_data = input_data[chunk_slice]
@@ -726,6 +728,40 @@ def _get_baseline_flags(
     out_flags : ndarray, bool
         Returned flags (which will have more channels than `data` if
         `average_freq` is greater than 1).
+    outlier_nsigma : float
+        Number of standard deviations at which to flag
+    windows_time : array, int
+        Size of averaging windows to use in the SumThreshold method in time
+    windows_freq : array, int
+        Size of averaging windows to use in the SumThreshold method in frequency
+    background_reject : float
+        Number of sigma to reject outliers when backgrounding
+    background_iterations : int
+        Number of iterations to use when determining a smooth background, after each
+        iteration data in excess of `background_reject`*`sigma` are masked
+    spike_width_time : float
+        Characteristic width in dumps to smooth over when backgrounding. This is
+        the one-sigma width of the convolving Gaussian in axis 0.
+    spike_width_freq : float
+        Characteristic width in channels to smooth over when backgrounding. This is
+        the one-sigma width of the convolving Gaussian in axis 1.
+    time_extend : int
+        Size of kernel in time to convolve with flags after detection
+    freq_extend : int
+        Size of kernel in frequency to convolve with flags after detection
+    freq_chunk_ends : ndarray, float
+        Endpoints of intervals in which to compute noise estimates
+        independently. This array must start with 0 and end of the number of
+        channels, and be strictly increasing.
+    average_freq : int
+        Number of channels to average frequency before flagging. Flags will be extended
+        to the frequency shape of the input data before being returned
+    flag_all_time_frac : float
+        Fraction of data flagged above which to extend flags to all data in time axis.
+    flag_all_freq_frac : float
+        Fraction of data flagged above which to extend flags to all data in frequency axis.
+    rho : float
+        Parameter controlling the relationship between threshold and window size
     """
     n_time, n_freq = data.shape
     # Generate median spectrum, background it, and flag it
@@ -762,7 +798,7 @@ def _get_baseline_flags(
                     flag_all_time_frac, flag_all_freq_frac, out_flags)
 
 
-def _get_flags_mp(in_data, in_flags, flagger):
+def _get_flags_mp(in_data, in_flags, flagger):    # noqa: D401
     """Callback function for ProcessPoolExecutor.
 
     It allocates its own storage for the output.
@@ -892,7 +928,7 @@ class SumThresholdFlagger:
 
         This can run in parallel if given a
         :class:`concurrent.futures.Executor`. Performance is generally better
-        with a :class:`~current.futures.ThreadPoolExecutor`. While a
+        with a :class:`~concurrent.futures.ThreadPoolExecutor`. While a
         :class:`~concurrent.futures.ProcessPoolExecutor` is supported, it is
         usually limited by the speed at which the data can be pickled and
         transferred to the other processes.

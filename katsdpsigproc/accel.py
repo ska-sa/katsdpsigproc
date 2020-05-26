@@ -2,7 +2,7 @@
 
 Both OpenCL and CUDA are supported, as well as multiple devices.
 
-The modules :mod:`cuda` and :mod:`opencl` provide the abstraction layer,
+The modules :mod:`.cuda` and :mod:`.opencl` provide the abstraction layer,
 but most code will not import these directly (and it might not be possible
 to import them). Instead, use :func:`create_some_context` to set up a context
 on whatever device is available.
@@ -431,12 +431,12 @@ class DeviceArray:
 
     @property
     def ndim(self) -> int:
-        """Number of dimensions."""
+        """Return number of dimensions."""
         return len(self.shape)
 
     @property
     def strides(self) -> Tuple[int, ...]:
-        """Strides, as in numpy."""
+        """Return strides, as in numpy."""
         ans = [self.dtype.itemsize]
         for i in range(len(self.padded_shape) - 1, 0, -1):
             ans.append(ans[-1] * self.padded_shape[i])
@@ -508,17 +508,8 @@ class DeviceArray:
                          strides: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...], Tuple[int, ...]]:
         """Transform a slice selection into a form that is easier to consume internally.
 
-        The source and destination region are specified using a limited subset
-        of numpy indexing syntax. The following are supported:
-
-        - slices with positive strides
-        - integers
-        - :code:`np.newaxis`
-        - If fewer indices than axes are specified, all elements on the
-          remaining axes are used.
-
-        Ellipses are not yet supported, but it would be straightforward to add
-        support.
+        See :meth:`copy_region` for a description of what slice
+        expressions are supported.
 
         Parameters
         ----------
@@ -667,8 +658,17 @@ class DeviceArray:
 
         If the source and destination memory overlap, the result is undefined.
 
-        See :meth:`_canonical_slice` for a description of what slice
-        expressions are supported.
+        The regions to copy are specified using a subset of numpy array
+        indexing syntax. The following are supported:
+
+        - slices with positive strides
+        - integers
+        - :data:`np.newaxis <numpy.newaxis>`
+        - If fewer indices than axes are specified, all elements on the
+          remaining axes are used.
+
+        Ellipses are not yet supported, but it would be straightforward to add
+        support.
 
         Parameters
         ----------
@@ -677,7 +677,8 @@ class DeviceArray:
         dest
             Target of the copy
         src_region,dest_region
-            Index expressions constructed by `np.s_` or `np.index_exp`.
+            Index expressions constructed by :data:`np.s_ <numpy.s_>` or
+            :data:`!np.index_exp`.
 
         Raises
         ------
@@ -699,8 +700,8 @@ class DeviceArray:
                    device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
         """Perform a device-to-host copy of a subregion of `self` to `ary`.
 
-        See :meth:`_canonical_slice` for a description of what slice
-        expressions are supported.
+        See :meth:`~DeviceArray.copy_region` for a description of how regions
+        are specified.
 
         Parameters
         ----------
@@ -709,8 +710,8 @@ class DeviceArray:
         ary
             Target of the copy
         device_region,ary_region
-            Index expressions constructed by `np.s_` or `np.index_exp`, to specify
-            the source and target regions.
+            Index expressions constructed by :data:`np.s_ <numpy.s_>` or
+            :data:`!np.index_exp`, to specify the source and target regions.
         blocking
             If false, the operation will be asynchronous.
 
@@ -738,8 +739,8 @@ class DeviceArray:
                    device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
         """Perform a host-to-device copy of a subregion `ary` to `self`.
 
-        See :meth:`_canonical_slice` for a description of what slice
-        expressions are supported.
+        See :meth:`~DeviceArray.copy_region` for a description of how regions
+        are specified.
 
         Parameters
         ----------
@@ -748,8 +749,8 @@ class DeviceArray:
         ary
             Source of the copy
         device_region,ary_region
-            Index expressions constructed by `np.s_` or `np.index_exp`, to specify
-            the target and source regions.
+            Index expressions constructed by :data:`np.s_ <numpy.s_>` or
+            :data:`!np.index_exp`, to specify the source and target regions.
         blocking
             If false, the operation will be asynchronous.
 
@@ -883,6 +884,8 @@ class SVMArray(HostArray, DeviceArray):
 
 
 class AbstractAllocator(ABC, Generic[_RB]):
+    """Interface for allocating device memory."""
+
     context = None    # type: AbstractContext
 
     @abstractmethod
@@ -1126,14 +1129,14 @@ class IOSlotBase(ABC):
 
     @abstractmethod
     def required_bytes(self) -> int:
-        """Number of bytes of device storage required."""
+        """Return number of bytes of device storage required."""
 
     @abstractmethod
     def is_bound(self):
-        """Whether storage is currently attached to this slot."""
+        """Return whether storage is currently attached to this slot."""
 
     def attachable(self) -> bool:
-        """Whether this slot can be attached as a child to another."""
+        """Return whether this slot can be attached as a child to another."""
         return self.is_root and not self.is_bound()
 
     @abstractmethod
@@ -1255,7 +1258,7 @@ class IOSlot(IOSlotBase):
         self._bind(buffer)
 
     def required_padded_shape(self) -> Tuple[int, ...]:
-        """Padded shape required to satisfy only this slot."""
+        """Return padded shape required to satisfy only this slot."""
         return tuple(x.required_padded_size() for x in self.dimensions)
 
     def required_bytes(self) -> int:
@@ -1486,7 +1489,7 @@ class Operation(ABC):
             raise TypeError('slot ' + name + ' is an alias slot')
 
     def required_bytes(self) -> int:
-        """Number of bytes of device storage required."""
+        """Return number of bytes of device storage required."""
         return sum([x.required_bytes() for x in self.slots.values()])
 
     def parameters(self) -> Mapping[str, Any]:
@@ -1681,7 +1684,9 @@ def _visualize_operation(
 def visualize_operation(operation: Operation, filename: str) -> None:
     """Write a visualization of an :class:`Operation` to file.
 
-    This requires :mod:`graphviz` to be installed.
+    This requires the `graphviz package`_ to be installed.
+
+    .. _graphviz package: https://graphviz.readthedocs.io/en/stable/
 
     Parameters
     ----------

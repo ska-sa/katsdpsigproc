@@ -1,4 +1,4 @@
-"""Tests for :mod:`katsdpsigproc.zscale."""
+"""Tests for :mod:`katsdpsigproc.zscale`."""
 
 import numpy as np
 from nose.tools import assert_equal, assert_less

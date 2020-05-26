@@ -48,12 +48,12 @@ def sample_image(image: np.ndarray, max_samples: int = 100000,
 def zscale(samples: np.ndarray, *, contrast: float = 0.02, stretch: float = 5.0,
            sigma_rej: float = 3.0, max_iter: int = 500, max_reject: float = 0.1,
            min_npix: int = 5) -> Tuple[float, float]:
-    """A Python implementation of the IRAF/ds9 zscale algorithm.
+    """Determine the minimum/maximum image values for a given contrast.
 
-    This is used for determining maximum and minumum image values for a given
-    contrast. This is used to scale a colourmap applied to FITS images when
+    This is used to scale a colourmap applied to FITS images when
     saving to alternative image formats or for on screen display.
 
+    It is a Python implementation of the IRAF/ds9 zscale algorithm.
     A description of the zscale algorithm can be found here:
     https://iraf.net/forum/viewtopic.php?showtopic=134139
 
@@ -92,7 +92,7 @@ def zscale(samples: np.ndarray, *, contrast: float = 0.02, stretch: float = 5.0,
         Maximum number of iterations.
     max_reject
         Stop iterating if number of pixels left is less than
-        `max_reject`*npix.
+        `max_reject` * npix.
     min_npix: int
         Hard limit on the minimum number of pixels allowed in
         the sample and after rejection.

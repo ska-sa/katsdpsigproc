@@ -41,13 +41,24 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
-    'sphinx.ext.napoleon'
+    'sphinx.ext.napoleon',
+    'sphinx.ext.graphviz',
+    'sphinx.ext.intersphinx',
+    'sphinxcontrib.tikz'
 ]
 
 # From numpy code: these warnings are harmless
 import warnings
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'numpy': ('https://numpy.org/doc/stable', None),
+    'pycuda': ('https://documen.tician.de/pycuda/', None),
+    'pyopencl': ('https://documen.tician.de/pyopencl', None),
+    'graphviz': ('https://graphviz.readthedocs.io/en/stable/', None)
+}
 
 # Prevents thousands of "toctree contains reference to nonexisting document" warnings
 numpydoc_class_members_toctree = False
@@ -66,7 +77,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'katsdpsigproc'
-copyright = '2014, SKA South Africa'
+copyright = '2014-2020, National Research Foundation (SARAO)'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -114,6 +125,8 @@ pygments_style = 'sphinx'
 
 # If true, keep warnings as "system message" paragraphs in the built documents.
 #keep_warnings = False
+
+graphviz_output_format = 'svg'
 
 # -- Options for HTML output ----------------------------------------------
 

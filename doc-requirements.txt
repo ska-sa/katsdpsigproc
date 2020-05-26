@@ -16,12 +16,12 @@ six
 snowballstemmer
 sphinx
 sphinxcontrib-applehelp
-sphinxcontrib-asyncio==0.2.0
 sphinxcontrib-devhelp
 sphinxcontrib-htmlhelp
 sphinxcontrib-jsmath
 sphinxcontrib-qthelp
 sphinxcontrib-serializinghtml
+sphinxcontrib-tikz==0.4.8
 sphinxcontrib-websupport
 sphinx-rtd-theme
 urllib3

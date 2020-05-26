@@ -1,0 +1,13 @@
+graph {
+	graph [clusterrank=local compound=yes ranksep=3]
+	subgraph root {
+		graph [label=root]
+		"op_root!fill" [label=<<table border="1" cellborder="0" rows="*" columns="*"><tr><td colspan="1">fill</td></tr><tr><td port="data"><font point-size="9"><i>data</i></font></td></tr></table>> shape=plain]
+		"op_root!hreduce" [label=<<table border="1" cellborder="0" rows="*" columns="*"><tr><td colspan="2">hreduce</td></tr><tr><td port="src"><font point-size="9"><i>src</i></font></td><td port="dest"><font point-size="9"><i>dest</i></font></td></tr></table>> shape=plain]
+		slot_root_src [label=<<b>src</b><br/>10×5<br/>10×5<br/>float32> shape=box]
+		slot_root_dest [label=<<b>dest</b><br/>10<br/>10<br/>float32> shape=box]
+	}
+	"op_root!hreduce":src -- slot_root_src
+	"op_root!fill":data -- slot_root_src
+	"op_root!hreduce":dest -- slot_root_dest
+}

@@ -1,4 +1,4 @@
-"""Tests for RFI noise estimation algorithms"""
+"""Tests for RFI noise estimation algorithms."""
 
 from abc import ABC, abstractmethod
 

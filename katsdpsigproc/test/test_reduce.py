@@ -1,4 +1,4 @@
-"""Tests for wg_reduce.mako and reduce.py"""
+"""Tests for wg_reduce.mako and :mod:`katsdpsigproc.reduce`."""
 
 from typing import List, Tuple
 
@@ -71,7 +71,7 @@ def test_reduce_max(context: AbstractContext, queue: AbstractCommandQueue) -> No
 
 
 class TestHReduce:
-    """Tests for :class:`katsdpsigproc.reduce.HReduce`"""
+    """Tests for :class:`katsdpsigproc.reduce.HReduce`."""
 
     def check(self, context: AbstractContext, queue: AbstractCommandQueue,
               rows: int, columns: int, column_range: Tuple[int, int]) -> None:
@@ -91,16 +91,16 @@ class TestHReduce:
 
     @device_test
     def test_normal(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
-        """Test the usual case"""
+        """Test the usual case."""
         self.check(context, queue, 129, 173, (67, 128))
 
     @device_test
     def test_small(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
-        """Test that the special case for columns < work group size works"""
+        """Test that the special case for columns < work group size works."""
         self.check(context, queue, 7, 8, (1, 7))
 
     @device_test
     @force_autotune
     def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
-        """Test that autotuner runs successfully"""
+        """Test that autotuner runs successfully."""
         reduce.HReduceTemplate(context, np.uint32, 'unsigned int', 'a + b', '0')

@@ -88,7 +88,7 @@ DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
 }
 </%def>
 
-/* Specialisation of ranker_serial that provides the foreach function and
+/* Specialization of ranker_serial that provides the foreach function and
  * struct body. It stores values directly inside the object (which the
  * user must still populate). The number of values is fixed at compile time,
  * so smaller arrays must be handled by padding with NaNs.
