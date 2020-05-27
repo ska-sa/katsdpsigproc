@@ -101,14 +101,6 @@ katsdpsigproc.tune module
    :undoc-members:
    :show-inheritance:
 
-katsdpsigproc.zscale module
----------------------------
-
-.. automodule:: katsdpsigproc.zscale
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 
 Module contents
 ---------------
