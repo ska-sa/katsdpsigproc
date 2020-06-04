@@ -3,8 +3,7 @@
 
 import time
 import numpy as np
-from katsdpsigproc import accel
-from katsdpsigproc import maskedsum as msum
+from katsdpsigproc import accel, maskedsum
 
 context = accel.create_some_context(True)
 queue = context.create_command_queue(profile=True)
@@ -12,7 +11,7 @@ queue = context.create_command_queue(profile=True)
 data = np.random.randn(4000, 5000, 2).astype(np.float32).view(dtype=np.complex64)[..., 0]
 mask = np.ones((4000,)).astype(np.float32)
 
-template = msum.MaskedSumTemplate(context)
+template = maskedsum.MaskedSumTemplate(context)
 msum = template.instantiate(queue, data.shape)
 msum.ensure_all_bound()
 msum.buffer('src').set(queue, data)
