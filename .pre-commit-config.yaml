@@ -6,5 +6,5 @@
   rev: v0.780
   hooks:
     - id: mypy
-      files: ^(katsdpsigproc|scripts|doc/user/examples)
       args: []
+      pass_filenames: false
