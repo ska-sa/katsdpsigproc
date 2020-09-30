@@ -77,7 +77,7 @@ So what have we changed?
   which tells mako to include the content of :file:`port.mako` from
   katsdpsigproc. That file contains a lot of C macros and functions to provide
   portability between OpenCL and CUDA C. For example, it defines the
-  :c:macro:`!KERNEL` and :c:macro:`!GLOBAL`` macros, which expand to the
+  :c:macro:`!KERNEL` and :c:macro:`!GLOBAL` macros, which expand to the
   appropriate keywords for each API. On CUDA it also defines the
   :c:func:`!get_global_id` function.
 - Instead of :meth:`.AbstractContext.compile`, we're now using
