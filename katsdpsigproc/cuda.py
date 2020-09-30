@@ -137,7 +137,8 @@ class Context(AbstractContext[pycuda.gpuarray.GPUArray,
 
     def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> Program:
         with self:
-            module = pycuda.compiler.SourceModule(source, options=NVCC_FLAGS + extra_flags)
+            module = pycuda.compiler.SourceModule(source, options=NVCC_FLAGS + \
+                                                  (extra_flags if extra_flags is not None else []))
             return Program(module)
 
     def allocate_raw(self, n_bytes: int) -> pycuda.driver.DeviceAllocation:
