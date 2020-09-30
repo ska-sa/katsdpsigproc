@@ -136,6 +136,8 @@ class Context(AbstractContext[pycuda.gpuarray.GPUArray,
             return Device(pycuda.driver.Context.get_device())
 
     def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> Program:
+        if extra_flags is None:
+            extra_flags = []
         with self:
             module = pycuda.compiler.SourceModule(source, options=NVCC_FLAGS + extra_flags)
             return Program(module)
