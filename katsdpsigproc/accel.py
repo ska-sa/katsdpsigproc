@@ -365,13 +365,13 @@ class HostArray(np.ndarray):
     def padded_view(cls, obj: 'HostArray') -> np.ndarray:
         ...
 
-    @overload       # noqa: F811
+    @overload
     @classmethod
-    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:    # noqa: F811
         ...
 
-    @classmethod    # noqa: F811
-    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:
+    @classmethod
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:    # noqa: F811
         """Retrieve the view of the full memory without padding.
 
         Returns `None` if `cls.safe(obj)` is `False`.
