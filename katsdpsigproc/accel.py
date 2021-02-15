@@ -365,13 +365,13 @@ class HostArray(np.ndarray):
     def padded_view(cls, obj: 'HostArray') -> np.ndarray:
         ...
 
-    @overload       # noqa: F811
+    @overload
     @classmethod
-    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:    # noqa: F811
         ...
 
-    @classmethod    # noqa: F811
-    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:
+    @classmethod
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:    # noqa: F811
         """Retrieve the view of the full memory without padding.
 
         Returns `None` if `cls.safe(obj)` is `False`.
@@ -841,6 +841,8 @@ class SVMArray(HostArray, DeviceArray):
 
         For SVMArray, this is a CPU copy.
         """
+        # Ensure that it synchronises with previous work in the queue
+        command_queue.finish()
         self[...] = ary
 
     def get(self, command_queue: AbstractCommandQueue,
@@ -851,6 +853,8 @@ class SVMArray(HostArray, DeviceArray):
         a newly allocated :class:`HostArray`. The actual target is returned.
         For SVMArray, this is a CPU copy.
         """
+        # Ensure that it synchronises with previous work in the queue
+        command_queue.finish()
         if ary is None or not self._copyable(ary):
             return self.copy()
         else:
@@ -876,10 +880,14 @@ class SVMArray(HostArray, DeviceArray):
 
     def set_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
                    device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
+        # Ensure that it synchronises with previous work in the queue
+        command_queue.finish()
         self[device_region] = ary[ary_region]
 
     def get_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
                    device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
+        # Ensure that it synchronises with previous work in the queue
+        command_queue.finish()
         ary[ary_region] = self[device_region]
 
 
