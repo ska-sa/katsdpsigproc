@@ -338,11 +338,15 @@ class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event
     def enqueue_zero_buffer(self, buffer: _AnyBuffer) -> None:
         with self.context:
             if isinstance(buffer, pycuda.gpuarray.GPUArray):
-                pycuda.driver.memset_d8(buffer.gpudata, 0, buffer.mem_size * buffer.dtype.itemsize)
+                pycuda.driver.memset_d8_async(
+                    buffer.gpudata, 0, buffer.mem_size * buffer.dtype.itemsize,
+                    stream=self._pycuda_stream)
             else:
                 # managed memory
-                pycuda.driver.memset_d8(buffer.base.get_device_pointer(), 0,
-                                        buffer.size * buffer.dtype.itemsize)
+                pycuda.driver.memset_d8_async(
+                    buffer.base.get_device_pointer(), 0,
+                    buffer.size * buffer.dtype.itemsize,
+                    stream=self._pycuda_stream)
 
     def enqueue_kernel(self, kernel: Kernel, args: Sequence[Any],
                        global_size: Tuple[int, ...], local_size: Tuple[int, ...]) -> None:
