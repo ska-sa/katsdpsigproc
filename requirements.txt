@@ -1,16 +1,12 @@
+-c https://raw.githubusercontent.com/ska-sa/katsdpdockerbase/master/docker-base-build/base-requirements.txt
+
 appdirs
 decorator
-katversion
-llvmlite                   # via numba
 mako
-markupsafe                 # via mako
 numba
 numpy
 pandas
 pycuda
 pyopencl
-python-dateutil            # via Pandas
-pytools
-pytz                       # via Pandas
 scipy
 typing_extensions
