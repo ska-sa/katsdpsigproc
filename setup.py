@@ -2,7 +2,7 @@
 from setuptools import setup, find_packages
 
 
-tests_require = ['nose', 'asynctest']
+tests_require = ['nose', 'asynctest', 'graphviz']
 
 setup(
     name="katsdpsigproc",
@@ -14,13 +14,13 @@ setup(
     url="https://github.com/ska-sa/katsdpsigproc",
     setup_requires=["katversion"],
     install_requires=[
-        "numpy>=1.10",
-        "scipy",
-        "pandas",
-        "numba>=0.36.1",   # Older versions have bugs in median functions
+        "appdirs",
         "decorator",
         "mako",
-        "appdirs",
+        "numba>=0.36.1",   # Older versions have bugs in median functions
+        "numpy>=1.10",
+        "pandas",
+        "scipy",
         "typing_extensions"
     ],
     extras_require={
