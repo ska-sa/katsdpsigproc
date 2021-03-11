@@ -11,6 +11,10 @@ from unittest import mock
 from typing import Tuple, Optional, Callable, Awaitable, Type, TypeVar, Any
 
 import numpy as np
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
 from decorator import decorator
 from mako.template import Template
 
@@ -146,7 +150,7 @@ class TestLinenoLexer:
 class TestHostArray:
     cls = HostArray      # type: Type[HostArray]
 
-    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
                  padded_shape: Tuple[int, ...]) -> HostArray:
         return self.cls(shape, dtype, padded_shape)
 
@@ -342,7 +346,7 @@ class TestDeviceArray:
         try:
             # CUDA
             if isinstance(ary, SVMArray):
-                actual_raw = ary.base.base
+                actual_raw = ary.base.base  # type: ignore
                 raw = raw._wrapped
             else:
                 actual_raw = ary.buffer.gpudata
@@ -370,7 +374,7 @@ class TestSVMArrayHost(TestHostArray):
 
     cls = SVMArray
 
-    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
                  padded_shape: Tuple[int, ...]) -> SVMArray:
         return self.cls(self.context, shape, dtype, padded_shape)
 

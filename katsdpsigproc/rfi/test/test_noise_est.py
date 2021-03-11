@@ -9,9 +9,9 @@ from ...abc import AbstractContext, AbstractCommandQueue
 from ...test.test_accel import device_test, force_autotune
 
 
-_deviations = None          # type: np.ndarray
-_deviations_big = None      # type: np.ndarray
-_expected = None            # type: np.ndarray
+_deviations: np.ndarray
+_deviations_big: np.ndarray
+_expected: np.ndarray
 
 
 def setup():   # type: () -> None

@@ -4,6 +4,10 @@ from typing import Tuple, Mapping, Callable, Optional, Any, cast
 from typing_extensions import TypedDict
 
 import numpy as np
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
 
 from . import accel
 from . import tune
@@ -40,7 +44,7 @@ class HReduceTemplate:
         - wgsy: number of rows to handle per workgroup
     """
 
-    def __init__(self, context: AbstractContext, dtype: np.dtype, ctype: str,
+    def __init__(self, context: AbstractContext, dtype: DTypeLike, ctype: str,
                  op: str, identity: str, extra_code: str = '',
                  tuning: Optional[_TuningDict] = None) -> None:
         self.context = context
@@ -59,7 +63,7 @@ class HReduceTemplate:
 
     @classmethod
     @tune.autotuner(test={'wgsx': 64, 'wgsy': 4})
-    def autotune(cls, context: AbstractContext, dtype: np.dtype, ctype: str,
+    def autotune(cls, context: AbstractContext, dtype: DTypeLike, ctype: str,
                  op: str, identity: str, extra_code: str) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         shape = (2048, 1024)

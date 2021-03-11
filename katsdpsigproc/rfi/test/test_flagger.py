@@ -12,9 +12,9 @@ from ...test.test_accel import device_test
 from .. import device
 
 
-_vis = None            # type: np.ndarray
-_spikes = None         # type: np.ndarray
-_input_flags = None    # type: np.ndarray
+_vis: np.ndarray
+_spikes: np.ndarray
+_input_flags: np.ndarray
 
 
 def setup():   # type: () -> None

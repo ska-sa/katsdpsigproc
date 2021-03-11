@@ -27,6 +27,10 @@ from typing import (List, Tuple, Dict, Set, Mapping, MutableMapping, Sequence,
                     cast, overload, TYPE_CHECKING)
 
 import numpy as np
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
 import mako.lexer
 from mako.template import Template
 from mako.lookup import TemplateLookup
@@ -332,7 +336,7 @@ class HostArray(np.ndarray):
         efficient copies to and from this context.
     """
 
-    def __new__(cls, shape: Tuple[int, ...], dtype: np.dtype,
+    def __new__(cls, shape: Tuple[int, ...], dtype: DTypeLike,
                 padded_shape: Optional[Tuple[int, ...]] = None,
                 context: Optional[AbstractContext] = None):
         if padded_shape is None:
@@ -356,7 +360,7 @@ class HostArray(np.ndarray):
     def safe(cls, obj: np.ndarray) -> bool:
         """Determine whether self can be copied to/from a device directly."""
         try:
-            return obj._owner is not None
+            return obj._owner is not None  # type: ignore
         except AttributeError:
             return False
 
@@ -377,7 +381,7 @@ class HostArray(np.ndarray):
         Returns `None` if `cls.safe(obj)` is `False`.
         """
         try:
-            return obj._owner
+            return obj._owner  # type: ignore
         except AttributeError:
             return None
 
@@ -417,17 +421,25 @@ class DeviceArray:
     """
 
     def __init__(self, context: AbstractContext, shape: Tuple[int, ...],
-                 dtype: np.dtype, padded_shape: Optional[Tuple[int, ...]] = None,
+                 dtype: DTypeLike, padded_shape: Optional[Tuple[int, ...]] = None,
                  raw: Any = None) -> None:
         if padded_shape is None:
             padded_shape = shape
         assert len(shape) == len(padded_shape)
         assert np.all(np.greater_equal(padded_shape, shape))
-        self.shape = shape
-        self.dtype = np.dtype(dtype)
+        self._shape = shape
+        self._dtype: np.dtype = np.dtype(dtype)
         self.padded_shape = padded_shape
         self.context = context
         self.buffer = context.allocate(padded_shape, dtype, raw)
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return self._shape
+
+    @property
+    def dtype(self) -> np.dtype:
+        return self._dtype
 
     @property
     def ndim(self) -> int:
@@ -447,10 +459,10 @@ class DeviceArray:
         return (HostArray.safe(ary)
                 and ary.dtype == self.dtype
                 and ary.shape == self.shape
-                and ary.padded_shape == self.padded_shape)
+                and ary.padded_shape == self.padded_shape)  # type: ignore
 
     @classmethod
-    def _contiguous(cls, ary: HostArray) -> HostArray:
+    def _contiguous(cls, ary: HostArray) -> np.ndarray:
         """Return a contiguous view of a copyable array.
 
         The return value is suitable for passing to PyCUDA or PyOpenCL
@@ -466,7 +478,7 @@ class DeviceArray:
         """Return an array with the same content as `ary`, but the same memory layout as `self`."""
         assert ary.shape == self.shape
         if self._copyable(ary):
-            return ary
+            return ary  # type: ignore
         tmp = self.empty_like()
         np.copyto(tmp, ary, casting='no')
         return tmp
@@ -485,6 +497,7 @@ class DeviceArray:
         """
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
+        assert isinstance(ary, HostArray)
         command_queue.enqueue_read_buffer(self.buffer, self._contiguous(ary))
         return ary
 
@@ -499,6 +512,7 @@ class DeviceArray:
         """Copy asynchronously from self to `ary` (see :meth:`get`)."""
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
+        assert isinstance(ary, HostArray)
         command_queue.enqueue_read_buffer(
             self.buffer, self._contiguous(ary), blocking=False)
         return ary
@@ -728,6 +742,7 @@ class DeviceArray:
         """
         if not HostArray.safe(ary):
             raise ValueError('Target region is not suitable for device-to-host copy')
+        assert isinstance(ary, HostArray)
         device_origin, ary_origin, shape, device_strides, ary_strides = \
             self._region_transfer_params(self, ary, device_region, ary_region)
         self._transfer_region(
@@ -768,6 +783,7 @@ class DeviceArray:
             np.copyto(tmp, ary[ary_region], casting='no')
             ary = tmp
             ary_region = np.s_[()]
+        assert isinstance(ary, HostArray)
         ary_origin, device_origin, shape, ary_strides, device_strides = \
             self._region_transfer_params(ary, self, ary_region, device_region)
         self._transfer_region(
@@ -806,7 +822,7 @@ class SVMArray(HostArray, DeviceArray):
         If specified, provides the backing memory
     """
 
-    def __new__(cls, context: AbstractContext, shape: Tuple[int, ...], dtype: np.dtype,
+    def __new__(cls, context: AbstractContext, shape: Tuple[int, ...], dtype: DTypeLike,
                 padded_shape: Optional[Tuple[int, ...]] = None, raw: Any = None) -> 'SVMArray':
         if padded_shape is None:
             padded_shape = shape
@@ -829,7 +845,7 @@ class SVMArray(HostArray, DeviceArray):
 
     @property
     def buffer(self) -> np.ndarray:
-        return self._owner
+        return self._owner  # type: ignore
 
     def _copyable(self, ary: np.ndarray) -> bool:
         """Whether `ary` can be copied to/from this array directly."""
@@ -897,7 +913,7 @@ class AbstractAllocator(ABC, Generic[_RB]):
     context = None    # type: AbstractContext
 
     @abstractmethod
-    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
                  padded_shape: Optional[Tuple[int, ...]] = None,
                  raw: Optional[_RB] = None) -> DeviceArray:
         pass
@@ -913,7 +929,7 @@ class DeviceAllocator(Generic[_B, _RB, _RS, _D, _P, _Q, _TQ], AbstractAllocator[
     def __init__(self, context: AbstractContext[_B, _RB, _RS, _D, _P, _Q, _TQ]) -> None:
         self.context = context
 
-    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
                  padded_shape: Optional[Tuple[int, ...]] = None,
                  raw: Optional[_RB] = None) -> DeviceArray:
         return DeviceArray(self.context, shape, dtype, padded_shape, raw)
@@ -928,7 +944,7 @@ class SVMAllocator(Generic[_B, _RB, _RS, _D, _P, _Q, _TQ], AbstractAllocator[_RS
     def __init__(self, context: AbstractContext[_B, _RB, _RS, _D, _P, _Q, _TQ]) -> None:
         self.context = context
 
-    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
                  padded_shape: Optional[Tuple[int, ...]] = None,
                  raw: Optional[_RS] = None) -> SVMArray:
         return SVMArray(self.context, shape, dtype, padded_shape, raw)
@@ -987,7 +1003,7 @@ class Dimension:
 
     def __init__(self, size: int,
                  min_padded_round: Optional[int] = None, min_padded_size: Optional[int] = None,
-                 alignment: int = 1, align_dtype: Optional[np.dtype] = None,
+                 alignment: int = 1, align_dtype: Optional[DTypeLike] = None,
                  exact: bool = False) -> None:
         if min_padded_size is None:
             if min_padded_round is not None:
@@ -1060,7 +1076,7 @@ class Dimension:
             return (padded_size >= root._min_padded_size
                     and padded_size % root._alignment == 0)
 
-    def add_align_dtype(self, dtype: np.ndarray) -> None:
+    def add_align_dtype(self, dtype: DTypeLike) -> None:
         """Add an alignment hint.
 
         Indicates that this will be used with an array whose fastest-varying
@@ -1198,13 +1214,13 @@ class IOSlot(IOSlotBase):
         else:
             return Dimension(dimension)
 
-    def __init__(self, dimensions: Tuple[Union[Dimension, int], ...], dtype: np.dtype) -> None:
+    def __init__(self, dimensions: Tuple[Union[Dimension, int], ...], dtype: DTypeLike) -> None:
         super().__init__()
         self.dimensions = tuple([self._make_dimension(x) for x in dimensions])
         self.shape = tuple([x.size for x in self.dimensions])
         if len(self.dimensions) > 1:
             self.dimensions[-1].add_align_dtype(dtype)
-        self.dtype = np.dtype(dtype)
+        self.dtype: np.dtype = np.dtype(dtype)
         self.buffer = None       # type: Optional[DeviceArray]
 
     def is_bound(self) -> bool:

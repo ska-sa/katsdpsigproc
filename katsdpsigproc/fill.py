@@ -3,6 +3,10 @@
 from typing import Tuple, Mapping, Callable, Optional, Any
 
 import numpy as np
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
 
 from . import accel
 from . import tune
@@ -32,10 +36,10 @@ class FillTemplate:
         - wgs: number of workitems per workgroup
     """
 
-    def __init__(self, context: AbstractContext, dtype: np.dtype, ctype: str,
+    def __init__(self, context: AbstractContext, dtype: DTypeLike, ctype: str,
                  tuning: Optional[Mapping[str, Any]] = None) -> None:
         self.context = context
-        self.dtype = np.dtype(dtype)
+        self.dtype: np.dtype = np.dtype(dtype)
         self.ctype = ctype
         if tuning is None:
             tuning = self.autotune(context, dtype, ctype)
@@ -47,7 +51,7 @@ class FillTemplate:
 
     @classmethod
     @tune.autotuner(test={'wgs': 128})
-    def autotune(cls, context: AbstractContext, dtype: np.dtype, ctype: str) -> Mapping[str, Any]:
+    def autotune(cls, context: AbstractContext, dtype: DTypeLike, ctype: str) -> Mapping[str, Any]:
         queue = context.create_tuning_command_queue()
         shape = (1048576,)
         data = accel.DeviceArray(context, shape, dtype=dtype)
