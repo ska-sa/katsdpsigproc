@@ -11,8 +11,8 @@ from ...test.test_accel import device_test, force_autotune
 from .. import device
 
 
-_deviations = None       # type: np.ndarray
-_spikes = None           # type: np.ndarray
+_deviations: np.ndarray
+_spikes: np.ndarray
 
 
 def setup():   # type: () -> None

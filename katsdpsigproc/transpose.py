@@ -4,6 +4,10 @@ from typing import Tuple, Optional, Mapping, Callable, Any, cast
 from typing_extensions import TypedDict
 
 import numpy as np
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
 
 from . import accel
 from . import tune
@@ -34,10 +38,10 @@ class TransposeTemplate:
 
     autotune_version = 1
 
-    def __init__(self, context: AbstractContext, dtype: np.dtype, ctype: str,
+    def __init__(self, context: AbstractContext, dtype: DTypeLike, ctype: str,
                  tuning: Optional[_TuningDict] = None) -> None:
         self.context = context
-        self.dtype = np.dtype(dtype)
+        self.dtype: np.dtype = np.dtype(dtype)
         self.ctype = ctype
         if tuning is None:
             tuning = self.autotune(context, dtype, ctype)
@@ -53,7 +57,7 @@ class TransposeTemplate:
 
     @classmethod
     @tune.autotuner(test={'block': 8, 'vtx': 2, 'vty': 3})
-    def autotune(cls, context: AbstractContext, dtype: np.dtype, ctype: str) -> _TuningDict:
+    def autotune(cls, context: AbstractContext, dtype: DTypeLike, ctype: str) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         in_shape = (2048, 2048)
         out_shape = (2048, 2048)

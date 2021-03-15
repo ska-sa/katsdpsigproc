@@ -7,6 +7,10 @@ from typing import List, Tuple, Sequence, Optional, Type, TypeVar, Union, Any
 from types import TracebackType
 
 import numpy as np
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
 import pycuda.driver
 import pycuda.compiler
 import pycuda.gpuarray
@@ -117,7 +121,7 @@ class _RawManaged:
     def __init__(self, wrapped: np.ndarray) -> None:
         self._wrapped = wrapped
 
-    def get_array(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
+    def get_array(self, shape: Tuple[int, ...], dtype: DTypeLike) -> np.ndarray:
         """Return a view of (a prefix of) the memory, with the given shape and type."""
         size = int(np.product(shape)) * np.dtype(dtype).itemsize
         return self._wrapped[:size].view(dtype).reshape(shape)
@@ -146,12 +150,12 @@ class Context(AbstractContext[pycuda.gpuarray.GPUArray,
         with self:
             return pycuda.driver.mem_alloc(n_bytes)
 
-    def allocate(self, shape: Tuple[int, ...], dtype: np.ndarray,
+    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
                  raw: Optional[pycuda.driver.DeviceAllocation] = None) -> pycuda.gpuarray.GPUArray:
         with self:
             return pycuda.gpuarray.GPUArray(shape, dtype, gpudata=raw)
 
-    def allocate_pinned(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
+    def allocate_pinned(self, shape: Tuple[int, ...], dtype: DTypeLike) -> np.ndarray:
         with self:
             return pycuda.driver.pagelocked_empty(shape, dtype)
 
@@ -160,7 +164,7 @@ class Context(AbstractContext[pycuda.gpuarray.GPUArray,
             return _RawManaged(pycuda.driver.managed_empty(
                 (n_bytes,), np.uint8, mem_flags=pycuda.driver.mem_attach_flags.GLOBAL))
 
-    def allocate_svm(self, shape: Tuple[int, ...], dtype: np.dtype,
+    def allocate_svm(self, shape: Tuple[int, ...], dtype: DTypeLike,
                      raw: Optional[_RawManaged] = None) -> np.ndarray:
         with self:
             if raw is None:
@@ -220,7 +224,7 @@ class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event
         if isinstance(buffer, pycuda.gpuarray.GPUArray):
             return int(buffer.gpudata)
         else:
-            return buffer.base.get_device_pointer()
+            return buffer.base.get_device_pointer()  # type: ignore
 
     def enqueue_copy_buffer_rect(
             self, src_buffer: _AnyBuffer,
@@ -260,7 +264,7 @@ class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event
     def _byte_buffer(cls, data: np.ndarray) -> np.ndarray:
         """Reinterpret a contiguous array as an array of bytes."""
         view = data.view()
-        view.shape = data.size   # Reshape while disallowing copy
+        view.shape = (data.size,)   # Reshape while disallowing copy
         return view.view(np.uint8)
 
     def enqueue_read_buffer_rect(
@@ -344,7 +348,8 @@ class CommandQueue(AbstractCommandQueue[pycuda.gpuarray.GPUArray, Context, Event
             else:
                 # managed memory
                 pycuda.driver.memset_d8_async(
-                    buffer.base.get_device_pointer(), 0,
+                    buffer.base.get_device_pointer(),     # type: ignore
+                    0,
                     buffer.size * buffer.dtype.itemsize,
                     stream=self._pycuda_stream)
 

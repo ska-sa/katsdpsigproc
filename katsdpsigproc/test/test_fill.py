@@ -32,6 +32,7 @@ class TestFill:
         fn()
         # Check the result, including padding
         ret = data.get(queue)
+        assert ret.base is not None
         ret = ret.base
         np.testing.assert_equal(ret, 0xDEADBEEF)
 

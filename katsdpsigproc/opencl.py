@@ -9,6 +9,10 @@ from types import TracebackType
 import pyopencl
 import pyopencl.array
 import numpy as np
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
 
 from .abc import (AbstractProgram, AbstractKernel, AbstractDevice, AbstractContext,
                   AbstractEvent, AbstractCommandQueue, AbstractTuningCommandQueue)
@@ -34,10 +38,12 @@ class _PinnedAMD(np.ndarray):
     the buffer. This is based on AMD's optimization guide.
     """
 
-    _mapping = None     # type: pyopencl.MemoryMap
+    _mapping: pyopencl.MemoryMap = None
+    _buffer: pyopencl.Buffer
+    _array: _DummyArray
 
     def __new__(cls, context: 'Context', queue: 'CommandQueue',
-                shape: Tuple[int, ...], dtype: np.dtype) -> '_PinnedAMD':
+                shape: Tuple[int, ...], dtype: DTypeLike) -> '_PinnedAMD':
         dtype = np.dtype(dtype)
         n_bytes = int(np.product(shape)) * dtype.itemsize
         # Do not add READ or WRITE to the flags: doing so seems to cause AMD
@@ -256,11 +262,12 @@ class Context(AbstractContext[pyopencl.array.Array, pyopencl.Buffer, None,
     def allocate_raw(self, n_bytes: int) -> pyopencl.Buffer:
         return pyopencl.Buffer(self._pyopencl_context, pyopencl.mem_flags.READ_WRITE, n_bytes)
 
-    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype,
+    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
                  raw: Optional[pyopencl.Buffer] = None) -> pyopencl.array.Array:
         return pyopencl.array.Array(self._pyopencl_context, shape, dtype, data=raw)
 
-    def allocate_pinned(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
+    def allocate_pinned(self, shape: Tuple[int, ...], dtype: DTypeLike) -> np.ndarray:
+        dtype = np.dtype(dtype)
         device = self._pyopencl_context.devices[0]
         if (self._force_pinned_amd
             or ((device.type & pyopencl.device_type.GPU)
@@ -285,7 +292,7 @@ class Context(AbstractContext[pyopencl.array.Array, pyopencl.Buffer, None,
     def allocate_svm_raw(self, n_bytes: int) -> None:
         raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
 
-    def allocate_svm(self, shape: Tuple[int, ...], dtype: np.ndarray,
+    def allocate_svm(self, shape: Tuple[int, ...], dtype: DTypeLike,
                      raw: Optional[None] = None) -> np.ndarray:
         raise NotImplementedError("PyOpenCL does not support OpenCL Shared Virtual Memory")
 

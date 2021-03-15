@@ -124,7 +124,7 @@ class BackgroundMedianFilterHost(AbstractBackgroundHost):
             # already present. The mask function in Pandas doesn't
             # automatically broadcast, so we have to do so explicitly with
             # np.broadcast_to.
-            flags = flags.astype(np.bool)
+            flags = flags.astype(np.bool_)
             if flags.ndim < 2:
                 flags = flags[:, np.newaxis]
             flags_2d = np.broadcast_to(flags, vis.shape)
@@ -209,7 +209,7 @@ class ThresholdSumHost(AbstractThresholdHost):
         """
         # The data are modified, so use a copy
         deviations = deviations.copy()
-        flags = np.zeros_like(deviations, dtype=np.bool)
+        flags = np.zeros_like(deviations, dtype=np.bool_)
         for window, scale in zip(self.windows, self.threshold_scales):
             threshold = np.float32(threshold1 * scale)
             # Force already identified outliers to the threshold
@@ -220,7 +220,7 @@ class ThresholdSumHost(AbstractThresholdHost):
             # Identify outlier sums
             sum_flags = sums > threshold * window
             # Distribute flags
-            weight = np.ones(window, dtype=np.bool)
+            weight = np.ones(window, dtype=np.bool_)
             flags |= np.convolve(sum_flags, weight)
         return flags
 

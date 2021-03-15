@@ -5,6 +5,10 @@ from typing import List, Tuple, Sequence, Optional, Any, Type, TypeVar, Generic
 from types import TracebackType
 
 import numpy as np
+try:
+    from numpy.typing import DTypeLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
 
 
 _B = TypeVar('_B')     # buffer type
@@ -161,7 +165,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
         """Create an untyped buffer on the device."""
 
     @abstractmethod
-    def allocate(self, shape: Tuple[int, ...], dtype: np.dtype, raw: Optional[_RB] = None) -> _B:
+    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike, raw: Optional[_RB] = None) -> _B:
         """Create a typed buffer on the device.
 
         Parameters
@@ -175,7 +179,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
         """
 
     @abstractmethod
-    def allocate_pinned(self, shape: Tuple[int, ...], dtype: np.dtype) -> np.ndarray:
+    def allocate_pinned(self, shape: Tuple[int, ...], dtype: DTypeLike) -> np.ndarray:
         """Create a buffer in host memory that can be efficiently copied to and from the device.
 
         Parameters
@@ -191,7 +195,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
         """Allocate raw storage that can be passed to :meth:`allocate_svm`."""
 
     @abstractmethod
-    def allocate_svm(self, shape: Tuple[int, ...], dtype: np.ndarray,
+    def allocate_svm(self, shape: Tuple[int, ...], dtype: DTypeLike,
                      raw: Optional[_RS] = None) -> np.ndarray:
         """Allocate shared virtual memory."""
 

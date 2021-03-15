@@ -1,8 +1,13 @@
 """Tests for rank.mako."""
 
-from typing import Optional
+from typing import Optional, Any
 
 import numpy as np
+try:
+    from numpy.typing import DTypeLike, ArrayLike
+except ImportError:
+    DTypeLike = Any     # type: ignore
+    ArrayLike = Any   # type: ignore
 from nose.tools import assert_equal
 
 from .. import accel
@@ -14,9 +19,9 @@ from .test_accel import device_test
 _wgs = 128
 _M = 1000
 _N = 2000
-_program = None      # type: Optional[AbstractProgram]
-_data = None         # type: np.ndarray
-_expected = None     # type: np.ndarray
+_program: Optional[AbstractProgram] = None
+_data: np.ndarray
+_expected: np.ndarray
 
 
 @device_test
@@ -84,7 +89,7 @@ def run_float_func(context: AbstractContext, queue: AbstractCommandQueue,
 
 class TestFindMinMaxFloat:
     def check_array(self, context: AbstractContext, queue: AbstractCommandQueue,
-                    data: np.ndarray) -> None:
+                    data: ArrayLike) -> None:
         data = np.asarray(data, dtype=np.float32)
         expected = [np.nanmin(data), np.nanmax(data)]
         out = run_float_func(context, queue, 'test_find_min_max_float', data, 2)
@@ -121,7 +126,7 @@ class TestFindMinMaxFloat:
 
 class TestMedianNonZero:
     def check_array(self, context: AbstractContext, queue: AbstractCommandQueue,
-                    data: np.ndarray) -> None:
+                    data: ArrayLike) -> None:
         data = np.asarray(data, dtype=np.float32)
         expected = np.median(data[data > 0.0])
         out = run_float_func(context, queue, 'test_median_non_zero', data, 2)

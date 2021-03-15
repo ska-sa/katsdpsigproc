@@ -89,7 +89,7 @@ class BackgroundHostFromDevice(host.AbstractBackgroundHost):
         self.template = template
         self.command_queue = command_queue
 
-    def __call__(self, vis: np.ndarray, flags: Optional[np.ndarray] = None) -> accel.HostArray:
+    def __call__(self, vis: np.ndarray, flags: Optional[np.ndarray] = None) -> np.ndarray:
         if flags is not None and not self.template.use_flags:
             raise TypeError("flags were provided but not included in the template")
         if flags is None and self.template.use_flags:
@@ -291,7 +291,7 @@ class NoiseEstHostFromDevice(host.AbstractNoiseEstHost):
         self.template = template
         self.command_queue = command_queue
 
-    def __call__(self, deviations: np.ndarray) -> accel.HostArray:
+    def __call__(self, deviations: np.ndarray) -> np.ndarray:
         (channels, baselines) = deviations.shape
         transposed = self.template.transposed
         if transposed:
@@ -545,7 +545,7 @@ class ThresholdHostFromDevice(host.AbstractThresholdHost):
         self.args = args
         self.kwargs = kwargs
 
-    def __call__(self, deviations: np.ndarray, noise: np.ndarray) -> accel.HostArray:
+    def __call__(self, deviations: np.ndarray, noise: np.ndarray) -> np.ndarray:
         (channels, baselines) = deviations.shape
         transposed = self.template.transposed
         if transposed:
@@ -1041,7 +1041,7 @@ class FlaggerHostFromDevice(host.AbstractFlaggerHost):
         self.threshold_args = dict(threshold_args)
 
     def __call__(self, vis: np.ndarray,
-                 input_flags: Optional[np.ndarray] = None) -> accel.HostArray:
+                 input_flags: Optional[np.ndarray] = None) -> np.ndarray:
         if input_flags is not None and not self.template.background.use_flags:
             raise TypeError("channel flags were provided but not included in the template")
         if input_flags is None and self.template.background.use_flags:
