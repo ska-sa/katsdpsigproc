@@ -1,6 +1,17 @@
 Changelog
 =========
 
+.. rubric:: 1.2
+
+- Add a user guide.
+- Update the dependencies.
+- Fix the type annotations to work with numpy 1.20.
+- Fix deprecated usage of ``np.bool``.
+- Fix handling of Context.compile when no extra flags are passed.
+- Fix enqueue_zero_buffer being run on the default CUDA stream.
+- Fix sequencing of SVMArray get and set operations with other commands in the
+  provided command queue.
+
 .. rubric:: 1.1
 
 - Use BLOCKING_SYNC for CUDA events, to avoid spinning on the CPU.
