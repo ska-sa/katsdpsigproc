@@ -175,7 +175,7 @@ DEVICE_FN ${type} ${class_name}_max_below(${class_name} *self, ${type} limit)
  * If @a halfway is true, then it returns the average of ranks @a rank and @a
  * rank - 1.
  *
- * If @a uniform (template parameter is true), then the entire workgroup must
+ * If @a uniform (template parameter) is true, then the entire workgroup must
  * be operating on the same set of data and the same parameters.
  */
 DEVICE_FN float ${prefix}find_rank_float(${ranker_class} *ranker, int rank, bool halfway)
