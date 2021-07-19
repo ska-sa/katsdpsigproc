@@ -3,7 +3,8 @@
 It implements the abstract interfaces defined in :mod:`katsdpsigproc.abc`.
 """
 
-from typing import List, Tuple, Sequence, Optional, Type, TypeVar, Union, Any
+import ctypes.util
+from typing import List, Tuple, Sequence, Iterable, Mapping, Optional, Type, TypeVar, Union, Any
 from types import TracebackType
 
 import numpy as np
@@ -25,6 +26,129 @@ _T = TypeVar('_T')
 _C = TypeVar('_C', bound='Context')
 _D = TypeVar('_D', bound='Device')
 _AnyBuffer = Union[pycuda.gpuarray.GPUArray, np.ndarray]
+
+
+class _NVRTCError(Exception):
+    """Low-level error from NVRTC."""
+
+
+class _NVRTC:
+    """Wraps libnvrtc.so."""
+
+    def __init__(self):
+        nvrtc_lib = ctypes.util.find_library('nvrtc')
+        self._nvrtc = ctypes.cdll.LoadLibrary(nvrtc_lib)
+        c_char_pp = ctypes.POINTER(ctypes.c_char_p)
+        nvrtcProgram = ctypes.c_void_p
+        nvrtcProgram_p = ctypes.POINTER(nvrtcProgram)
+
+        self._nvrtcCreateProgram = self._nvrtc.nvrtcCreateProgram
+        self._nvrtcCreateProgram.argtypes = [
+            nvrtcProgram_p,                   # prog
+            ctypes.c_char_p,                  # src
+            ctypes.c_char_p,                  # name
+            ctypes.c_int,                     # numHeaders
+            c_char_pp,                        # headers
+            c_char_pp                         # includeNames
+        ]
+        self._nvrtcCreateProgram.restype = self._check_error
+
+        self._nvrtcDestroyProgram = self._nvrtc.nvrtcDestroyProgram
+        self._nvrtcDestroyProgram.argtypes = [nvrtcProgram_p]
+        self._nvrtcDestroyProgram.restype = self._check_error
+
+        self._nvrtcCompileProgram = self._nvrtc.nvrtcCompileProgram
+        self._nvrtcCompileProgram.argtypes = [
+            nvrtcProgram,                     # prog
+            ctypes.c_int,                     # numOptions
+            c_char_pp                         # options
+        ]
+        self._nvrtcCompileProgram.restype = self._check_error
+
+        self._nvrtcGetCUBINSize = self._nvrtc.nvrtcGetCUBINSize
+        self._nvrtcGetCUBINSize.argtypes = [
+            nvrtcProgram,                     # prog
+            ctypes.POINTER(ctypes.c_size_t)   # cubinSizeRet
+        ]
+        self._nvrtcGetCUBINSize.restype = self._check_error
+
+        self._nvrtcGetCUBIN = self._nvrtc.nvrtcGetCUBIN
+        self._nvrtcGetCUBIN.argtypes = [
+            nvrtcProgram,                     # prog
+            ctypes.c_char_p                   # cubin
+        ]
+        self._nvrtcGetCUBIN.restype = self._check_error
+
+        self._nvrtcGetProgramLog = self._nvrtc.nvrtcGetProgramLog
+        self._nvrtcGetProgramLog.argtypes = [
+            nvrtcProgram,                     # prog
+            ctypes.c_char_p                   # log
+        ]
+        self._nvrtcGetProgramLog.restype = self._check_error
+
+        self._nvrtcGetProgramLogSize = self._nvrtc.nvrtcGetProgramLogSize
+        self._nvrtcGetProgramLogSize.argtypes = [
+            nvrtcProgram,                     # prog
+            ctypes.POINTER(ctypes.c_size_t)   # logSizeRet
+        ]
+        self._nvrtcGetProgramLogSize.restype = self._check_error
+
+        self._nvrtcGetErrorString = self._nvrtc.nvrtcGetErrorString
+        self._nvrtcGetErrorString.argtypes = [ctypes.c_int]
+        self._nvrtcGetErrorString.restype = ctypes.c_char_p
+
+    def _check_error(self, value):
+        if value != 0:
+            error_str = self._nvrtcGetErrorString(value)
+            raise _NVRTCError(bytes(error_str).decode())
+
+    def _get_program_log(self, prog) -> str:
+        size = ctypes.c_size_t(0)
+        self._nvrtcGetProgramLogSize(prog, ctypes.byref(size))
+        buf = ctypes.create_string_buffer(size.value)
+        self._nvrtcGetProgramLog(prog, buf)
+        return bytes(buf).decode(errors='replace')
+
+    def compile(self, source: Union[str, bytes], name: str, *,
+                headers: Optional[Mapping[str, Union[str, bytes]]] = None,
+                options: Iterable[str] = ()) -> ctypes.Array[ctypes.c_char]:
+        source_bytes = source.encode() if isinstance(source, str) else source
+        name_bytes = name.encode()
+        headers_bytes: List[bytes] = []
+        include_names_bytes: List[bytes] = []
+        if headers:
+            for name, content in headers.items():
+                include_names_bytes.append(name.encode())
+                headers_bytes.append(content.encode() if isinstance(content, str) else content)
+        num_headers = len(headers_bytes)
+        options_bytes = [option.encode() for option in options]
+
+        prog = ctypes.c_void_p(None)
+        self._nvrtcCreateProgram(
+            ctypes.byref(prog), source_bytes, name_bytes,
+            num_headers,
+            (ctypes.c_char_p * num_headers)(*headers_bytes),
+            (ctypes.c_char_p * num_headers)(*include_names_bytes)
+        )
+        try:
+            try:
+                self._nvrtcCompileProgram(
+                    prog,
+                    len(options_bytes),
+                    (ctypes.c_char_p * len(options_bytes))(*options_bytes)
+                )
+            except _NVRTCError as exc:
+                log = self._get_program_log(prog)
+                raise RuntimeError(f"{exc}: {log}") from None
+            size = ctypes.c_size_t(0)
+            self._nvrtcGetCUBINSize(prog, ctypes.byref(size))
+            cubin = (ctypes.c_char * size.value)()
+            self._nvrtcGetCUBIN(prog, cubin)
+            return cubin
+        except _NVRTCError as exc:
+            raise RuntimeError(str(exc)) from exc
+        finally:
+            self._nvrtcDestroyProgram(ctypes.byref(prog))
 
 
 class Program(AbstractProgram['Kernel']):
@@ -143,7 +267,14 @@ class Context(AbstractContext[pycuda.gpuarray.GPUArray,
         if extra_flags is None:
             extra_flags = []
         with self:
-            module = pycuda.compiler.SourceModule(source, options=NVCC_FLAGS + extra_flags)
+            device = pycuda.driver.Context.get_device()
+            cc = device.compute_capability()
+            nvrtc = _NVRTC()
+            options = NVCC_FLAGS + extra_flags
+            options.append("--gpu-architecture=sm_{}{}".format(*cc))
+            source = 'extern "C" {\n' + source + '\n}\n'
+            cubin = nvrtc.compile(source, "", options=options)
+            module = pycuda.driver.module_from_buffer(cubin)
             return Program(module)
 
     def allocate_raw(self, n_bytes: int) -> pycuda.driver.DeviceAllocation:

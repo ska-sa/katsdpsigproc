@@ -30,11 +30,35 @@ DEVICE_FN ${type}4 make_${type}4(${type} x, ${type} y, ${type} z, ${type} w)
 
 % endfor
 
+typedef unsigned char uint8_t;
+typedef signed char int8_t;
+typedef ushort uint16_t;
+typedef short int16_t;
+typedef uint uint32_t;
+typedef int int32_t;
+typedef ulong uint64_t;
+typedef long int64_t;
+
 #else
 
+#ifndef __CUDACC_RTC__
 #include <math.h>
 #include <float.h>
 #include <stdio.h>
+#include <stdint.h>
+#else
+#define M_PI 3.14159265358979323846
+#define NAN __int_as_float(0x7fc00000)
+
+typedef unsigned char uint8_t;
+typedef signed char int8_t;
+typedef unsigned short uint16_t;
+typedef short int16_t;
+typedef unsigned int uint32_t;
+typedef int int32_t;
+typedef unsigned long long uint64_t;
+typedef long long int64_t;
+#endif /* __CUDACC_RTC__ */
 
 /* System headers may provide some of these, but it's OS dependent. It's
  * legal to repeat typedefs, so make sure that they're all available for
