@@ -44,7 +44,6 @@ katsdpsigproc.rfi.test.test\_twodflag module
    :undoc-members:
    :show-inheritance:
 
-
 Module contents
 ---------------
 

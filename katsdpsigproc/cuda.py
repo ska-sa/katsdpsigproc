@@ -100,6 +100,10 @@ class Device(AbstractDevice['Context']):
     def simd_group_size(self) -> int:
         return self._pycuda_device.warp_size
 
+    @property
+    def compute_capability(self) -> Tuple[int, int]:
+        return self._pycuda_device.compute_capability()
+
     @classmethod
     def get_devices(cls: Type[_D]) -> Sequence[_D]:
         num_devices = pycuda.driver.Device.count()

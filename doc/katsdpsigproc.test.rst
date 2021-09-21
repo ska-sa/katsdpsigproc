@@ -76,7 +76,6 @@ katsdpsigproc.test.test\_tune module
    :undoc-members:
    :show-inheritance:
 
-
 Module contents
 ---------------
 
