@@ -414,7 +414,7 @@ class TestSVMArray(TestDeviceArray):
         ary[:] = np.arange(123, dtype=np.uint32)
         queue.enqueue_kernel(kernel, [ary.buffer], (128,), (64,))
         queue.finish()
-        np.testing.assert_equal(np.arange(369, step=3, dtype=np.uint32), ary)
+        np.testing.assert_equal(np.arange(0, 369, step=3, dtype=np.uint32), ary)
 
 
 class TestSVMAllocator:
