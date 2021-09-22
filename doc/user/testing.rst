@@ -123,7 +123,10 @@ opencl_only
 
 device_filter(filter)
     Provide an arbitrary predicate which decides whether a device should be
-    considered or not.
+    considered or not. Note that this needs to be invoked as
+    ``pytest.mark.device_filter.with_args(filter)`` to make pytest aware
+    that the filter is an argument to the mark rather than a function to
+    decorate with the mark.
 
 .. _mark-force_autotune:
 
