@@ -173,46 +173,15 @@ def all_devices() -> List[AbstractDevice]:
     return devices
 
 
-def create_some_context(
-        interactive: bool = True,
-        device_filter: Optional[Callable[[AbstractDevice], bool]] = None) -> AbstractContext:
-    """Create a single-device context, selecting a device automatically.
+def candidate_devices(device_filter: Optional[Callable[[AbstractDevice], bool]] = None) \
+        -> Sequence[AbstractDevice]:
+    """Get devices that are considered for :func:`create_some_context`.
 
-    This is similar to `pyopencl.create_some_context`. A number of environment
-    variables can be set to limit the choice to a single device:
-
-     - KATSDPSIGPROC_DEVICE: device number from amongst all devices
-     - CUDA_DEVICE: CUDA device number (compatible with PyCUDA)
-     - PYOPENCL_CTX: OpenCL platform and optionally device number (compatible with PyOpenCL)
-
-    The first of these that is encountered takes effect. If it does not exist,
-    an exception is thrown.
-
-    Parameters
-    ----------
-    interactive
-        If true, and `sys.stdin.isatty()` is true, and there are multiple
-        choices, it will prompt the user. Otherwise, it will choose the first
-        available device, favouring CUDA over OpenCL, then GPU over
-        accelerators over other OpenCL devices.
-    device_filter
-        If specified, each device in turn is passed to it, and it must return
-        True to keep the device as a candidate or False to reject it.
-
-    Raises
-    ------
-    RuntimeError
-        If no device could be found or the user made an invalid selection
+    Refer to :func:`create_some_context` for documentation of how this list is
+    affected by `device_filter` and environment variables. If no matching
+    devices are found, returns an empty list. If an environment variable is
+    out of range, raises :exc:`RuntimeError`.
     """
-    def key(device: AbstractDevice) -> int:
-        if device.is_cuda:
-            return 100
-        elif device.is_gpu:
-            return 50
-        elif device.is_accelerator:
-            return 40
-        else:
-            return 30
 
     def parse_id(envar: str) -> Optional[int]:
         if envar in os.environ:
@@ -282,7 +251,51 @@ def create_some_context(
                 devices = [devices[device_id]]
     except IndexError:
         raise RuntimeError('Out-of-range device selected')
+    return devices
 
+
+def create_some_context(
+        interactive: bool = True,
+        device_filter: Optional[Callable[[AbstractDevice], bool]] = None) -> AbstractContext:
+    """Create a single-device context, selecting a device automatically.
+
+    This is similar to `pyopencl.create_some_context`. A number of environment
+    variables can be set to limit the choice to a single device:
+
+     - KATSDPSIGPROC_DEVICE: device number from amongst all devices
+     - CUDA_DEVICE: CUDA device number (compatible with PyCUDA)
+     - PYOPENCL_CTX: OpenCL platform and optionally device number (compatible with PyOpenCL)
+
+    The first of these that is encountered takes effect. If it does not exist,
+    an exception is thrown.
+
+    Parameters
+    ----------
+    interactive
+        If true, and `sys.stdin.isatty()` is true, and there are multiple
+        choices, it will prompt the user. Otherwise, it will choose the first
+        available device, favouring CUDA over OpenCL, then GPU over
+        accelerators over other OpenCL devices.
+    device_filter
+        If specified, each device in turn is passed to it, and it must return
+        True to keep the device as a candidate or False to reject it.
+
+    Raises
+    ------
+    RuntimeError
+        If no device could be found or the user made an invalid selection
+    """
+    def key(device: AbstractDevice) -> int:
+        if device.is_cuda:
+            return 100
+        elif device.is_gpu:
+            return 50
+        elif device.is_accelerator:
+            return 40
+        else:
+            return 30
+
+    devices = candidate_devices(device_filter)
     if not devices:
         raise RuntimeError('No compute devices found')
 
@@ -300,8 +313,7 @@ def create_some_context(
         except (ValueError, IndexError):
             raise RuntimeError('Invalid device number')
     else:
-        devices.sort(key=key, reverse=True)
-        device = devices[0]
+        device = max(devices, key=key)
 
     return device.make_context()
 

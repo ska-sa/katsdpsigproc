@@ -5,6 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
+   :maxdepth: 4
 
    katsdpsigproc.asyncio
    katsdpsigproc.rfi
@@ -69,6 +70,14 @@ katsdpsigproc.percentile module
    :undoc-members:
    :show-inheritance:
 
+katsdpsigproc.pytest\_plugin module
+-----------------------------------
+
+.. automodule:: katsdpsigproc.pytest_plugin
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 katsdpsigproc.reduce module
 ---------------------------
 
@@ -100,7 +109,6 @@ katsdpsigproc.tune module
    :members:
    :undoc-members:
    :show-inheritance:
-
 
 Module contents
 ---------------

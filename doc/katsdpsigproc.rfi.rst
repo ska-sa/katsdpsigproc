@@ -5,6 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
+   :maxdepth: 4
 
    katsdpsigproc.rfi.test
 
@@ -34,7 +35,6 @@ katsdpsigproc.rfi.twodflag module
    :members:
    :undoc-members:
    :show-inheritance:
-
 
 Module contents
 ---------------
