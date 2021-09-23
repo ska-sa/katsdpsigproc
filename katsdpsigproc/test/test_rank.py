@@ -39,6 +39,7 @@ def setup(context, queue):   # type: (AbstractContext, AbstractCommandQueue) -> 
 
 def check_rank(context: AbstractContext, queue: AbstractCommandQueue,
                kernel_name: str, wgs: int) -> None:
+    global _data, _expected
     data_d = DeviceArray(context, shape=_data.shape, dtype=_data.dtype)
     data_d.set(queue, _data)
     out_d = DeviceArray(context, shape=_expected.shape, dtype=_expected.dtype)

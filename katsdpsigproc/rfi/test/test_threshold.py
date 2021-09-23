@@ -35,6 +35,7 @@ def test_ThresholdSumHost() -> None:
 
 
 def check_host_class(cls: Type[host.AbstractThresholdHost], n_sigma: float) -> None:
+    global _deviations, _spikes
     threshold = cls(n_sigma)
     noise = np.repeat(10.0, _deviations.shape[1]).astype(np.float32)
     flags = threshold(_deviations, noise)
@@ -44,6 +45,7 @@ def check_host_class(cls: Type[host.AbstractThresholdHost], n_sigma: float) -> N
 class BaseTestDeviceClass(ABC):
     @device_test
     def test_result(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+        global _deviations
         n_sigma = 11.0
         template = self.factory(context)
         th_host = template.host_class(n_sigma)

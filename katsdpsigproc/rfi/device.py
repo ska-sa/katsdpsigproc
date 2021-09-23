@@ -187,7 +187,7 @@ class BackgroundMedianFilterDeviceTemplate(AbstractBackgroundDeviceTemplate):
         # Initialize with Gaussian random values
         rs = np.random.RandomState(seed=1)
         if is_amplitude:
-            vis_host = rs.rayleigh(size=shape).astype(np.float32)
+            vis_host: np.ndarray = rs.rayleigh(size=shape).astype(np.float32)
         else:
             vis_host = rs.standard_normal(shape) + rs.standard_normal(shape) * 1j
             vis_host = vis_host.astype(np.complex64)

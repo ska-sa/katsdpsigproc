@@ -66,7 +66,7 @@ class Percentile5Template:
         in_shape = (4096, max_columns)
         rs = np.random.RandomState(seed=1)
         if is_amplitude:
-            host_data = rs.uniform(size=in_shape).astype(np.float32)
+            host_data: np.ndarray = rs.uniform(size=in_shape).astype(np.float32)
         else:
             host_data = rs.standard_normal(in_shape) + 1j * rs.standard_normal(in_shape)
             host_data = host_data.astype(np.complex64)

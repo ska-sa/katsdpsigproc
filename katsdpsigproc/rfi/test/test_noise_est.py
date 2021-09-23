@@ -32,6 +32,7 @@ def setup():   # type: () -> None
 
 
 def test_NoiseEstMADHost() -> None:
+    global _deviations, _expected
     noise_est = host.NoiseEstMADHost()
     actual = noise_est(_deviations)
     np.testing.assert_allclose(_expected, actual)
@@ -40,6 +41,7 @@ def test_NoiseEstMADHost() -> None:
 class BaseTestNoiseEstDeviceClass(ABC):
     @device_test
     def test_result(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+        global _deviations_big
         template = self.factory(context)
         ne_host = template.host_class()
         ne_device = device.NoiseEstHostFromDevice(template, queue)

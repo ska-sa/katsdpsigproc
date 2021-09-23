@@ -12,7 +12,7 @@ queue = context.create_command_queue(profile=True)
 data = np.abs(np.random.randn(4000, 5000)).astype(np.float32)
 
 template = perc5.Percentile5Template(context, max_columns=5000)
-perc = template.instantiate(queue, data.shape)
+perc = template.instantiate(queue, data.shape)  # type: ignore [arg-type]
 perc.ensure_all_bound()
 perc.buffer('src').set(queue, data)
 start_event = queue.enqueue_marker()

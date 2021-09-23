@@ -36,6 +36,7 @@ def setup():   # type: () -> None
 
 
 def test_flagger_host() -> None:
+    global _vis, _spikes, _input_flags
     background = host.BackgroundMedianFilterHost(13)
     noise_est = host.NoiseEstMADHost()
     threshold = host.ThresholdSimpleHost(11.0)
@@ -56,6 +57,7 @@ def test_flagger_host() -> None:
 def check_flagger_device(use_flags: device.BackgroundFlags,
                          transpose_noise_est: bool, transpose_threshold: bool,
                          context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    global _vis, _spikes, _input_flags
     background = device.BackgroundMedianFilterDeviceTemplate(context, 13, use_flags=use_flags)
     if transpose_noise_est:
         noise_est = device.NoiseEstMADTDeviceTemplate(
