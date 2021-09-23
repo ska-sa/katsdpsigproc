@@ -4,3 +4,4 @@ asynctest
 coverage
 graphviz==0.12
 nose
+pytest  # Not used for unit tests, but mypy needs it to check pytest_plugin
