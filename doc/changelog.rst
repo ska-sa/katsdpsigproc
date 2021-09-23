@@ -1,6 +1,10 @@
 Changelog
 =========
 
+.. rubric:: 1.3
+
+- Add a pytest plugin.
+
 .. rubric:: 1.2
 
 - Add a user guide.
