@@ -38,6 +38,14 @@ katsdpsigproc.cuda module
    :undoc-members:
    :show-inheritance:
 
+katsdpsigproc.fft module
+------------------------
+
+.. automodule:: katsdpsigproc.fft
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 katsdpsigproc.fill module
 -------------------------
 
