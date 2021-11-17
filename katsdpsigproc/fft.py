@@ -1,18 +1,26 @@
 """Fast Fourier Transforms.
 
-Currently this module only supports CUDA, using CUFFT.
+Currently this module only supports CUDA, using cuFFT.
+
+It does not use scikit-cuda, because that insists on creating a cublas context
+to obtain a version number, which then permanently consumes GPU memory on some
+arbitrary GPU. It also seems the maintainer `no longer has time
+<https://github.com/lebedov/scikit-cuda/issues/319>`_.
+
+Only Linux is supported. Windows and MacOS support would require changing the
+code for locating the library.
 """
 
 from enum import Enum
+import ctypes.util
 import threading
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 try:
     from numpy.typing import DTypeLike
 except ImportError:
     DTypeLike = Any  # type: ignore
-import skcuda.fft
 
 from . import accel, cuda
 from .accel import AbstractAllocator
@@ -22,6 +30,148 @@ from .abc import AbstractContext, AbstractCommandQueue
 class FftMode(Enum):
     FORWARD = 0
     INVERSE = 1
+
+
+class _CEnum(Enum):
+    """Enum type that can be used with ctypes."""
+
+    @classmethod
+    def from_param(cls, value):
+        if not isinstance(value, cls):
+            raise TypeError
+        # TODO: assumes that enum and int have the size in the ABI. But this
+        # seems to be what scikit-cuda assumed anyway.
+        return ctypes.c_int(value.value)
+
+
+class _Cufft:
+    """Wraps up the low-level ctypes access to cuFFT.
+
+    This is not intended to be a complete wrapper for cuFFT, nor to be
+    user-friendly. It provides just enough for the implementation of this
+    module.
+    """
+
+    cufftHandle = ctypes.c_int
+    cudaStream_t = ctypes.c_void_p  # It's a pointer to an opaque struct
+
+    class cufftType(_CEnum):
+        CUFFT_R2C = 0x2a
+        CUFFT_C2R = 0x2c
+        CUFFT_C2C = 0x29
+        CUFFT_D2Z = 0x6a
+        CUFFT_Z2D = 0x6c
+        CUFFT_Z2Z = 0x69
+
+    class cufftResult(_CEnum):
+        CUFFT_SUCCESS = 0
+        CUFFT_INVALID_PLAN = 1
+        CUFFT_ALLOC_FAILED = 2
+        CUFFT_INVALID_TYPE = 3
+        CUFFT_INVALID_VALUE = 4
+        CUFFT_INTERNAL_ERROR = 5
+        CUFFT_EXEC_FAILED = 6
+        CUFFT_SETUP_FAILED = 7
+        CUFFT_INVALID_SIZE = 8
+        CUFFT_UNALIGNED_DATA = 9
+        CUFFT_INCOMPLETE_PARAMETER_LIST = 10
+        CUFFT_INVALID_DEVICE = 11
+        CUFFT_PARSE_ERROR = 12
+        CUFFT_NO_WORKSPACE = 13
+        CUFFT_NOT_IMPLEMENTED = 14
+        CUFFT_LICENSE_ERROR = 15
+        CUFFT_NOT_SUPPORTED = 16
+
+    # cufft.h has no such type (these are just #defines), but it is convenient
+    # to use an enum in Python.
+    class cufftDirection(_CEnum):
+        CUFFT_FORWARD = -1
+        CUFFT_INVERSE = 1
+
+    class CufftError(Exception):
+        """Error raised from cuFFT"""
+
+        def __init__(self, error_code: int):
+            self.error_code = error_code
+            try:
+                name = _Cufft.cufftResult(error_code).name
+            except ValueError:
+                name = f"cuFFT error {error_code:#x}"
+            super().__init__(name)
+
+    @staticmethod
+    def _errcheck(result, func, args) -> None:
+        """Turn cufftResult into an exception."""
+        if result:
+            raise _Cufft.CufftError(result)
+
+    def _get_function(self, name: str, argtypes: list) -> Callable[..., None]:
+        """Shortcut to build a ctypes function wrapper.
+
+        The function must return a :class:`cufftResult`.
+        """
+        func = getattr(self.lib, name)
+        func.argtypes = argtypes
+        func.restype = ctypes.c_int
+        func.errcheck = self._errcheck
+        return func
+
+    def __init__(self):
+        self.lib = ctypes.cdll.LoadLibrary(ctypes.util.find_library("cufft"))
+        self.cufftGetVersion = self._get_function("cufftGetVersion", [ctypes.POINTER(ctypes.c_int)])
+        self.cufftCreate = self._get_function("cufftCreate", [ctypes.POINTER(self.cufftHandle)])
+        self.cufftMakePlanMany64 = self._get_function(
+            "cufftMakePlanMany64",
+            [
+                self.cufftHandle,
+                ctypes.c_longlong,                      # rank
+                ctypes.POINTER(ctypes.c_longlong),      # n
+                ctypes.POINTER(ctypes.c_longlong),      # inembed
+                ctypes.c_longlong,                      # istride,
+                ctypes.c_longlong,                      # idist
+                ctypes.POINTER(ctypes.c_longlong),      # onembed
+                ctypes.c_longlong,                      # ostride
+                ctypes.c_longlong,                      # odist
+                self.cufftType,                         # type
+                ctypes.c_longlong,                      # batch
+                ctypes.POINTER(ctypes.c_size_t)         # workSize
+            ]
+        )
+        self.cufftSetAutoAllocation = self._get_function(
+            "cufftSetAutoAllocation", [self.cufftHandle, ctypes.c_int]
+        )
+        self.cufftSetStream = self._get_function(
+            "cufftSetStream", [self.cufftHandle, self.cudaStream_t]
+        )
+        self.cufftSetWorkArea = self._get_function(
+            "cufftSetWorkArea", [self.cufftHandle, ctypes.c_void_p]
+        )
+
+        # The actual function signatures have typed pointers rather than void*, but
+        # specifying that just making invocation more complicated, and requires
+        # defining types like cufftComplex.
+        self.cufftExec = {
+            self.cufftType.CUFFT_R2C: self._get_function(
+                "cufftExecR2C", [self.cufftHandle, ctypes.c_void_p, ctypes.c_void_p]
+            ),
+            self.cufftType.CUFFT_C2R: self._get_function(
+                "cufftExecC2R", [self.cufftHandle, ctypes.c_void_p, ctypes.c_void_p]
+            ),
+            self.cufftType.CUFFT_D2Z: self._get_function(
+                "cufftExecD2Z", [self.cufftHandle, ctypes.c_void_p, ctypes.c_void_p]
+            ),
+            self.cufftType.CUFFT_Z2D: self._get_function(
+                "cufftExecZ2D", [self.cufftHandle, ctypes.c_void_p, ctypes.c_void_p]
+            ),
+            self.cufftType.CUFFT_C2C: self._get_function(
+                "cufftExecC2C",
+                [self.cufftHandle, ctypes.c_void_p, ctypes.c_void_p, self.cufftDirection]
+            ),
+            self.cufftType.CUFFT_Z2Z: self._get_function(
+                "cufftExecZ2Z",
+                [self.cufftHandle, ctypes.c_void_p, ctypes.c_void_p, self.cufftDirection]
+            )
+        }
 
 
 class FftTemplate:
@@ -50,7 +200,9 @@ class FftTemplate:
     N
         Number of dimensions for the transform
     shape
-        Shape of the input (N or more dimensions)
+        Shape of the data (N or more dimensions). For real->complex or
+        complex->real transformation, this is the size of the real side of the
+        transform.
     dtype_src : {`np.float32`, `np.float64`, `np.complex64`, `np.complex128`}
         Data type for input
     dtype_dest : {`np.float32`, `np.float64`, `np.complex64`, `np.complex128`}
@@ -84,6 +236,23 @@ class FftTemplate:
             raise ValueError('Source must not be padded on batch dimensions')
         if padded_shape_dest[:-N] != shape[:-N]:
             raise ValueError('Destination must not be padded on batch dimensions')
+
+        if dtype_src == np.float32 and dtype_dest == np.complex64:
+            fft_type = _Cufft.cufftType.CUFFT_R2C
+        elif dtype_src == np.complex64 and dtype_dest == np.float32:
+            fft_type = _Cufft.cufftType.CUFFT_C2R
+        elif dtype_src == np.complex64 and dtype_dest == np.complex64:
+            fft_type = _Cufft.cufftType.CUFFT_C2C
+        elif dtype_src == np.float64 and dtype_dest == np.complex128:
+            fft_type = _Cufft.cufftType.CUFFT_D2Z
+        elif dtype_src == np.complex128 and dtype_dest == np.float64:
+            fft_type = _Cufft.cufftType.CUFFT_Z2D
+        elif dtype_src == np.complex128 and dtype_dest == np.complex128:
+            fft_type = _Cufft.cufftType.CUFFT_Z2Z
+        else:
+            raise ValueError("Invalid combination of dtypes")
+
+        cufft = _Cufft()
         self.context: cuda.Context = context
         self.shape = shape
         self.dtype_src = np.dtype(dtype_src)
@@ -94,23 +263,38 @@ class FftTemplate:
         # instead of the requested one, if dimensions are up to 1920. There is
         # a patch, but there is no query to detect whether it has been
         # applied.
+        version = ctypes.c_int()
+        cufft.cufftGetVersion(ctypes.byref(version))
         self._needs_synchronize_workaround = (
-            skcuda.cufft.cufftGetVersion() < 8000 and any(x <= 1920 for x in shape[:N])
+            version.value < 8000 and any(x <= 1920 for x in shape[:N])
         )
         batches = int(np.product(padded_shape_src[:-N]))
         with context:
-            self.plan = skcuda.fft.Plan(
-                shape[-N:], dtype_src, dtype_dest, batches,
-                inembed=np.array(padded_shape_src[-N:], np.int32),
-                istride=1,
-                idist=int(np.product(padded_shape_src[-N:])),
-                onembed=np.array(padded_shape_dest[-N:], np.int32),
-                ostride=1,
-                odist=int(np.product(padded_shape_dest[-N:])),
-                auto_allocate=False)
+            arr_type = ctypes.c_longlong * N
+            work_size = ctypes.c_size_t()
+            self._plan = cufft.cufftHandle()
+            cufft.cufftCreate(ctypes.byref(self._plan))
+            cufft.cufftSetAutoAllocation(self._plan, False)
+            cufft.cufftMakePlanMany64(
+                self._plan,                               # handle
+                N,                                        # rank
+                arr_type(*shape[-N:]),                    # n
+                arr_type(*padded_shape_src[-N:]),         # inembed
+                1,                                        # istride
+                int(np.product(padded_shape_src[-N:])),   # idist
+                arr_type(*padded_shape_dest[-N:]),        # onembed
+                1,                                        # ostride
+                int(np.product(padded_shape_dest[-N:])),  # odist
+                fft_type,                                 # type
+                batches,                                  # batch
+                ctypes.byref(work_size)                   # workSize
+            )
+        self._work_size = work_size.value
+        self._cufft = cufft
+        self._fft_type = fft_type
         # The stream and work area are associated with the plan rather than
         # the execution, so we need to serialise executions.
-        self.lock = threading.RLock()
+        self._lock = threading.RLock()
 
     def instantiate(self, *args, **kwargs):
         return Fft(self, *args, **kwargs)
@@ -170,7 +354,7 @@ class Fft(accel.Operation):
                           for d in zip(dest_shape, template.padded_shape_dest))
         self.slots['src'] = accel.IOSlot(src_dims, template.dtype_src)
         self.slots['dest'] = accel.IOSlot(dest_dims, template.dtype_dest)
-        self.slots['work_area'] = accel.IOSlot((template.plan.worksize,), np.uint8)
+        self.slots['work_area'] = accel.IOSlot((template._work_size,), np.uint8)
         self.mode = mode
 
     def _run(self) -> None:
@@ -178,13 +362,20 @@ class Fft(accel.Operation):
         dest_buffer = self.buffer('dest')
         work_area_buffer = self.buffer('work_area')
         context = self.command_queue.context
-        with context, self.template.lock:
-            skcuda.cufft.cufftSetStream(self.template.plan.handle,
-                                        self.command_queue._pycuda_stream.handle)
-            self.template.plan.set_work_area(work_area_buffer.buffer)
-            if self.mode == FftMode.FORWARD:
-                skcuda.fft.fft(src_buffer.buffer, dest_buffer.buffer, self.template.plan)
-            else:
-                skcuda.fft.ifft(src_buffer.buffer, dest_buffer.buffer, self.template.plan)
+        cufft = self.template._cufft
+        with context, self.template._lock:
+            cufft.cufftSetStream(
+                self.template._plan,
+                self.command_queue._pycuda_stream.handle
+            )
+            cufft.cufftSetWorkArea(
+                self.template._plan,
+                work_area_buffer.buffer.ptr
+            )
+            func = cufft.cufftExec[self.template._fft_type]
+            args = [self.template._plan, src_buffer.buffer.ptr, dest_buffer.buffer.ptr]
+            if len(func.argtypes) == 4:
+                args.append(_Cufft.cufftDirection['CUFFT_' + self.mode.name])
+            func(*args)
             if self.template._needs_synchronize_workaround:
                 context._pycuda_context.synchronize()
