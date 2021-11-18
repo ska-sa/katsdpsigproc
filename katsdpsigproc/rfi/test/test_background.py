@@ -7,6 +7,7 @@ import numpy as np
 from .. import host
 from ...abc import AbstractContext, AbstractCommandQueue
 from ...test.test_accel import device_test, force_autotune
+from ...test import complex_normal
 from .. import device
 
 
@@ -23,7 +24,7 @@ def setup():   # type: () -> None
     _flags = np.array([0, 0, 1, 0, 0, 4]).T.astype(np.uint8)
     # Use a fixed seed to make the test repeatable
     rs = np.random.RandomState(seed=1)
-    _vis_big = (rs.standard_normal(shape) + rs.standard_normal(shape) * 1j).astype(np.complex64)
+    _vis_big = complex_normal(rs, size=shape).astype(np.complex64)
     _flags_big = (rs.random_sample(shape) < 0.1).astype(np.uint8)
     # Ensure that in some cases the entire window is flagged. Also test with non-0/1
     # flag values.

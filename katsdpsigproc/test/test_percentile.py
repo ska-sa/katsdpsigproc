@@ -5,6 +5,7 @@ from typing import Tuple, Generator, Optional, Callable, cast
 import numpy as np
 
 from .test_accel import device_test, force_autotune
+from . import complex_normal
 from .. import accel
 from .. import percentile
 from ..abc import AbstractContext, AbstractCommandQueue
@@ -45,7 +46,7 @@ class TestPercentile5:
         if is_amplitude:
             ary = np.abs(rs.randn(R, C)).astype(np.float32)  # note positive numbers required
         else:
-            ary = (rs.randn(R, C) + 1j * rs.randn(R, C)).astype(np.complex64)
+            ary = complex_normal(rs, size=(R, C)).astype(np.complex64)
         src = fn.slots['src'].allocate(fn.allocator)
         dest = fn.slots['dest'].allocate(fn.allocator)
         src.set_async(queue, ary)
