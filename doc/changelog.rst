@@ -1,6 +1,10 @@
 Changelog
 =========
 
+.. rubric:: 1.4
+
+- Add a module for FFTs (using cuFFT).
+
 .. rubric:: 1.3
 
 - Add a pytest plugin.
