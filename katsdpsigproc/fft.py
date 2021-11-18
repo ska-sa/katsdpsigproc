@@ -258,8 +258,10 @@ class FftTemplate:
         cufft = _Cufft()
         self.context: cuda.Context = context
         self.shape = shape
-        self.dtype_src = np.dtype(dtype_src)
-        self.dtype_dest = np.dtype(dtype_dest)
+        # TODO: the type annotation is necessary with numpy 1.20.1, but
+        # is no longer needed for newer versions.
+        self.dtype_src: np.dtype = np.dtype(dtype_src)
+        self.dtype_dest: np.dtype = np.dtype(dtype_dest)
         self.padded_shape_src = padded_shape_src
         self.padded_shape_dest = padded_shape_dest
         # CUDA 7.0 CUFFT has a bug where kernels are run in the default stream
