@@ -193,6 +193,9 @@ class FftTemplate:
     need only be :math:`\lfloor\frac{L}{2}\rfloor + 1`, where :math:`L` is the
     last element of `shape`.
 
+    The transform is unnormalised: performing a forward followed by a reverse
+    transform will scale the result by the number of elements.
+
     Parameters
     ----------
     context
