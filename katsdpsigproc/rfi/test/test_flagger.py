@@ -9,6 +9,7 @@ import numpy as np
 from .. import host
 from ...abc import AbstractContext, AbstractCommandQueue
 from ...test.test_accel import device_test
+from ...test import complex_normal
 from .. import device
 
 
@@ -22,7 +23,7 @@ def setup():   # type: () -> None
     shape = (117, 131)
     # Use a fixed seed to make the test repeatable
     rs = np.random.RandomState(seed=1)
-    _vis = rs.standard_normal(shape) + 1j * rs.standard_normal(shape)
+    _vis = complex_normal(rs, size=shape)
     # Pick 1/16 of samples to be RFI
     # Give them random amplitude from a range, and random phase
     _spikes = rs.random_sample(shape) < 1.0 / 16.0

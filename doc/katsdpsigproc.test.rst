@@ -12,6 +12,14 @@ katsdpsigproc.test.test\_accel module
    :undoc-members:
    :show-inheritance:
 
+katsdpsigproc.test.test\_fft module
+-----------------------------------
+
+.. automodule:: katsdpsigproc.test.test_fft
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 katsdpsigproc.test.test\_fill module
 ------------------------------------
 
