@@ -11,7 +11,6 @@ nose
 numba
 pandas
 scipy
-rtd-tikz        # See https://tikz-in-readthedocs.readthedocs.io/
 typing_extensions
 
 sphinx
