@@ -120,6 +120,7 @@ class _Cufft:
         self.lib = ctypes.cdll.LoadLibrary(ctypes.util.find_library("cufft"))
         self.cufftGetVersion = self._get_function("cufftGetVersion", [ctypes.POINTER(ctypes.c_int)])
         self.cufftCreate = self._get_function("cufftCreate", [ctypes.POINTER(self.cufftHandle)])
+        self.cufftDestroy = self._get_function("cufftDestroy", [self.cufftHandle])
         self.cufftMakePlanMany64 = self._get_function(
             "cufftMakePlanMany64",
             [
@@ -256,6 +257,7 @@ class FftTemplate:
             raise ValueError("Invalid combination of dtypes")
 
         cufft = _Cufft()
+        self._cufft = cufft
         self.context: cuda.Context = context
         self.shape = shape
         # TODO: the type annotation is necessary with numpy 1.20.1, but
@@ -303,6 +305,11 @@ class FftTemplate:
 
     def instantiate(self, *args, **kwargs):
         return Fft(self, *args, **kwargs)
+
+    def __del__(self):
+        if hasattr(self, '_plan'):
+            with self.context:
+                self._cufft.cufftDestroy(self._plan)
 
 
 class Fft(accel.Operation):
