@@ -1,6 +1,15 @@
 Changelog
 =========
 
+.. rubric:: 1.4.1
+
+- Destroy cuFFT plan when FftTemplate is garbage collected. This lack was (for
+  unknown reasons) causing segmentation faults when repeatedly creating and
+  destroying contexts without cleaning up the plans.
+- Fix a potential failure of FftTemplate on 32-bit systems due to an incorrect
+  type signature.
+- Fix documentation on readthedocs by updating sphinxcontrib-tikz.
+
 .. rubric:: 1.4
 
 - Add a module for FFTs (using cuFFT).
