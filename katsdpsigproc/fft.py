@@ -125,7 +125,7 @@ class _Cufft:
             "cufftMakePlanMany64",
             [
                 self.cufftHandle,
-                ctypes.c_longlong,                      # rank
+                ctypes.c_int,                           # rank
                 ctypes.POINTER(ctypes.c_longlong),      # n
                 ctypes.POINTER(ctypes.c_longlong),      # inembed
                 ctypes.c_longlong,                      # istride,
