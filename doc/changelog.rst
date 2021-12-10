@@ -1,6 +1,11 @@
 Changelog
 =========
 
+.. rubric:: 1.4.2
+
+- Change some return type annotations on abstract base classes to work around
+  mypy limitations.
+
 .. rubric:: 1.4.1
 
 - Destroy cuFFT plan when FftTemplate is garbage collected. This lack was (for
