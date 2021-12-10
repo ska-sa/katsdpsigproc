@@ -27,7 +27,7 @@ class AbstractProgram(ABC, Generic[_K]):
     """Abstraction of a program object."""
 
     @abstractmethod
-    def get_kernel(self, name: str) -> _K:
+    def get_kernel(self, name: str) -> 'AbstractKernel':
         """Create a new kernel.
 
         Parameters
@@ -82,7 +82,7 @@ class AbstractDevice(ABC, Generic[_C]):
     """Abstraction of a device."""
 
     @abstractmethod
-    def make_context(self) -> _C:
+    def make_context(self) -> 'AbstractContext':
         """Create a new context associated with this device."""
 
     @property
@@ -145,11 +145,11 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
 
     @property
     @abstractmethod
-    def device(self) -> _D:
+    def device(self) -> AbstractDevice:
         """Return the device associated with the context (or the first device, if multiple)."""
 
     @abstractmethod
-    def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> _P:
+    def compile(self, source: str, extra_flags: Optional[List[str]] = None) -> AbstractProgram:
         """Build a program object from source.
 
         Parameters
@@ -200,7 +200,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
         """Allocate shared virtual memory."""
 
     @abstractmethod
-    def create_command_queue(self, profile: bool = False) -> _Q:
+    def create_command_queue(self, profile: bool = False) -> 'AbstractCommandQueue':
         """Create a new command queue associated with this context.
 
         Parameters
@@ -210,7 +210,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
         """
 
     @abstractmethod
-    def create_tuning_command_queue(self) -> _TQ:
+    def create_tuning_command_queue(self) -> 'AbstractTuningCommandQueue':
         """Create a new command queue for doing autotuning."""
 
     @abstractmethod
@@ -388,7 +388,7 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
         """
 
     @abstractmethod
-    def enqueue_marker(self) -> _E:
+    def enqueue_marker(self) -> AbstractEvent:
         """Create an event at this point in the command queue."""
 
     @abstractmethod
