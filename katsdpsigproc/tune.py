@@ -32,7 +32,7 @@ import time
 import logging
 import multiprocessing
 import concurrent.futures
-from typing import Dict, Sequence, Mapping, Callable, Optional, Type, TypeVar, Any, cast
+from typing import  Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, cast
 
 import appdirs
 import sqlite3
@@ -93,6 +93,18 @@ def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]
     keys['device_version'] = device.driver_version
     return keys
 
+def _assemble_query(tablename: str, keys: Mapping[str, Any]) -> Tuple[str, List]:
+    query = f'SELECT * FROM {tablename} WHERE'
+    query_args = []
+    first = True
+    for key, value in keys.items():
+        if not first:
+            query += ' AND'
+        first = False
+        query += f' {key}=?'
+        query_args.append(value)
+    return query, query_args
+
 
 def _query(conn: sqlite3.Connection, tablename: str,
            keys: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
@@ -110,18 +122,43 @@ def _query(conn: sqlite3.Connection, tablename: str,
         Keys and values for the query
     """
     try:
-        query = f'SELECT * FROM {tablename} WHERE'
-        query_args = []
-        first = True
-        for key, value in keys.items():
-            if not first:
-                query += ' AND'
-            first = False
-            query += f' {key}=?'
-            query_args.append(value)
+        query, query_args = _assemble_query(tablename, keys)
         cursor = conn.cursor()
         cursor.execute(query, query_args)
         row = cursor.fetchone()
+        # if a match is not found, find the nearest match by first ignoring the device version
+        if row is None:
+            _logger.debug("Retrying query '%s' by ignoring device_version", query, exc_info=True)
+            try: 
+                del keys['device_version']
+            except KeyError:
+                pass
+            query, query_args = _assemble_query(tablename, keys)
+            cursor = conn.cursor()
+            cursor.execute(query, query_args)
+            row = cursor.fetchone()
+        # if a match is still not found, next try ignoring the device platform
+        if row is None:
+            _logger.debug("Retrying query '%s' by ignoring device_platform", query, exc_info=True)
+            try: 
+                del keys['device_platform']
+            except KeyError:
+                pass
+            query, query_args = _assemble_query(tablename, keys)
+            cursor = conn.cursor()
+            cursor.execute(query, query_args)
+            row = cursor.fetchone()
+        # if a match is still not found, next try ignoring the device name
+        if row is None:
+            _logger.debug("Retrying query '%s' by ignoring device_name", query, exc_info=True)
+            try: 
+                del keys['device_name']
+            except KeyError:
+                pass
+            query, query_args = _assemble_query(tablename, keys)
+            cursor = conn.cursor()
+            cursor.execute(query, query_args)
+            row = cursor.fetchone()
         if row is not None:
             ans = {}
             for colname in row.keys():
@@ -131,7 +168,7 @@ def _query(conn: sqlite3.Connection, tablename: str,
             return ans
     except sqlite3.Error:
         # This could happen if the table does not exist yet
-        _logger.debug("Query '%s' failed", query, exc_info=True)
+        _logger.debug("Query '%s' failed", query, exc_info=True)     
         pass
     return None
 
