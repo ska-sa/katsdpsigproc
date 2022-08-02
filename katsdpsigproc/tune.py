@@ -59,6 +59,8 @@ _logger = logging.getLogger(__name__)
 _ScoreFunc = Callable[[int], float]
 _T = TypeVar("_T")
 
+KATSDPSIGPROC_TUNE_FALLBACK = os.getenv("KATSDPSIGPROC_TUNE_FALLBACK", "tune")
+
 
 class _TuningFunc(Protocol):
     @property
@@ -109,7 +111,9 @@ def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]
     return keys
 
 
-def _assemble_query(tablename: str, keys: Mapping[str, Any]) -> Tuple[str, List]:
+def _assemble_query(
+    conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
+) -> Tuple[str, List, Any]:
     query = f"SELECT * FROM {tablename} WHERE"
     query_args = []
     first = True
@@ -119,11 +123,14 @@ def _assemble_query(tablename: str, keys: Mapping[str, Any]) -> Tuple[str, List]
         first = False
         query += f" {key}=?"
         query_args.append(value)
-    return query, query_args
+    cursor = conn.cursor()
+    cursor.execute(query, query_args)
+    row = cursor.fetchone()
+    return query, query_args, row
 
 
 def _query(
-    conn: sqlite3.Connection, tablename: str, keys: Dict[str, Any]
+    conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
 ) -> Optional[Mapping[str, Any]]:
     """Fetch a cached record from the database.
 
@@ -139,49 +146,31 @@ def _query(
         Keys and values for the query
     """
     try:
-        query, query_args = _assemble_query(tablename, keys)
-        cursor = conn.cursor()
-        cursor.execute(query, query_args)
-        row = cursor.fetchone()
-        # if a match is not found, find the nearest match by first ignoring the device version
+        query, query_args, row = _assemble_query(conn, tablename, keys)
         if row is None:
-            _logger.debug(
-                "Retrying query '%s' by ignoring device_version", query, exc_info=True
-            )
-            try:
-                del keys["device_version"]
-            except KeyError:
-                pass
-            query, query_args = _assemble_query(tablename, keys)
-            cursor = conn.cursor()
-            cursor.execute(query, query_args)
-            row = cursor.fetchone()
-        # if a match is still not found, next try ignoring the device platform
-        if row is None:
-            _logger.debug(
-                "Retrying query '%s' by ignoring device_platform", query, exc_info=True
-            )
-            try:
-                del keys["device_platform"]
-            except KeyError:
-                pass
-            query, query_args = _assemble_query(tablename, keys)
-            cursor = conn.cursor()
-            cursor.execute(query, query_args)
-            row = cursor.fetchone()
-        # if a match is still not found, next try ignoring the device name
-        if row is None:
-            _logger.debug(
-                "Retrying query '%s' by ignoring device_name", query, exc_info=True
-            )
-            try:
-                del keys["device_name"]
-            except KeyError:
-                pass
-            query, query_args = _assemble_query(tablename, keys)
-            cursor = conn.cursor()
-            cursor.execute(query, query_args)
-            row = cursor.fetchone()
+            if KATSDPSIGPROC_TUNE_FALLBACK == "fail":
+                raise RuntimeError(
+                    "Did not find record and autotune fallback behaviour set to 'fail'."
+                )
+            elif KATSDPSIGPROC_TUNE_FALLBACK == "nearest":
+                """If it exists, find the nearest autotune match by first ignoring device version,
+                    then device platform, then device name."""
+                tune_keys = dict(keys)
+                for key in ["device_version", "device_platform", "device_name"]:
+                    _logger.debug("Retrying query '%s' by ignoring %s", query, key)
+                    try:
+                        del tune_keys[key]
+                    except KeyError:
+                        _logger.debug("Key: %s not found in %s", key, tablename, exc_info=True)
+                        break
+                    try:
+                        query, query_args, row = _assemble_query(conn, tablename, tune_keys)
+                    except sqlite3.Error:
+                        _logger.debug("Query '%s' failed", query, exc_info=True)
+                        pass
+                    if row is not None:
+                        break
+
         if row is not None:
             ans = {}
             for colname in row.keys():
