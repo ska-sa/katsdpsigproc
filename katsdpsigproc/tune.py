@@ -39,7 +39,6 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
-    Tuple,
     Type,
     TypeVar,
     cast,
@@ -60,8 +59,8 @@ _T = TypeVar("_T")
 
 KATSDPSIGPROC_TUNE_MATCH = os.getenv("KATSDPSIGPROC_TUNE_MATCH", "exact")
 if KATSDPSIGPROC_TUNE_MATCH not in ["exact", "nearest"]:
-    _logger.debug("KATSDPSIGPROC_TUNE_MATCH environment variable not one of [ exact | nearest ]: \
-                    setting to 'exact'.")
+    _logger.debug("KATSDPSIGPROC_TUNE_MATCH environment variable not one of [ exact | nearest ]:"
+                  "setting to 'exact'.")
     KATSDPSIGPROC_TUNE_MATCH = "exact"
 
 
@@ -116,7 +115,7 @@ def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]
 
 def _query(
     conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
-) -> Tuple[str, Any]:
+) -> Any:
     query = f"SELECT * FROM {tablename} WHERE"
     query_args = []
     first = True
@@ -129,7 +128,7 @@ def _query(
     cursor = conn.cursor()
     cursor.execute(query, query_args)
     row = cursor.fetchone()
-    return query, row
+    return row
 
 
 def _fetch(
@@ -150,19 +149,19 @@ def _fetch(
         Keys and values for the query
     """
     try:
-        query, row = _query(conn, tablename, keys)
+        row = _query(conn, tablename, keys)
         if row is None:
             if KATSDPSIGPROC_TUNE_MATCH == "nearest":
                 # If it exists, find the nearest autotune match by first ignoring device version,
                 # then device platform, then device name.
                 tune_keys = dict(keys)
                 for key in ["device_version", "device_platform", "device_name"]:
-                    _logger.debug("Retrying query '%s' by ignoring %s", query, key)
+                    _logger.debug("Retrying query by ignoring %s", key)
                     del tune_keys[key]
                     try:
-                        query, row = _query(conn, tablename, tune_keys)
+                        row = _query(conn, tablename, tune_keys)
                     except sqlite3.Error:
-                        _logger.debug("Query '%s' failed", query, exc_info=True)
+                        _logger.debug("Query '%s' failed", exc_info=True)
                         pass
                     if row is not None:
                         break
@@ -176,7 +175,7 @@ def _fetch(
             return ans
     except sqlite3.Error:
         # This could happen if the table does not exist yet
-        _logger.debug("Query '%s' failed", query, exc_info=True)
+        _logger.debug("Query failed", exc_info=True)
         pass
     return None
 
@@ -200,7 +199,7 @@ def _save(
     keys: Mapping[str, Any],
     values: Mapping[str, Any],
 ) -> None:
-    # Write cached result into the table, creating it if it does not already exist.
+    """ Write cached result into the table, creating it if it does not already exist."""
     _create_table(conn, tablename, keys, values)
     # Combine all fields
     entries = dict(keys)
