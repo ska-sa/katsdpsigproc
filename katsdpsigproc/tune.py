@@ -36,7 +36,6 @@ from typing import (
     Any,
     Callable,
     Dict,
-    List,
     Mapping,
     Optional,
     Sequence,
@@ -59,7 +58,11 @@ _logger = logging.getLogger(__name__)
 _ScoreFunc = Callable[[int], float]
 _T = TypeVar("_T")
 
-KATSDPSIGPROC_TUNE_FALLBACK = os.getenv("KATSDPSIGPROC_TUNE_FALLBACK", "tune")
+KATSDPSIGPROC_TUNE_MATCH = os.getenv("KATSDPSIGPROC_TUNE_MATCH", "exact")
+if KATSDPSIGPROC_TUNE_MATCH not in ["exact", "nearest"]:
+    _logger.debug("KATSDPSIGPROC_TUNE_MATCH environment variable not one of [ exact | nearest ]: \
+                    setting to 'exact'.")
+    KATSDPSIGPROC_TUNE_MATCH = "exact"
 
 
 class _TuningFunc(Protocol):
@@ -111,9 +114,9 @@ def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]
     return keys
 
 
-def _assemble_query(
+def _query(
     conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
-) -> Tuple[str, List, Any]:
+) -> Tuple[str, Any]:
     query = f"SELECT * FROM {tablename} WHERE"
     query_args = []
     first = True
@@ -126,15 +129,16 @@ def _assemble_query(
     cursor = conn.cursor()
     cursor.execute(query, query_args)
     row = cursor.fetchone()
-    return query, query_args, row
+    return query, row
 
 
-def _query(
+def _fetch(
     conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
 ) -> Optional[Mapping[str, Any]]:
     """Fetch a cached record from the database.
 
-    If the record is not found, it will return None.
+    If the record is not found, it will return the nearest match, if one is found, when the
+    KATSDPSIGPROC_TUNE_MATCH environment variable is set to "match", or None otherwise.
 
     Parameters
     ----------
@@ -146,25 +150,17 @@ def _query(
         Keys and values for the query
     """
     try:
-        query, query_args, row = _assemble_query(conn, tablename, keys)
+        query, row = _query(conn, tablename, keys)
         if row is None:
-            if KATSDPSIGPROC_TUNE_FALLBACK == "fail":
-                raise RuntimeError(
-                    "Did not find record and autotune fallback behaviour set to 'fail'."
-                )
-            elif KATSDPSIGPROC_TUNE_FALLBACK == "nearest":
-                """If it exists, find the nearest autotune match by first ignoring device version,
-                    then device platform, then device name."""
+            if KATSDPSIGPROC_TUNE_MATCH == "nearest":
+                # If it exists, find the nearest autotune match by first ignoring device version,
+                # then device platform, then device name.
                 tune_keys = dict(keys)
                 for key in ["device_version", "device_platform", "device_name"]:
                     _logger.debug("Retrying query '%s' by ignoring %s", query, key)
+                    del tune_keys[key]
                     try:
-                        del tune_keys[key]
-                    except KeyError:
-                        _logger.debug("Key: %s not found in %s", key, tablename, exc_info=True)
-                        break
-                    try:
-                        query, query_args, row = _assemble_query(conn, tablename, tune_keys)
+                        query, row = _query(conn, tablename, tune_keys)
                     except sqlite3.Error:
                         _logger.debug("Query '%s' failed", query, exc_info=True)
                         pass
@@ -204,7 +200,7 @@ def _save(
     keys: Mapping[str, Any],
     values: Mapping[str, Any],
 ) -> None:
-    """Write cached result into the table, creating it if it does not already exist."""
+    # Write cached result into the table, creating it if it does not already exist.
     _create_table(conn, tablename, keys, values)
     # Combine all fields
     entries = dict(keys)
@@ -259,7 +255,7 @@ def autotuner_impl(
     conn = _open_db()
     conn.row_factory = sqlite3.Row
     try:
-        ans = _query(conn, tablename, keys)
+        ans = _fetch(conn, tablename, keys)
         if ans is None:
             # Nothing found in the database, so we need to tune now
             _logger.info("Performing autotuning for %s with key %s", classname, keys)
