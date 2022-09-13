@@ -4,4 +4,4 @@
 katsdp.killOldJobs()
 katsdp.setDependencies(['ska-sa/katsdpdockerbase/master'])
 katsdp.standardBuild(opencl: true, cuda: true)
-katsdp.mail('sdpdev+katsdpsigproc@ska.ac.za')
+katsdp.mail('sdpdev+katsdpsigproc@sarao.ac.za')
