@@ -6,11 +6,9 @@ that they can be glued together properly.
 
 import numpy as np
 
-from .. import host
-from ...abc import AbstractContext, AbstractCommandQueue
-from ...test.test_accel import device_test
-from ...test import complex_normal
-from .. import device
+from katsdpsigproc.rfi import host, device
+from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
+from .. import complex_normal
 
 
 _vis: np.ndarray
@@ -57,7 +55,7 @@ def test_flagger_host() -> None:
 
 def check_flagger_device(use_flags: device.BackgroundFlags,
                          transpose_noise_est: bool, transpose_threshold: bool,
-                         context: AbstractContext, queue: AbstractCommandQueue) -> None:
+                         context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
     global _vis, _spikes, _input_flags
     background = device.BackgroundMedianFilterDeviceTemplate(context, 13, use_flags=use_flags)
     if transpose_noise_est:
@@ -68,7 +66,8 @@ def check_flagger_device(use_flags: device.BackgroundFlags,
     threshold = device.ThresholdSimpleDeviceTemplate(
         context, transpose_threshold, tuning={'wgsx': 8, 'wgsy': 8})
     flagger_device = device.FlaggerDeviceTemplate(background, noise_est, threshold)
-    flagger = device.FlaggerHostFromDevice(flagger_device, queue, threshold_args=dict(n_sigma=11.0))
+    flagger = device.FlaggerHostFromDevice(
+        flagger_device, command_queue, threshold_args=dict(n_sigma=11.0))
     if use_flags == device.BackgroundFlags.CHANNEL:
         flags = flagger(_vis, _input_flags[:, 0])
         input_flags = np.broadcast_to(_input_flags[:, 0:1], _vis.shape)
@@ -83,27 +82,23 @@ def check_flagger_device(use_flags: device.BackgroundFlags,
         np.testing.assert_equal(_spikes, flags)
 
 
-@device_test
-def test_flagger_device(context: AbstractContext, queue: AbstractCommandQueue) -> None:
-    check_flagger_device(device.BackgroundFlags.NONE, False, False, context, queue)
+def test_flagger_device(context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    check_flagger_device(device.BackgroundFlags.NONE, False, False, context, command_queue)
 
 
-@device_test
 def test_flagger_device_transpose_noise_est(context: AbstractContext,
-                                            queue: AbstractCommandQueue) -> None:
+                                            command_queue: AbstractCommandQueue) -> None:
     """Test device flagger with a transposed noise estimator."""
-    check_flagger_device(device.BackgroundFlags.CHANNEL, True, False, context, queue)
+    check_flagger_device(device.BackgroundFlags.CHANNEL, True, False, context, command_queue)
 
 
-@device_test
 def test_flagger_device_transpose_threshold(context: AbstractContext,
-                                            queue: AbstractCommandQueue) -> None:
+                                            command_queue: AbstractCommandQueue) -> None:
     """Test device flagger with a transposed thresholder."""
-    check_flagger_device(device.BackgroundFlags.FULL, False, True, context, queue)
+    check_flagger_device(device.BackgroundFlags.FULL, False, True, context, command_queue)
 
 
-@device_test
 def test_flagger_device_transpose_both(context: AbstractContext,
-                                       queue: AbstractCommandQueue) -> None:
+                                       command_queue: AbstractCommandQueue) -> None:
     """Test device flagger with a transposed noise estimator and thresholder."""
-    check_flagger_device(device.BackgroundFlags.NONE, True, True, context, queue)
+    check_flagger_device(device.BackgroundFlags.NONE, True, True, context, command_queue)

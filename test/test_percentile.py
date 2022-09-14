@@ -1,40 +1,39 @@
 """Tests for :mod:`katsdpsigproc.percentile`."""
 
-from typing import Tuple, Generator, Optional, Callable, cast
+from typing import Tuple, Optional, cast
 
 import numpy as np
+import pytest
 
-from .test_accel import device_test, force_autotune
 from . import complex_normal
-from .. import accel
-from .. import percentile
-from ..abc import AbstractContext, AbstractCommandQueue
+from katsdpsigproc import accel
+from katsdpsigproc import percentile
+from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
 
 
 class TestPercentile5:
-    def test_percentile(self) -> Generator[
-            Tuple[Callable[[int, int, bool, Optional[Tuple[int, int]]], None],
-                  int, int, bool, Optional[Tuple[int, int]]],
-            None, None]:
-        yield self.check_percentile5, 4096, 1, False, None
-        yield self.check_percentile5, 4095, 4029, True, (0, 4009)
-        yield self.check_percentile5, 4094, 4030, False, (100, 4030)
-        yield self.check_percentile5, 2343, 6031, False, (123, 4001)
-        yield self.check_percentile5, 4092, 4032, True, None
-
     @classmethod
     def pad_dimension(cls, dim: accel.Dimension, extra: int) -> None:
         """Modify `dim` to have at least `extra` padding."""
         newdim = accel.Dimension(dim.size, min_padded_size=dim.size + extra)
         newdim.link(dim)
 
-    @device_test
-    def check_percentile5(self, R: int, C: int, is_amplitude: bool,
-                          column_range: Optional[Tuple[int, int]],
-                          context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    @pytest.mark.parametrize(
+        'R, C, is_amplitude, column_range',
+        [
+            (4096, 1, False, None),
+            (4095, 4029, True, (0, 4009)),
+            (4094, 4030, False, (100, 4030)),
+            (2343, 6031, False, (123, 4001)),
+            (4092, 4032, True, None)
+        ]
+    )
+    def test_percentile5(self, R: int, C: int, is_amplitude: bool,
+                         column_range: Optional[Tuple[int, int]],
+                         context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         template = percentile.Percentile5Template(context, max_columns=5000,
                                                   is_amplitude=is_amplitude)
-        fn = template.instantiate(queue, (R, C), column_range)
+        fn = template.instantiate(command_queue, (R, C), column_range)
         # Force some padded, to check that stride calculation works
         src_slot = cast(accel.IOSlot, fn.slots['src'])
         dest_slot = cast(accel.IOSlot, fn.slots['dest'])
@@ -49,9 +48,9 @@ class TestPercentile5:
             ary = complex_normal(rs, size=(R, C)).astype(np.complex64)
         src = fn.slots['src'].allocate(fn.allocator)
         dest = fn.slots['dest'].allocate(fn.allocator)
-        src.set_async(queue, ary)
+        src.set_async(command_queue, ary)
         fn()
-        out = dest.get(queue)
+        out = dest.get(command_queue)
         if column_range is None:
             column_range = (0, C)
         expected = np.percentile(np.abs(ary[:, column_range[0]:column_range[1]]),
@@ -63,8 +62,7 @@ class TestPercentile5:
         else:
             np.testing.assert_allclose(expected, out, 1e-6)
 
-    @device_test
-    @force_autotune
-    def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    @pytest.mark.force_autotune
+    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         """Check that the autotuner runs successfully."""
         percentile.Percentile5Template(context, max_columns=5000)

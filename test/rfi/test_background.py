@@ -3,12 +3,11 @@
 from abc import ABC, abstractmethod
 
 import numpy as np
+import pytest
 
-from .. import host
-from ...abc import AbstractContext, AbstractCommandQueue
-from ...test.test_accel import device_test, force_autotune
-from ...test import complex_normal
-from .. import device
+from katsdpsigproc.rfi import host, device
+from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
+from .. import complex_normal
 
 
 _vis = np.array([])
@@ -50,12 +49,11 @@ class BaseTestBackgroundDeviceClass(ABC):
     amplitudes = None     # type: bool
     use_flags = None      # type: device.BackgroundFlags
 
-    @device_test
-    def test_result(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    def test_result(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         width = 5
         bg_device_template = self.factory(context, width)
         bg_host = bg_device_template.host_class(width, self.amplitudes)
-        bg_device = device.BackgroundHostFromDevice(bg_device_template, queue)
+        bg_device = device.BackgroundHostFromDevice(bg_device_template, command_queue)
         if self.amplitudes:
             vis = np.abs(_vis_big)
         else:
@@ -71,9 +69,8 @@ class BaseTestBackgroundDeviceClass(ABC):
         # Uses an abs tolerance because backgrounding subtracts nearby values
         np.testing.assert_allclose(out_host, out_device, atol=1e-6)
 
-    @device_test
-    @force_autotune
-    def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    @pytest.mark.force_autotune
+    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         self.factory(context, 5)
 
     @abstractmethod
