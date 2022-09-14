@@ -1,14 +1,6 @@
 katsdpsigproc.rfi package
 =========================
 
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 4
-
-   katsdpsigproc.rfi.test
-
 Submodules
 ----------
 
