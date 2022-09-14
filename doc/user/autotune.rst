@@ -161,13 +161,12 @@ that autotuning causes some additional challenges in testing:
 - The autotuning code should itself be tested, but once it has been run once
   the result will be cached and it will not run again.
 
-To address these issues, the :func:`.device_test` test decorator disables
+To address these issues, the :ref:`context <fixture-context>` fixture disables
 autotuning. Instead, your :func:`!autotune` function will return the result
 specified with the `test` keyword argument to the :func:`.autotuner`
 decorator. You should use an argument that is likely to work across a range of
 devices.
 
 To test the autotuning code itself, use the
-:class:`katsdpsigproc.test.test_accel.force_autotune` decorator (after the
-:func:`.device_test` decorator). It overrides the behavior described above so
-that the autotuning function always runs with no caching.
+:ref:`force_autotune <mark-force_autotune>` mark. It overrides the behavior
+described above so that the autotuning function always runs with no caching.
