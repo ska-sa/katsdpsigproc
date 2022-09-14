@@ -118,6 +118,11 @@ class ResourceAllocation(Generic[_T]):
         if not self._end.done():
             if exc_value is not None:
                 self._end.set_exception(exc_value)
+                # Prevent asyncio complaining that the exception was never
+                # retrieved, because we're also propagating the exception
+                # from the context manager block and it's not necessary for
+                # the application to consume it a second time.
+                self._end.exception()
             else:
                 _logger.warning('Resource allocation was not explicitly made ready')
                 self.ready()
