@@ -14,6 +14,7 @@ _flags = np.array([])
 _flags_big = np.array([])
 
 
+@pytest.fixture(autouse=True, scope="module")
 def setup() -> None:
     global _vis, _vis_big, _flags, _flags_big
     shape = (417, 313)
