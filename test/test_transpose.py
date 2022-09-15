@@ -39,6 +39,6 @@ class TestTranspose:
         np.testing.assert_equal(ary.T, out)
 
     @pytest.mark.force_autotune
-    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    def test_autotune(self, context: AbstractContext) -> None:
         """Check that the autotuner runs successfully."""
         transpose.TransposeTemplate(context, np.uint8, 'unsigned char')
