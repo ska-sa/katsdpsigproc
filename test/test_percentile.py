@@ -63,6 +63,6 @@ class TestPercentile5:
             np.testing.assert_allclose(expected, out, 1e-6)
 
     @pytest.mark.force_autotune
-    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    def test_autotune(self, context: AbstractContext) -> None:
         """Check that the autotuner runs successfully."""
         percentile.Percentile5Template(context, max_columns=5000)
