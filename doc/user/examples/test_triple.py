@@ -1,7 +1,8 @@
 import numpy as np
 import katsdpsigproc.accel
 from katsdpsigproc.accel import Operation, IOSlot, Dimension, build, roundup
-from katsdpsigproc.test.test_accel import device_test
+
+pytest_plugins = ["katsdpsigproc.pytest_plugin"]
 
 SOURCE = """
 <%include file="/port.mako"/>
@@ -39,14 +40,13 @@ class Multiply(Operation):
         )
 
 
-@device_test
-def test_multiply(ctx, queue):
+def test_multiply(context, command_queue):
     size = 53
-    template = MultiplyTemplate(ctx)
-    op = template.instantiate(queue, size, 4.0)
+    template = MultiplyTemplate(context)
+    op = template.instantiate(command_queue, size, 4.0)
     op.ensure_all_bound()
     src = np.random.uniform(size=size).astype(np.float32)
-    op.buffer('data').set(queue, src)
+    op.buffer('data').set(command_queue, src)
     op()
-    dst = op.buffer('data').get(queue)
+    dst = op.buffer('data').get(command_queue)
     np.testing.assert_array_equal(dst, src * 4.0)
