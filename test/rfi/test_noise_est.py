@@ -3,10 +3,10 @@
 from abc import ABC, abstractmethod
 
 import numpy as np
+import pytest
 
-from .. import host, device
-from ...abc import AbstractContext, AbstractCommandQueue
-from ...test.test_accel import device_test, force_autotune
+from katsdpsigproc.rfi import host, device
+from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
 
 
 _deviations: np.ndarray
@@ -39,19 +39,17 @@ def test_NoiseEstMADHost() -> None:
 
 
 class BaseTestNoiseEstDeviceClass(ABC):
-    @device_test
-    def test_result(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    def test_result(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         global _deviations_big
         template = self.factory(context)
         ne_host = template.host_class()
-        ne_device = device.NoiseEstHostFromDevice(template, queue)
+        ne_device = device.NoiseEstHostFromDevice(template, command_queue)
         noise_host = ne_host(_deviations_big)
         noise_device = ne_device(_deviations_big)
         np.testing.assert_allclose(noise_host, noise_device)
 
-    @device_test
-    @force_autotune
-    def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    @pytest.mark.force_autotune
+    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         self.factory(context)
 
     @abstractmethod

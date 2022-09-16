@@ -3,12 +3,11 @@
 import concurrent.futures
 
 import numpy as np
+import pytest
 import scipy.interpolate
 from scipy.ndimage import gaussian_filter1d, gaussian_filter
-from nose.tools import assert_equal, assert_less, assert_raises
-from nose.plugins.skip import SkipTest
 
-from .. import twodflag
+from katsdpsigproc.rfi import twodflag
 
 
 class TestAsbool:
@@ -16,12 +15,12 @@ class TestAsbool:
         a = np.array([0, 1, 1, 0, 1, 0, 0, 1], dtype)
         expected = a.astype(np.bool_)
         out = twodflag._asbool(a)
-        assert_equal(np.bool_, out.dtype)
+        assert out.dtype == np.bool_
         np.testing.assert_array_equal(expected, out)
         if expect_view:
             # Change a, out must change because it is a view
             a[0] = not a[0]
-            assert_equal(bool(a[0]), out[0])
+            assert out[0] == bool(a[0])
 
     def test_uint8(self):
         self._test(np.uint8, True)
@@ -48,8 +47,8 @@ class TestAverageFreq:
                                                      twodflag._as_min_dtype(1))
         expected = self.small_data.copy()
         expected[self.small_flags] = 0
-        assert_equal(np.float32, avg_data.dtype)
-        assert_equal(np.bool_, avg_flags.dtype)
+        assert avg_data.dtype == np.float32
+        assert avg_flags.dtype == np.bool_
         np.testing.assert_array_equal(np.moveaxis(expected, -1, 0), avg_data)
         np.testing.assert_array_equal(np.moveaxis(self.small_flags, -1, 0), avg_flags)
 
@@ -81,8 +80,8 @@ class TestAverageFreq:
             [[False, False, False]] * 5])
         avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
                                                      twodflag._as_min_dtype(2))
-        assert_equal(np.float32, avg_data.dtype)
-        assert_equal(np.bool_, avg_flags.dtype)
+        assert avg_data.dtype == np.float32
+        assert avg_flags.dtype == np.bool_
         np.testing.assert_array_equal(expected_data, avg_data)
         np.testing.assert_array_equal(expected_flags, avg_flags)
 
@@ -113,8 +112,8 @@ class TestAverageFreq:
             ], [[False, False]] * 5], np.bool_)
         avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
                                                      twodflag._as_min_dtype(4))
-        assert_equal(np.float32, avg_data.dtype)
-        assert_equal(np.bool_, avg_flags.dtype)
+        assert avg_data.dtype == np.float32
+        assert avg_flags.dtype == np.bool_
         np.testing.assert_array_equal(expected_data, avg_data)
         np.testing.assert_array_equal(expected_flags, avg_flags)
 
@@ -149,7 +148,7 @@ class TestMedianAbs:
 
     def test(self):
         out = twodflag._median_abs(self.data, self.flags)
-        assert_equal(2.0, out)
+        assert out == 2.0
 
     def test_all_flagged(self):
         out = twodflag._median_abs(self.data, np.ones_like(self.flags))
@@ -236,7 +235,7 @@ class TestBoxGaussianFilter:
 
     def test_bad_sigma_dim(self):
         a = np.zeros((50, 50), np.float32)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             twodflag._box_gaussian_filter(a, np.array([3.0]), a)
 
     def test_2d(self):
@@ -311,7 +310,7 @@ class TestMaskedGaussianFilter:
         twodflag.masked_gaussian_filter(self.data, self.flags, sigma, actual)
         np.testing.assert_allclose(expected, actual, rtol=1e-1)
         # Check that some NaNs were generated
-        assert_less(0, np.sum(np.isnan(expected)))
+        assert np.sum(np.isnan(expected)) > 0
 
 
 class TestGetBackground2D:
@@ -339,7 +338,7 @@ class TestGetBackground2D:
 
     def test_no_flags(self):
         background = self._get_background2d(self.data)
-        assert_equal(np.float32, background.dtype)
+        assert background.dtype == np.float32
         # It's all constant, so background and output should match.
         # It won't be exact though, because the Gaussian filter accumulates
         # errors as it sums.
@@ -348,7 +347,7 @@ class TestGetBackground2D:
     def test_all_flagged(self):
         self.flags[:] = True
         background = self._get_background2d(self.data, self.flags)
-        assert_equal(np.float32, background.dtype)
+        assert background.dtype == np.float32
         np.testing.assert_array_equal(np.zeros(self.shape, np.float32), background)
 
     def test_in_flags(self):
@@ -441,7 +440,7 @@ class TestSumThreshold:
             out_flags = out_flags.T
         # Due to random data, won't get perfect agreement, but should get close
         errors = np.sum(expected_flags != out_flags)
-        assert_less(errors / data.size, 0.01)
+        assert errors / data.size < 0.01
         # Check for exact match on the individual spikes
         for region in (np.s_[8:13, 18:23], np.s_[78:83, 78:83]):
             np.testing.assert_equal(expected_flags[region], out_flags[region])
@@ -553,8 +552,8 @@ class TestSumThresholdFlagger:
         # import matplotlib.pyplot as plt
         # plt.imshow(expected[..., 0] + 2 * out_flags[..., 0] + 4 * allowed[..., 0])
         # plt.show()
-        assert_equal(0, missing.sum())
-        assert_less(extra.sum() / data.size, 0.03)
+        assert missing.sum() == 0
+        assert extra.sum() / data.size < 0.03
 
     def test_get_flags(self):
         self._test_get_flags(self.flagger)
@@ -573,12 +572,12 @@ class TestSumThresholdFlagger:
         flagger = twodflag.SumThresholdFlagger(average_freq=2)
         self._test_get_flags(flagger)
 
+    # TODO: fix up the overflagging of the background in the flagger,
+    # which currently causes this to fail.
+    @pytest.mark.skip(reason='Backgrounder overflags edges of the slope')
     def test_get_flags_iterations(self):
-        # TODO: fix up the overflagging of the background in the flagger,
-        # which currently causes this to fail.
-        raise SkipTest('Backgrounder overflags edges of the slope')
-        # flagger = twodflag.SumThresholdFlagger(background_iterations=3)
-        # self._test_get_flags(flagger)
+        flagger = twodflag.SumThresholdFlagger(background_iterations=3)
+        self._test_get_flags(flagger)
 
     def _test_get_flags_all_flagged(self, flagger):
         data = np.zeros((100, 80, 4), np.float32)
@@ -609,8 +608,8 @@ class TestSumThresholdFlagger:
         data = np.abs(background + noise)
         in_flags = np.zeros(shape, np.bool_)
         out_flags = self.flagger.get_flags(data, in_flags)
-        assert_equal(True, out_flags[100, 17, 0])
-        assert_equal(False, out_flags[200, 170, 0])
+        assert out_flags[100, 17, 0]
+        assert not out_flags[200, 170, 0]
 
     def _test_parallel(self, pool):
         """Test that parallel execution gets same results as serial."""

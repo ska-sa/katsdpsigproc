@@ -5,47 +5,6 @@ you will normally need a context and a command queue. There are two modules
 that provide support for testing, depending on which testing framework is in
 use.
 
-nose
-----
-The :mod:`katsdpsigproc.test.test_accel` module provides a number of decorators
-that can be used to simplify writing test functions. They are designed for use
-with `nose`_.
-
-.. _nose: https://nose.readthedocs.io
-
-To write a test function, give it two extra arguments, which will be the
-context and command queue (you can call them anything as they are passed
-positionally). Then decorate the test with :func:`.device_test`. Here's a
-simple example test for the :class:`!Multiply` operation we've developed in
-previous sections.
-
-.. code:: python
-
-    @device_test
-    def test_multiply(context, command_queue):
-        size = 53
-        template = MultiplyTemplate(context)
-        op = template.instantiate(command_queue, size, 4.0)
-        op.ensure_all_bound()
-        src = np.random.uniform(size=size).astype(np.float32)
-        op.buffer('data').set(command_queue, src)
-        op()
-        dst = op.buffer('data').get(command_queue)
-        np.testing.assert_array_equal(dst, src * 4.0)
-
-The device and command queue are created the first time one of the decorated
-tests is run; after this they are reused. This can cause problems if there is
-an error like an out-of-bounds memory access, because this tends to break the
-context and cause all subsequent tests to fail too.
-
-If no devices are found, the test will be skipped. If multiple devices are
-found, then the first one will be used. You can use the
-:envvar:`KATSDPSIGPROC_DEVICE` environment variable to change which device is
-used.
-
-See also :ref:`Testing autotuning <autotune-testing>` for information about how
-testing interacts with autotuning.
-
 .. _testing-pytest:
 
 pytest
@@ -136,10 +95,14 @@ force_autotune
     <fixture-context>` fixture), run the full autotuning unconditionally
     (ignoring any results in the autotuning database).
 
+    See also :ref:`Testing autotuning <autotune-testing>` for information
+    about how testing interacts with autotuning.
+
 Example
 ^^^^^^^
-The example is almost identical to that for nose, but without the need for a
-decorator:
+
+Here's a simple example test for the :class:`!Multiply` operation we've
+developed in previous sections.
 
 .. code:: python
 
@@ -155,3 +118,44 @@ decorator:
         op()
         dst = op.buffer('data').get(command_queue)
         np.testing.assert_array_equal(dst, src * 4.0)
+
+nose
+----
+The :mod:`katsdpsigproc.test.test_accel` module provides a number of decorators
+that can be used to simplify writing test functions. They are designed for use
+with `nose`_. Note that nose is no longer maintained and does not work with the
+latest versions of Python. As such, this support is kept in katsdpsigproc only
+for backwards compatibility, and you are encouraged to convert your tests to
+pytest as soon as possible.
+
+.. _nose: https://nose.readthedocs.io
+
+To write a test function, give it two extra arguments, which will be the
+context and command queue (you can call them anything as they are passed
+positionally). Then decorate the test with :func:`.device_test`. Here's a
+simple example test for the :class:`!Multiply` operation we've developed in
+previous sections.
+
+.. code:: python
+
+    @device_test
+    def test_multiply(context, command_queue):
+        size = 53
+        template = MultiplyTemplate(context)
+        op = template.instantiate(command_queue, size, 4.0)
+        op.ensure_all_bound()
+        src = np.random.uniform(size=size).astype(np.float32)
+        op.buffer('data').set(command_queue, src)
+        op()
+        dst = op.buffer('data').get(command_queue)
+        np.testing.assert_array_equal(dst, src * 4.0)
+
+The device and command queue are created the first time one of the decorated
+tests is run; after this they are reused. This can cause problems if there is
+an error like an out-of-bounds memory access, because this tends to break the
+context and cause all subsequent tests to fail too.
+
+If no devices are found, the test will be skipped. If multiple devices are
+found, then the first one will be used. You can use the
+:envvar:`KATSDPSIGPROC_DEVICE` environment variable to change which device is
+used.

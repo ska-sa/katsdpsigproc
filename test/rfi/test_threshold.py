@@ -4,11 +4,10 @@ from abc import ABC, abstractmethod
 from typing import Type
 
 import numpy as np
+import pytest
 
-from .. import host
-from ...abc import AbstractContext, AbstractCommandQueue
-from ...test.test_accel import device_test, force_autotune
-from .. import device
+from katsdpsigproc.rfi import host, device
+from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
 
 
 _deviations: np.ndarray
@@ -43,21 +42,19 @@ def check_host_class(cls: Type[host.AbstractThresholdHost], n_sigma: float) -> N
 
 
 class BaseTestDeviceClass(ABC):
-    @device_test
-    def test_result(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    def test_result(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         global _deviations
         n_sigma = 11.0
         template = self.factory(context)
         th_host = template.host_class(n_sigma)
-        th_device = device.ThresholdHostFromDevice(template, queue, n_sigma=n_sigma)
+        th_device = device.ThresholdHostFromDevice(template, command_queue, n_sigma=n_sigma)
         noise = np.linspace(0.0, 50.0, _deviations.shape[1]).astype(np.float32)
         flags_host = th_host(_deviations, noise)
         flags_device = th_device(_deviations, noise)
         np.testing.assert_equal(flags_host, flags_device)
 
-    @device_test
-    @force_autotune
-    def test_autotune(self, context: AbstractContext, queue: AbstractCommandQueue) -> None:
+    @pytest.mark.force_autotune
+    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         self.factory(context)
 
     @abstractmethod

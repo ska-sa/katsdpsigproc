@@ -6,51 +6,52 @@ import queue
 import logging
 from typing import List
 
-import asynctest
+import pytest
 
-from nose.tools import (assert_equal, assert_true, assert_false,
-                        assert_in, assert_not_in, assert_raises, assert_logs)
-
-from .. import resource
-from ..abc import AbstractEvent
+from katsdpsigproc import resource
+from katsdpsigproc.abc import AbstractEvent
 
 
-class TestWaitUntil(asynctest.TestCase):
+class TestWaitUntil:
     async def test_result(self) -> None:
         """wait_until returns before the timeout if a result is set."""
-        future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
-        self.loop.call_later(0.1, future.set_result, 42)
-        result = await resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop)
-        assert_equal(42, result)
+        future = asyncio.Future()     # type: asyncio.Future[int]
+        loop = asyncio.get_event_loop()
+        loop.call_later(0.1, future.set_result, 42)
+        result = await resource.wait_until(future, loop.time() + 1000000)
+        assert result == 42
 
     async def test_already_set(self) -> None:
         """wait_until returns if a future has a result set before the call."""
-        future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
+        future = asyncio.Future()     # type: asyncio.Future[int]
         future.set_result(42)
-        result = await resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop)
-        assert_equal(42, result)
+        loop = asyncio.get_event_loop()
+        result = await resource.wait_until(future, loop.time() + 1000000)
+        assert result == 42
 
     async def test_exception(self) -> None:
         """wait_until rethrows an exception set on the future."""
-        future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
-        self.loop.call_later(0.1, future.set_exception, ValueError('test'))
-        with assert_raises(ValueError):
-            await resource.wait_until(future, self.loop.time() + 1000000, loop=self.loop)
+        future = asyncio.Future()     # type: asyncio.Future[int]
+        loop = asyncio.get_event_loop()
+        loop.call_later(0.1, future.set_exception, ValueError('test'))
+        with pytest.raises(ValueError):
+            await resource.wait_until(future, loop.time() + 1000000)
 
     async def test_timeout(self) -> None:
         """wait_until throws `asyncio.TimeoutError` if it times out, and cancels the future."""
-        future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
-        with assert_raises(asyncio.TimeoutError):
-            await resource.wait_until(future, self.loop.time() + 0.01, loop=self.loop)
-        assert_true(future.cancelled())
+        future = asyncio.Future()     # type: asyncio.Future[int]
+        loop = asyncio.get_event_loop()
+        with pytest.raises(asyncio.TimeoutError):
+            await resource.wait_until(future, loop.time() + 0.01)
+        assert future.cancelled()
 
     async def test_shield(self) -> None:
         """wait_until does not cancel the future if it is wrapped in shield."""
-        future = asyncio.Future(loop=self.loop)     # type: asyncio.Future[int]
-        with assert_raises(asyncio.TimeoutError):
-            await resource.wait_until(asyncio.shield(future),
-                                      self.loop.time() + 0.01, loop=self.loop)
-        assert_false(future.cancelled())
+        future = asyncio.Future()     # type: asyncio.Future[int]
+        loop = asyncio.get_event_loop()
+        with pytest.raises(asyncio.TimeoutError):
+            await resource.wait_until(asyncio.shield(future), loop.time() + 0.01)
+        assert not future.cancelled()
 
 
 class DummyEvent(AbstractEvent):
@@ -77,27 +78,27 @@ class DummyEvent(AbstractEvent):
         return 0.0
 
 
-class TestResource(asynctest.TestCase):
-    def setUp(self) -> None:
+class TestResource:
+    def setup(self) -> None:
         self.completed = queue.Queue()      # type: queue.Queue[resource.ResourceAllocation[int]]
 
     async def _run_frame(self, acq: resource.ResourceAllocation[int],
                          event: AbstractEvent) -> None:
         with acq as value:
-            assert_equal(42, value)
+            assert value == 42
             await acq.wait_events()
             acq.ready([event])
             self.completed.put(acq)
 
     async def test_wait_events(self) -> None:
         """Test :meth:`.ResourceAllocation.wait_events`."""
-        r = resource.Resource(42, loop=self.loop)
+        r = resource.Resource(42)
         a0 = r.acquire()
         a1 = r.acquire()
         e0 = DummyEvent(self.completed)
         e1 = DummyEvent(self.completed)
-        run1 = asyncio.ensure_future(self._run_frame(a1, e1), loop=self.loop)
-        run0 = asyncio.ensure_future(self._run_frame(a0, e0), loop=self.loop)
+        run1 = asyncio.ensure_future(self._run_frame(a1, e1))
+        run0 = asyncio.ensure_future(self._run_frame(a0, e0))
         await run0
         await run1
         order = []
@@ -106,42 +107,44 @@ class TestResource(asynctest.TestCase):
                 order.append(self.completed.get_nowait())
         except queue.Empty:
             pass
-        assert_equal(order, [a0, e0, a1])
+        assert order == [a0, e0, a1]
 
     async def test_context_manager_exception(self) -> None:
         """Test using :class:`resource.ResourceAllocation` as a \
         context manager when an error is raised."""
-        r = resource.Resource(None, loop=self.loop)
+        r = resource.Resource(None)
         a0 = r.acquire()
         a1 = r.acquire()
-        with assert_raises(RuntimeError):
+        with pytest.raises(RuntimeError):
             with a0:
                 await a0.wait_events()
                 raise RuntimeError('test exception')
-        with assert_raises(RuntimeError):
+        with pytest.raises(RuntimeError):
             with a1:
                 await a1.wait_events()
                 a1.ready()
 
-    async def test_context_manager_no_ready(self) -> None:
+    async def test_context_manager_no_ready(self, caplog) -> None:
         """Test using :class:`resource.ResourceAllocation` as a context \
         manager when the user does not call :meth:`.ResourceAllocation.ready`."""
-        with assert_logs('katsdpsigproc.resource', logging.WARNING) as cm:
-            r = resource.Resource(None, loop=self.loop)
+        with caplog.at_level(logging.WARNING, logger='katsdpsigproc.resource'):
+            r = resource.Resource(None)
             a0 = r.acquire()
             with a0:
                 pass
-        assert_equal(
-            cm.output,
-            ['WARNING:katsdpsigproc.resource:Resource allocation was not explicitly made ready'])
+        assert caplog.record_tuples == [(
+            'katsdpsigproc.resource',
+            logging.WARNING,
+            'Resource allocation was not explicitly made ready'
+        )]
 
 
-class TestJobQueue(asynctest.TestCase):
-    def setUp(self) -> None:
+class TestJobQueue:
+    def setup(self) -> None:
         self.jobs = resource.JobQueue()
-        self.finished = [asyncio.Future(loop=self.loop)
+        self.finished = [asyncio.Future()
                          for i in range(5)]      # type: List[asyncio.Future[int]]
-        self.unfinished = [asyncio.Future(loop=self.loop)
+        self.unfinished = [asyncio.Future()
                            for i in range(5)]    # type: List[asyncio.Future[int]]
         for i, future in enumerate(self.finished):
             future.set_result(i)
@@ -151,11 +154,11 @@ class TestJobQueue(asynctest.TestCase):
         self.jobs.add(self.unfinished[0])
         self.jobs.add(self.finished[1])
         self.jobs.clean()
-        assert_equal(2, len(self.jobs._jobs))
+        assert len(self.jobs._jobs) == 2
 
     async def _finish(self) -> None:
         for i, future in enumerate(self.unfinished):
-            await asyncio.sleep(0.02, loop=self.loop)
+            await asyncio.sleep(0.02)
             future.set_result(i)
 
     async def test_finish(self) -> None:
@@ -163,28 +166,28 @@ class TestJobQueue(asynctest.TestCase):
         self.jobs.add(self.unfinished[0])
         self.jobs.add(self.unfinished[1])
         self.jobs.add(self.unfinished[2])
-        finisher = asyncio.ensure_future(self._finish(), loop=self.loop)
+        finisher = asyncio.ensure_future(self._finish())
         await self.jobs.finish(max_remaining=1)
-        assert_true(self.unfinished[0].done())
-        assert_true(self.unfinished[1].done())
-        assert_false(self.unfinished[2].done())
-        assert_equal(1, len(self.jobs))
+        assert self.unfinished[0].done()
+        assert self.unfinished[1].done()
+        assert not self.unfinished[2].done()
+        assert len(self.jobs) == 1
         await finisher
 
     def test_nonzero(self) -> None:
-        assert_false(self.jobs)
+        assert not self.jobs
         self.jobs.add(self.finished[0])
-        assert_true(self.jobs)
+        assert self.jobs
 
     def test_len(self) -> None:
-        assert_equal(0, len(self.jobs))
+        assert len(self.jobs) == 0
         self.jobs.add(self.finished[0])
         self.jobs.add(self.unfinished[1])
         self.jobs.add(self.finished[1])
-        assert_equal(3, len(self.jobs))
+        assert len(self.jobs) == 3
 
     def test_contains(self) -> None:
-        assert_not_in(self.finished[0], self.jobs)
+        assert self.finished[0] not in self.jobs
         self.jobs.add(self.finished[0])
-        assert_in(self.finished[0], self.jobs)
-        assert_not_in(self.finished[1], self.jobs)
+        assert self.finished[0] in self.jobs
+        assert self.finished[1] not in self.jobs
