@@ -27,9 +27,6 @@ import pytest
 from . import abc, accel, tune
 
 
-_devices = accel.all_devices()
-
-
 @pytest.fixture
 def patch_autotune(request, monkeypatch) -> None:
     autotuner = tune.stub_autotuner
