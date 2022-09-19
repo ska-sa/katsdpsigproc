@@ -3,6 +3,7 @@ Changelog
 
 .. rubric:: 1.4.3
 
+- Switching testing from nose to pytest.
 - Some packaging modernisation.
 - Fix some links to other packages in the docs.
 - Fix the return annotation on :meth:`katsdpsigproc.resource.wait_until`.
