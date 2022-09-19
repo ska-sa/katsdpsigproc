@@ -36,7 +36,12 @@ from .abc import (AbstractProgram, AbstractKernel, AbstractDevice, AbstractConte
                   AbstractEvent, AbstractCommandQueue, AbstractTuningCommandQueue)
 
 
-NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
+# When building with autodoc_mock_imports, DEFAULT_NVCC_FLAGS is a mock that
+# doesn't have a + operator.
+if isinstance(pycuda.compiler.DEFAULT_NVCC_FLAGS, list):
+    NVCC_FLAGS = pycuda.compiler.DEFAULT_NVCC_FLAGS + ['-lineinfo']
+else:
+    NVCC_FLAGS = ['-lineinfo']
 _T = TypeVar('_T')
 _C = TypeVar('_C', bound='Context')
 _D = TypeVar('_D', bound='Device')
