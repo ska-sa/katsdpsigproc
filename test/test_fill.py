@@ -36,6 +36,6 @@ class TestFill:
         np.testing.assert_equal(ret, 0xDEADBEEF)
 
     @pytest.mark.force_autotune
-    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    def test_autotune(self, context: AbstractContext) -> None:
         """Test that autotuner runs successfully."""
         fill.FillTemplate(context, np.uint8, 'unsigned char')

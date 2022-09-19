@@ -46,8 +46,8 @@ class TestMaskedSum:
         expected = np.sum(use_ary * msk.reshape(ary.shape[0], 1), axis=0)
         np.testing.assert_allclose(expected, out, rtol=1e-6)
 
+    @pytest.mark.parametrize('use_amplitudes', [False, True])
     @pytest.mark.force_autotune
-    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    def test_autotune(self, context: AbstractContext, use_amplitudes: bool) -> None:
         """Check that the autotuner runs successfully."""
-        maskedsum.MaskedSumTemplate(context, False)
-        maskedsum.MaskedSumTemplate(context, True)
+        maskedsum.MaskedSumTemplate(context, use_amplitudes)

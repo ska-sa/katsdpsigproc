@@ -76,6 +76,6 @@ class TestHReduce:
         np.testing.assert_equal(expected, dest)
 
     @pytest.mark.force_autotune
-    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    def test_autotune(self, context: AbstractContext) -> None:
         """Test that autotuner runs successfully."""
         reduce.HReduceTemplate(context, np.uint32, 'unsigned int', 'a + b', '0')
