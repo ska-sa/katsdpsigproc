@@ -1,3 +1,19 @@
+################################################################################
+# Copyright (c) 2011-2022, National Research Foundation (SARAO)
+#
+# Licensed under the BSD 3-Clause License (the "License"); you may not use
+# this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+#   https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+################################################################################
+
 """Tests for :mod:`katsdpsigproc.fft`."""
 
 import ctypes
@@ -42,18 +58,25 @@ class TestCufft:
 
 @pytest.mark.cuda_only
 class TestFft:
-    def _test_c2c_forward(
+    @pytest.mark.parametrize(
+        'shape, dtype, padded_shape_src, padded_shape_dest',
+        [
+            ((7, 16, 48), np.complex64, (7, 16, 48), (7, 18, 51)),
+            ((7, 16, 48), np.complex128, (7, 16, 48), (7, 18, 51))
+        ]
+    )
+    def test_c2c_forward(
         self,
         context: AbstractContext,
         command_queue: AbstractCommandQueue,
         shape: Tuple[int, ...],
         dtype: DTypeLike,
         padded_shape_src: Tuple[int, ...],
-        padded_shape_dst: Tuple[int, ...]
+        padded_shape_dest: Tuple[int, ...]
     ):
         rs = np.random.RandomState(1)
         template = fft.FftTemplate(
-            context, 2, shape, dtype, dtype, padded_shape_src, padded_shape_dst)
+            context, 2, shape, dtype, dtype, padded_shape_src, padded_shape_dest)
         fn = template.instantiate(command_queue, fft.FftMode.FORWARD)
         fn.ensure_all_bound()
         src = fn.buffer('src')
@@ -65,18 +88,25 @@ class TestFft:
         tol = np.finfo(dtype).resolution * np.max(np.abs(expected))
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
-    def _test_c2c_inverse(
+    @pytest.mark.parametrize(
+        'shape, dtype, padded_shape_src, padded_shape_dest',
+        [
+            ((7, 16, 48), np.complex64, (7, 16, 48), (7, 18, 51)),
+            ((7, 16, 48), np.complex128, (7, 16, 48), (7, 18, 51))
+        ]
+    )
+    def test_c2c_inverse(
         self,
         context: AbstractContext,
         command_queue: AbstractCommandQueue,
         shape: Tuple[int, ...],
         dtype: DTypeLike,
         padded_shape_src: Tuple[int, ...],
-        padded_shape_dst: Tuple[int, ...]
+        padded_shape_dest: Tuple[int, ...]
     ):
         rs = np.random.RandomState(1)
         template = fft.FftTemplate(
-            context, 2, shape, dtype, dtype, padded_shape_src, padded_shape_dst)
+            context, 2, shape, dtype, dtype, padded_shape_src, padded_shape_dest)
         fn = template.instantiate(command_queue, fft.FftMode.INVERSE)
         fn.ensure_all_bound()
         src = fn.buffer('src')
@@ -88,7 +118,15 @@ class TestFft:
         tol = np.finfo(dtype).resolution * np.max(np.abs(expected))
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
-    def _test_r2c(
+    @pytest.mark.parametrize(
+        'shape, dtype_src, dtype_dest, padded_shape_src, padded_shape_dest',
+        [
+            ((3, 2, 16, 48), np.float32, np.complex64, (3, 2, 24, 64), (3, 2, 20, 27)),
+            ((3, 2, 15, 47), np.float32, np.complex64, (3, 2, 23, 63), (3, 2, 17, 24)),
+            ((3, 2, 16, 48), np.float64, np.complex128, (3, 2, 24, 64), (3, 2, 20, 27))
+        ]
+    )
+    def test_r2c(
         self,
         context: AbstractContext,
         command_queue: AbstractCommandQueue,
@@ -112,7 +150,15 @@ class TestFft:
         tol = np.finfo(dtype_src).resolution * np.max(np.abs(expected))
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
-    def _test_c2r(
+    @pytest.mark.parametrize(
+        'shape, dtype_src, dtype_dest, padded_shape_src, padded_shape_dest',
+        [
+            ((3, 2, 16, 48), np.complex64, np.float32, (3, 2, 20, 27), (3, 2, 24, 64)),
+            ((3, 2, 15, 47), np.complex64, np.float32, (3, 2, 17, 24), (3, 2, 23, 63)),
+            ((3, 2, 15, 47), np.complex128, np.float64, (3, 2, 17, 24), (3, 2, 23, 63))
+        ]
+    )
+    def test_c2r(
         self,
         context: AbstractContext,
         command_queue: AbstractCommandQueue,
@@ -135,62 +181,6 @@ class TestFft:
         expected = signal * shape[2] * shape[3]  # CUFFT does unnormalised FFTs
         tol = np.finfo(dtype_src).resolution * np.max(np.abs(expected))
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
-
-    def test_r2c_even(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
-        self._test_r2c(context, command_queue,
-                       (3, 2, 16, 48), np.float32, np.complex64, (3, 2, 24, 64), (3, 2, 20, 27))
-
-    def test_r2c_odd(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
-        self._test_r2c(context, command_queue,
-                       (3, 2, 15, 47), np.float32, np.complex64, (3, 2, 23, 63), (3, 2, 17, 24))
-
-    def test_c2r_even(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
-        self._test_c2r(context, command_queue,
-                       (3, 2, 16, 48), np.complex64, np.float32, (3, 2, 20, 27), (3, 2, 24, 64))
-
-    def test_c2r_odd(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
-        self._test_c2r(context, command_queue,
-                       (3, 2, 15, 47), np.complex64, np.float32, (3, 2, 17, 24), (3, 2, 23, 63))
-
-    def test_d2z(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
-        self._test_r2c(context, command_queue,
-                       (3, 2, 16, 48), np.float64, np.complex128, (3, 2, 24, 64), (3, 2, 20, 27))
-
-    def test_z2d(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
-        self._test_c2r(context, command_queue,
-                       (3, 2, 15, 47), np.complex128, np.float64, (3, 2, 17, 24), (3, 2, 23, 63))
-
-    def test_c2c_forward(
-        self,
-        context: AbstractContext,
-        command_queue: AbstractCommandQueue
-    ) -> None:
-        self._test_c2c_forward(context, command_queue,
-                               (7, 16, 48), np.complex64, (7, 16, 48), (7, 18, 51))
-
-    def test_c2c_inverse(
-        self,
-        context: AbstractContext,
-        command_queue: AbstractCommandQueue
-    ) -> None:
-        self._test_c2c_inverse(context, command_queue,
-                               (7, 16, 48), np.complex64, (7, 16, 48), (7, 18, 51))
-
-    def test_z2z_forward(
-        self,
-        context: AbstractContext,
-        command_queue: AbstractCommandQueue
-    ) -> None:
-        self._test_c2c_forward(context, command_queue,
-                               (7, 16, 48), np.complex128, (7, 16, 48), (7, 18, 51))
-
-    def test_z2z_inverse(
-        self,
-        context: AbstractContext,
-        command_queue: AbstractCommandQueue
-    ) -> None:
-        self._test_c2c_inverse(context, command_queue,
-                               (7, 16, 48), np.complex128, (7, 16, 48), (7, 18, 51))
 
     def test_wrong_direction(
         self,

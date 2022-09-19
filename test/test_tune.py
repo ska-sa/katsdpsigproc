@@ -1,3 +1,19 @@
+################################################################################
+# Copyright (c) 2014-2022, National Research Foundation (SARAO)
+#
+# Licensed under the BSD 3-Clause License (the "License"); you may not use
+# this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+#   https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+################################################################################
+
 """Tests for :mod:`katsdpsigproc.tune`."""
 
 import os
@@ -6,7 +22,7 @@ import traceback
 import threading
 from unittest import mock
 from unittest.mock import MagicMock
-from typing import NoReturn, Any, Mapping
+from typing import Any, Generator, Mapping, NoReturn
 
 import pytest
 import sqlite3
@@ -79,23 +95,11 @@ def generate_raise(x: Any) -> NoReturn:
 
 
 def test_autotune_all_raise() -> None:
-    exc_value = None
-    exc_info = None
-    with pytest.raises(CustomError):
-        exc_value = None
-        try:
-            tune.autotune(generate_raise, x=[1, 2, 3])
-        except CustomError as e:
-            exc_value = e
-            exc_info = sys.exc_info()
-            raise
-
-    assert str(exc_value) == 'x = 3'
+    with pytest.raises(CustomError, match=r'^x = 3$') as exc_info:
+        tune.autotune(generate_raise, x=[1, 2, 3])
     # Check that the traceback refers to the original site, not
     # where it was re-raised
-    assert exc_info is not None
-    frames = traceback.extract_tb(exc_info[2])
-    assert frames[-1][2] == 'generate_raise'
+    assert exc_info.traceback[-1].name == 'generate_raise'
 
 
 class TestAutotuner:
@@ -108,12 +112,19 @@ class TestAutotuner:
 
     autotune_mock = mock.Mock()
 
-    def setup(self) -> None:
-        self.conn = sqlite3.connect(':memory:')
-        self.autotune_mock.reset()
+    @pytest.fixture
+    def conn(self) -> Generator[sqlite3.Connection, None, None]:
+        conn = sqlite3.connect(':memory:')
+        yield conn
+        conn.close()
 
-    def teardown(self) -> None:
-        self.conn.close()
+    @pytest.fixture(autouse=True)
+    def _prepare_autotune_mock(self) -> Generator[None, None, None]:
+        # The autotune method has to be a class method due to magic in the
+        # autotuner decorator, and hence autotune_mock has to be at class
+        # scope. But we want it reset for each test.
+        self.autotune_mock.reset()
+        yield
         self.autotune_mock.reset()
 
     @classmethod
@@ -123,8 +134,9 @@ class TestAutotuner:
 
     @mock.patch('katsdpsigproc.tune._close_db')
     @mock.patch('katsdpsigproc.tune._open_db')
-    def test(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock) -> None:
-        open_db_mock.return_value = self.conn
+    def test(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
+             conn: sqlite3.Connection) -> None:
+        open_db_mock.return_value = conn
         tuning = {'a': 1, 'b': 2}
         context = mock.NonCallableMock()
         context.device.driver_version = 'mock version'

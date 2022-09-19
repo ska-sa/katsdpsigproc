@@ -1,3 +1,19 @@
+################################################################################
+# Copyright (c) 2014-2022, National Research Foundation (SARAO)
+#
+# Licensed under the BSD 3-Clause License (the "License"); you may not use
+# this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+#   https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+################################################################################
+
 """Tests for wg_reduce.mako and :mod:`katsdpsigproc.reduce`."""
 
 import os
@@ -76,6 +92,6 @@ class TestHReduce:
         np.testing.assert_equal(expected, dest)
 
     @pytest.mark.force_autotune
-    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    def test_autotune(self, context: AbstractContext) -> None:
         """Test that autotuner runs successfully."""
         reduce.HReduceTemplate(context, np.uint32, 'unsigned int', 'a + b', '0')

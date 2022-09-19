@@ -1,3 +1,19 @@
+################################################################################
+# Copyright (c) 2014-2022, National Research Foundation (SARAO)
+#
+# Licensed under the BSD 3-Clause License (the "License"); you may not use
+# this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+#   https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+################################################################################
+
 """Tests for :mod:`katsdpsigproc.maskedsum`."""
 
 from typing import cast
@@ -46,8 +62,8 @@ class TestMaskedSum:
         expected = np.sum(use_ary * msk.reshape(ary.shape[0], 1), axis=0)
         np.testing.assert_allclose(expected, out, rtol=1e-6)
 
+    @pytest.mark.parametrize('use_amplitudes', [False, True])
     @pytest.mark.force_autotune
-    def test_autotune(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    def test_autotune(self, context: AbstractContext, use_amplitudes: bool) -> None:
         """Check that the autotuner runs successfully."""
-        maskedsum.MaskedSumTemplate(context, False)
-        maskedsum.MaskedSumTemplate(context, True)
+        maskedsum.MaskedSumTemplate(context, use_amplitudes)
