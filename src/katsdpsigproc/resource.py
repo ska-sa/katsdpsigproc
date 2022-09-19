@@ -29,8 +29,8 @@ _T = TypeVar('_T')
 _logger = logging.getLogger(__name__)
 
 
-async def wait_until(future: Awaitable, when: float,
-                     loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+async def wait_until(future: Awaitable[_T], when: float,
+                     loop: Optional[asyncio.AbstractEventLoop] = None) -> _T:
     """Like :func:`asyncio.wait_for`, but with an absolute timeout."""
     def ready(*args) -> None:
         if not waiter.done():
