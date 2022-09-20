@@ -31,27 +31,6 @@ from katsdpsigproc import tune
 from katsdpsigproc.abc import AbstractContext
 
 
-def test_autotune_understanding_lambda() -> None:
-    cartesian = []
-    cartesian_lock = threading.Lock()
-
-    def generate(x_dim, y_dim):
-        with cartesian_lock:
-            cartesian.append((x_dim, y_dim))
-        return lambda scoring_function: (1+16*1024)-(x_dim * y_dim) if (x_dim * y_dim) < (1+16*1024) else (1+16*1024)
-
-    opt = tune.autotune(generate, time_limit=0.1, x_dim = [2,8,64,128], y_dim = [4,16,32,256])
-    assert_equal({'x_dim': 64, 'y_dim': 256}, opt)
-
-
-@mock.patch.dict(os.environ, {"KATSDPSIGPROC_TUNE_MATCH": "nearest"})
-def test_device_fallback() -> None:
-    # autotune a set of values to a function, storing results as usual in the sql database
-    # amend the results to point to a similar but different device
-    # check that the autotune uses the cached version
-    tune.autotune(lambda x, y: lambda prod: x*y, x=[1],y=[3])
-
-
 def test_autotune_basic() -> None:
     received = []
     received_lock = threading.Lock()
@@ -164,9 +143,27 @@ class TestDeviceFallback:
     @mock.patch('katsdpsigproc.tune._fetch')
     def test(self, query_mock: mock.Mock, fetch_mock: mock.Mock) -> None: 
         context = mock.NonCallableMock()
-        context.device.driver_version = 'mock version'
+        context.device.driver_version = '470.42.01'
         context.device.platform_name = 'mock platform'
         context.device.name = 'mock device'
-        self.autotune(context, 'WGS = [32]')
-        
+        tune_res_1 = self.autotune(context, 'WGS = [32]')
+        context.device.driver_version = '515.48.07'
+        tune_res_2 = self.autotune(context, 'WGS = [32]')
+        assert tune_res_1 == tune_res_2
 
+
+@mock.patch.dict(os.environ, {"KATSDPSIGPROC_TUNE_MATCH": "nearest"})
+def test_device_fallback() -> None:
+    # autotune a set of values to a function, storing results as usual in the sql database
+    # amend the results to point to a similar but different device
+    # check that the autotune uses the cached version
+    cartesian = []
+    cartesian_lock = threading.Lock()
+
+    def generate(x_dim, y_dim):
+        with cartesian_lock:
+            cartesian.append((x_dim, y_dim))
+        return lambda scoring_function: (1+16*1024)-(x_dim * y_dim) if (x_dim * y_dim) < (1+16*1024) else (1+16*1024)
+
+    opt = tune.autotune(generate, time_limit=0.1, x_dim = [2,8,64,128], y_dim = [4,16,32,256])
+    assert opt == {'x_dim': 64, 'y_dim': 256}
