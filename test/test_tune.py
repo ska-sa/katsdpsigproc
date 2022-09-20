@@ -17,11 +17,8 @@
 """Tests for :mod:`katsdpsigproc.tune`."""
 
 import os
-import sys
-import traceback
 import threading
 from unittest import mock
-from unittest.mock import MagicMock
 from typing import Any, Generator, Mapping, NoReturn
 
 import pytest
@@ -132,16 +129,16 @@ class TestAutotuner:
 @mock.patch.dict(os.environ, {"KATSDPSIGPROC_TUNE_MATCH": "nearest"})
 class TestDeviceFallback:
     """Tests for device fallback"""
-    generate = mock.Mock()
 
     @classmethod
     @tune.autotuner(test={'a': 3, 'b': -1})
     def autotune(cls, context: AbstractContext, param: str) -> Mapping[str, Any]:
+        generate = mock.Mock()
         return tune.autotune(generate, wgs=[32])
-    
+
     @mock.patch('katsdpsigproc.tune._query')
     @mock.patch('katsdpsigproc.tune._fetch')
-    def test(self, query_mock: mock.Mock, fetch_mock: mock.Mock) -> None: 
+    def test(self, query_mock: mock.Mock, fetch_mock: mock.Mock) -> None:
         context = mock.NonCallableMock()
         context.device.driver_version = '470.42.01'
         context.device.platform_name = 'mock platform'
@@ -163,7 +160,8 @@ def test_device_fallback() -> None:
     def generate(x_dim, y_dim):
         with cartesian_lock:
             cartesian.append((x_dim, y_dim))
-        return lambda scoring_function: (1+16*1024)-(x_dim * y_dim) if (x_dim * y_dim) < (1+16*1024) else (1+16*1024)
+        return lambda scoring_function: (1 + 16 * 1024) - (x_dim * y_dim) \
+            if (x_dim * y_dim) < (1 + 16 * 1024) else (1 + 6 * 1024)
 
-    opt = tune.autotune(generate, time_limit=0.1, x_dim = [2,8,64,128], y_dim = [4,16,32,256])
+    opt = tune.autotune(generate, time_limit=0.1, x_dim=[2, 8, 64, 128], y_dim=[4, 16, 32, 256])
     assert opt == {'x_dim': 64, 'y_dim': 256}
