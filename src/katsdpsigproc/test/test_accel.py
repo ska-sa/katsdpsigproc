@@ -11,7 +11,7 @@ from unittest import mock
 from typing import Tuple, Optional, Callable, Awaitable, TypeVar
 
 from decorator import decorator
-from nose.plugins.skip import SkipTest
+# Don't import nose here, to allow docs to build even without nose installed.
 
 from katsdpsigproc import accel, tune
 from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
@@ -24,6 +24,8 @@ _test_initialized = False
 
 
 def _prepare_device_test() -> Tuple[AbstractContext, AbstractCommandQueue]:
+    from nose.plugins.skip import SkipTest
+
     global _test_initialized, _test_context, _test_command_queue
     if not _test_initialized:
         try:
@@ -88,6 +90,8 @@ def cuda_test(test: _F) -> _F:
 
     Put this *after* :meth:`device_test`.
     """
+    from nose.plugins.skip import SkipTest
+
     @functools.wraps(test)
     def wrapper(*args, **kwargs):
         global _test_context

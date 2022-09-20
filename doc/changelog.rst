@@ -1,6 +1,18 @@
 Changelog
 =========
 
+.. rubric:: 1.4.3
+
+- Switching testing from nose to pytest.
+- Some packaging modernisation.
+- Fix some links to other packages in the docs.
+- Fix the return annotation on :meth:`katsdpsigproc.resource.wait_until`.
+- Fix a spurious warning about a future exception not being consumed if
+  an exception is thrown in the scope of a :class:`.ResourceAllocation`
+  context manager.
+- Change return type annotations on the abstract base classes to work better
+  with mypy.
+
 .. rubric:: 1.4.2
 
 - Change some return type annotations on abstract base classes to work around
