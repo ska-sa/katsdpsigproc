@@ -284,7 +284,6 @@ def autotuner_impl(
     return ans
 
 
-@decorator
 def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
     r"""Decorate a function to make it an autotuning function that caches the result.
 
@@ -301,7 +300,7 @@ def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
         A value that will be returned by :func:`stub_autotuner`.
     """
 
-    
+    @decorator
     def autotuner(fn: _TuningFunc, *args: Any, **kwargs: Any) -> Mapping[str, Any]:
         r"""Decorate a function to make it an autotuning function that caches the result.
 
