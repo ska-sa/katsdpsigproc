@@ -128,7 +128,24 @@ class TestAutotuner:
 
 @mock.patch.dict(os.environ, {"KATSDPSIGPROC_TUNE_MATCH": "nearest"})
 class TestDeviceFallback:
-    """Tests for device fallback"""
+    """Tests for device fallback
+    + autotune a set of values to a function, storing results as usual in the sql database
+    + amend the table to point to a similar but different device
+    + check that the autotune is not called agian and uses the cached version
+    """
+    autotune_mock = mock.Mock()
+
+    @pytest.fixture
+    def conn(self) -> Generator[sqlite3.Connection, None, None]:
+        conn = sqlite3.connect(':memory:')
+        yield conn
+        conn.close()
+
+    @pytest.fixture(autouse=True)
+    def _prepare_autotune_mock(self) -> Generator[None, None, None]:
+        self.autotune_mock.reset()
+        yield
+        self.autotune_mock.reset()
 
     @classmethod
     @tune.autotuner(test={'a': 3, 'b': -1})
@@ -136,24 +153,20 @@ class TestDeviceFallback:
         generate = mock.Mock()
         return tune.autotune(generate, wgs=[32])
 
-    @mock.patch('katsdpsigproc.tune._query')
-    @mock.patch('katsdpsigproc.tune._fetch')
     def test(self, query_mock: mock.Mock, fetch_mock: mock.Mock) -> None:
         context = mock.NonCallableMock()
-        context.device.driver_version = '470.42.01'
-        context.device.platform_name = 'mock platform'
-        context.device.name = 'mock device'
-        tune_res_1 = self.autotune(context, 'WGS = [32]')
-        context.device.driver_version = '515.48.07'
-        tune_res_2 = self.autotune(context, 'WGS = [32]')
-        assert tune_res_1 == tune_res_2
+        context.device.driver_version = 'CUDA'
+        context.device.platform_name = 'CUDA:1000 Driver:10010'
+        context.device.name = 'GeForce GTX TITAN X'
+        self.autotune_mock.return_value = {'a': 1, 'b': 2}
+        self.autotune(context, 'WGS = [32]')
+        context.device.name = 'Another_device'
+        self.autotune(context, 'WGS = [32]')
+        self.autotune_mock.assert_called_once_with(context, 'WGS = [32]')
 
 
 @mock.patch.dict(os.environ, {"KATSDPSIGPROC_TUNE_MATCH": "nearest"})
 def test_device_fallback() -> None:
-    # autotune a set of values to a function, storing results as usual in the sql database
-    # amend the results to point to a similar but different device
-    # check that the autotune uses the cached version
     cartesian = []
     cartesian_lock = threading.Lock()
 
