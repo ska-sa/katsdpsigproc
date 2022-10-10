@@ -148,6 +148,15 @@ class TestAutotuner:
         ret = self.autotune(context1, 'xyz')
         assert ret == tuning
 
+        # Test incremental fallback on [version | platform | device]
+        context1.device.driver_version = 'another mock version'
+        ret2 = self.autotune(context1, 'xyz')
+        context1.device.platform_name = 'another mock platform'
+        ret3 = self.autotune(context1, 'xyz')
+        context1.device.name = 'another mock device'
+        ret4 = self.autotune(context1, 'xyz')
+        assert ret == ret2 == ret3 == ret4
+
         # Now re-run with a different config, and make sure it uses the
         # cached value.
         context2 = mock.NonCallableMock()
@@ -157,45 +166,6 @@ class TestAutotuner:
         self.autotune_mock.side_effect = RuntimeError
         ret = self.autotune(context2, 'xyz')
         assert ret == tuning
-
-
-@mock.patch.dict(os.environ, {"KATSDPSIGPROC_TUNE_MATCH": "nearest"})
-class TestDeviceFallback:
-    """Tests for device fallback
-    + autotune a set of values to a function, storing results as usual in the sql database
-    + amend the table to point to a similar but different device
-    + check that autotune uses the cached version
-
-    Use a cached memory sqlite3 db as above.
-    """
-
-    @pytest.fixture
-    def conn(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(':memory:')
-        yield conn
-        conn.close()
-
-    @classmethod
-    @tune.autotuner(test={'a': 3, 'b': -1})
-    def autotune(cls, context: AbstractContext) -> Mapping[str, Any]:
-        return tune.autotune(mock.Mock, 0)
-
-    @mock.patch('katsdpsigproc.tune._query')
-    @mock.patch('katsdpsigproc.tune._close_db')
-    @mock.patch('katsdpsigproc.tune._open_db')
-    def test(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
-             query: mock.Mock, conn: sqlite3.Connection) -> None:
-        open_db_mock.return_value = conn
-        context = mock.NonCallableMock()
-        context.device.driver_version = 'CUDA:1000'
-        context.device.platform_name = 'Driver:10010'
-        context.device.name = 'GeForce GTX TITAN X'
-        # tuning = {'a': 1, 'b': 2}
-        # self.autotune_mock.return_value = tuning
-        self.autotune(context)
-        context.device.name = 'Another Device'
-        # self.autotune(context)
-        query.assert_called_once()
 
 
 @mock.patch.dict(os.environ, {"KATSDPSIGPROC_TUNE_MATCH": "nearest"})
