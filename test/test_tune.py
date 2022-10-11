@@ -16,7 +16,6 @@
 
 """Tests for :mod:`katsdpsigproc.tune`."""
 
-import os
 import threading
 from unittest import mock
 from typing import Any, Generator, Mapping, NoReturn
@@ -166,18 +165,3 @@ class TestAutotuner:
         self.autotune_mock.side_effect = RuntimeError
         ret = self.autotune(context2, 'xyz')
         assert ret == tuning
-
-
-@mock.patch.dict(os.environ, {"KATSDPSIGPROC_TUNE_MATCH": "nearest"})
-def test_device_fallback() -> None:
-    cartesian = []
-    cartesian_lock = threading.Lock()
-
-    def generate(x_dim, y_dim):
-        with cartesian_lock:
-            cartesian.append((x_dim, y_dim))
-        return lambda scoring_function: (1 + 16 * 1024) - (x_dim * y_dim) \
-            if (x_dim * y_dim) < (1 + 16 * 1024) else (1 + 6 * 1024)
-
-    opt = tune.autotune(generate, time_limit=0.1, x_dim=[2, 8, 64, 128], y_dim=[4, 16, 32, 256])
-    assert opt == {'x_dim': 64, 'y_dim': 256}
