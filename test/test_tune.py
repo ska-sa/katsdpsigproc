@@ -48,7 +48,7 @@ def test_autotune_empty() -> None:
 
 
 class CustomError(RuntimeError):
-    ...
+    pass
 
 
 def test_autotune_some_raise() -> None:
