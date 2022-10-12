@@ -75,7 +75,7 @@ _T = TypeVar("_T")
 
 KATSDPSIGPROC_TUNE_MATCH = os.getenv("KATSDPSIGPROC_TUNE_MATCH", "exact")
 if KATSDPSIGPROC_TUNE_MATCH not in ["exact", "nearest"]:
-    _logger.debug("KATSDPSIGPROC_TUNE_MATCH environment variable not one of [ exact | nearest ]:"
+    _logger.debug("KATSDPSIGPROC_TUNE_MATCH environment variable not one of [ exact | nearest ]: "
                   "setting to 'exact'.")
     KATSDPSIGPROC_TUNE_MATCH = "exact"
 
@@ -131,7 +131,7 @@ def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]
 
 def _query(
     conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
-) -> Any:
+) -> Optional[sqlite3.Row]:
     query = f"SELECT * FROM {tablename} WHERE"
     query_args = []
     first = True
@@ -168,10 +168,10 @@ def _fetch(
         row = _query(conn, tablename, keys)
         if row is None:
             if KATSDPSIGPROC_TUNE_MATCH == "nearest":
-                # If it exists, find the nearest autotune match by first ignoring device version,
-                # then device platform, then device name.
+                # Find the nearest autotune match -- if it exists -- by first ignoring device name,
+                # then device platform, but re-tune on mis-matched device driver version.
                 tune_keys = dict(keys)
-                for key in ["device_version", "device_platform", "device_name"]:
+                for key in ["device_name", "device_platform"]:
                     _logger.debug("Retrying query by ignoring %s", key)
                     del tune_keys[key]
                     try:

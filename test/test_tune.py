@@ -136,32 +136,41 @@ class TestAutotuner:
     @mock.patch('katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH', 'nearest')
     def test_nearest(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
                      conn: sqlite3.Connection) -> None:
-        # First populate the database with one config
         open_db_mock.return_value = conn
+        context = mock.NonCallableMock()
+
+        # First populate the database with one config
         tuning = {'a': 1, 'b': 2}
-        context1 = mock.NonCallableMock()
-        context1.device.driver_version = 'mock version'
-        context1.device.platform_name = 'mock platform'
-        context1.device.name = 'mock device'
         self.autotune_mock.return_value = tuning
-        ret = self.autotune(context1, 'xyz')
+        context.device.driver_version = 'mock version'
+        context.device.platform_name = 'mock platform'
+        context.device.name = 'mock device'
+        ret = self.autotune(context, 'xyz')
         assert ret == tuning
 
-        # Test incremental fallback on [version | platform | device]
-        context1.device.driver_version = 'another mock version'
-        ret2 = self.autotune(context1, 'xyz')
-        context1.device.platform_name = 'another mock platform'
-        ret3 = self.autotune(context1, 'xyz')
-        context1.device.name = 'another mock device'
-        ret4 = self.autotune(context1, 'xyz')
-        assert ret == ret2 == ret3 == ret4
+        # Now populate with another config (this also checks that re-tuning is triggered for
+        # mis-matched driver versions).
+        another_tuning = {'a': 3, 'b': 4}
+        self.autotune_mock.return_value = another_tuning
+        context.device.driver_version = 'another version'
+        context.device.platform_name = 'another platform'
+        context.device.name = 'another device'
+        ret2 = self.autotune(context, 'xyz')
+        assert ret2 == another_tuning
 
-        # Now re-run with a different config, and make sure it uses the
-        # cached value.
-        context2 = mock.NonCallableMock()
-        context2.device.driver_version = 'mock version 2'
-        context2.device.platform_name = 'mock platform 2'
-        context2.device.name = 'mock device 2'
+        # Re-run with different configurations, and make sure it uses
+        # cached values.
         self.autotune_mock.side_effect = RuntimeError
-        ret = self.autotune(context2, 'xyz')
-        assert ret == tuning
+
+        # Test incremental fallback on [ device name | platform ]
+        context.device.driver_version = 'mock version'
+        context.device.platform_name = 'mock platform'
+        context.device.name = 'another device'
+        ret3 = self.autotune(context, 'xyz')
+        assert ret3 == tuning
+
+        context.device.driver_version = 'another version'
+        context.device.platform_name = 'mock platform'
+        context.device.name = 'mock device'
+        ret4 = self.autotune(context, 'xyz')
+        assert ret4 == another_tuning
