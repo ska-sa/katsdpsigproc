@@ -168,10 +168,10 @@ def _fetch(
         row = _query(conn, tablename, keys)
         if row is None:
             if KATSDPSIGPROC_TUNE_MATCH == "nearest":
-                # Find the nearest autotune match -- if it exists -- by first ignoring device name,
-                # then device platform, but re-tune on mis-matched device driver version.
+                # Find the nearest autotune match -- if it exists -- by first ignoring
+                # device driver version, then device platform, then device name.
                 tune_keys = dict(keys)
-                for key in ["device_name", "device_platform"]:
+                for key in ["device_version", "device_platform", "device_name"]:
                     _logger.debug("Retrying query by ignoring %s", key)
                     del tune_keys[key]
                     try:
