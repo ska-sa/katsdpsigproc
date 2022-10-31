@@ -150,17 +150,17 @@ previous version.
 
 Overriding autotuning
 ---------------------
-The default behaviour of katsdpsigproc's autotuning machinery is to autotune for an
-inexact match between the GPU detected at runtime and the results stored in the
-autotuning SQL table.
+The default behaviour of katsdpsigproc's autotuning machinery is to autotune
+for an inexact match between the GPU detected at runtime and the results
+stored in the autotuning SQL table.
 
-It is possible to request an inexact match in the autotuning lookup by setting
-an environment variable, `KATSDPSIGPROC_TUNE_MATCH`. If `KATSDPSIGPROC_TUNE_MATCH`
-is set to "nearest", the nearest match to the current GPU in the autotuning SQL 
-table will be returned, by ignoring in turn the device driver, then platform,
-then device name. If no match is found, autotuning will proceed. If 
-`KATSDPSIGPROC_TUNE_MATCH` is set to "exact" (or anything else), default behaviour
-will proceed.
+It is possible to request an inexact match in the autotuning lookup by
+setting an environment variable, `KATSDPSIGPROC_TUNE_MATCH`. If
+`KATSDPSIGPROC_TUNE_MATCH` is set to "nearest", the nearest match to the
+current GPU in the autotuning SQL table will be returned, by ignoring in turn
+the device driver, then platform, then device name. If no match is found,
+autotuning will proceed. If `KATSDPSIGPROC_TUNE_MATCH` is set to "exact" (or
+anything else), default behaviour will proceed.
 
 .. _autotune-testing:
 
