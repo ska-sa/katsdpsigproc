@@ -152,8 +152,10 @@ def _fetch(
 ) -> Optional[Mapping[str, Any]]:
     """Fetch a cached record from the database.
 
-    If the record is not found, it will return the nearest match, if one is found, when the
-    KATSDPSIGPROC_TUNE_MATCH environment variable is set to "match", or None otherwise.
+    If the KATSDPSIGPROC_TUNE_MATCH environment variable is set to "nearest", and an 
+    exact record is not found, return the nearest match, by ignoring in turn device
+    driver version, then device platform, then device name, or None otherwise 
+    (triggering autotuning).
 
     Parameters
     ----------
