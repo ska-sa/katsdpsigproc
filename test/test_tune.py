@@ -161,4 +161,4 @@ class TestAutotuner:
             context.device.platform_name = 'abc'
             context.device.name = 'abc'
             ret6 = self.autotune(context, 'xyz')
-            assert ret6 == tuning or another_tuning
+            assert ret6 == tuning or ret6 == another_tuning
