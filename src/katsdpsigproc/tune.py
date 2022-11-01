@@ -48,7 +48,17 @@ import time
 import logging
 import multiprocessing
 import concurrent.futures
-from typing import Dict, Sequence, Mapping, Callable, Optional, Type, TypeVar, Any, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Mapping,
+    Optional,
+    Sequence,
+    Type,
+    TypeVar,
+    cast,
+)
 
 import appdirs
 import sqlite3
@@ -61,7 +71,13 @@ from .abc import AbstractContext, AbstractTuningCommandQueue
 
 _logger = logging.getLogger(__name__)
 _ScoreFunc = Callable[[int], float]
-_T = TypeVar('_T')
+_T = TypeVar("_T")
+
+KATSDPSIGPROC_TUNE_MATCH = os.getenv("KATSDPSIGPROC_TUNE_MATCH", "exact")
+if KATSDPSIGPROC_TUNE_MATCH not in ["exact", "nearest"]:
+    _logger.debug("KATSDPSIGPROC_TUNE_MATCH environment variable not one of [ exact | nearest ]: "
+                  "setting to 'exact'.")
+    KATSDPSIGPROC_TUNE_MATCH = "exact"
 
 
 class _TuningFunc(Protocol):
@@ -69,8 +85,9 @@ class _TuningFunc(Protocol):
     def __name__(self) -> str:
         ...
 
-    def __call__(self, __cls: Type, __context: AbstractContext,
-                 *args: Any, **kwargs: Any) -> Mapping[str, Any]:
+    def __call__(
+        self, __cls: Type, __context: AbstractContext, *args: Any, **kwargs: Any
+    ) -> Mapping[str, Any]:
         ...
 
 
@@ -99,22 +116,46 @@ def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]
     sig = inspect.signature(fn)
     bound = sig.bind(*args, **kwargs)
     bound.apply_defaults()
-    keys = {'arg_' + name: adapt_value(value)
-            for (name, value) in itertools.islice(bound.arguments.items(), 2, None)}
+    keys = {
+        "arg_" + name: adapt_value(value)
+        for (name, value) in itertools.islice(bound.arguments.items(), 2, None)
+    }
 
     # Add information about the device
     device = args[1].device
-    keys['device_name'] = device.name
-    keys['device_platform'] = device.platform_name
-    keys['device_version'] = device.driver_version
+    keys["device_name"] = device.name
+    keys["device_platform"] = device.platform_name
+    keys["device_version"] = device.driver_version
     return keys
 
 
-def _query(conn: sqlite3.Connection, tablename: str,
-           keys: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
+def _query(
+    conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
+) -> Optional[sqlite3.Row]:
+    query = f"SELECT * FROM {tablename} WHERE"
+    query_args = []
+    first = True
+    for key, value in keys.items():
+        if not first:
+            query += " AND"
+        first = False
+        query += f" {key}=?"
+        query_args.append(value)
+    cursor = conn.cursor()
+    cursor.execute(query, query_args)
+    row = cursor.fetchone()
+    return row
+
+
+def _fetch(
+    conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
+) -> Optional[Mapping[str, Any]]:
     """Fetch a cached record from the database.
 
-    If the record is not found, it will return None.
+    If the KATSDPSIGPROC_TUNE_MATCH environment variable is set to "nearest", and
+    an exact record is not found, return the nearest match, by ignoring in turn
+    device driver version, then device platform, then device name, or None
+    otherwise (triggering autotuning).
 
     Parameters
     ----------
@@ -126,52 +167,64 @@ def _query(conn: sqlite3.Connection, tablename: str,
         Keys and values for the query
     """
     try:
-        query = f'SELECT * FROM {tablename} WHERE'
-        query_args = []
-        first = True
-        for key, value in keys.items():
-            if not first:
-                query += ' AND'
-            first = False
-            query += f' {key}=?'
-            query_args.append(value)
-        cursor = conn.cursor()
-        cursor.execute(query, query_args)
-        row = cursor.fetchone()
+        row = _query(conn, tablename, keys)
+        if row is None:
+            if KATSDPSIGPROC_TUNE_MATCH == "nearest":
+                # Find the nearest autotune match -- if it exists -- by first ignoring
+                # device driver version, then device platform, then device name.
+                tune_keys = dict(keys)
+                for key in ["device_version", "device_platform", "device_name"]:
+                    _logger.debug("Retrying query by ignoring %s", key)
+                    del tune_keys[key]
+                    try:
+                        row = _query(conn, tablename, tune_keys)
+                    except sqlite3.Error:
+                        _logger.debug("Query '%s' failed", exc_info=True)
+                        pass
+                    if row is not None:
+                        break
+
         if row is not None:
             ans = {}
             for colname in row.keys():
-                if colname.startswith('value_'):
+                if colname.startswith("value_"):
                     # Truncate the 'value_' prefix
                     ans[colname[6:]] = row[colname]
             return ans
     except sqlite3.Error:
         # This could happen if the table does not exist yet
-        _logger.debug("Query '%s' failed", query, exc_info=True)
+        _logger.debug("Query failed", exc_info=True)
         pass
     return None
 
 
-def _create_table(conn: sqlite3.Connection, tablename: str,
-                  keys: Mapping[str, Any], values: Mapping[str, Any]) -> None:
-    command = f'CREATE TABLE IF NOT EXISTS {tablename} ('
+def _create_table(
+    conn: sqlite3.Connection,
+    tablename: str,
+    keys: Mapping[str, Any],
+    values: Mapping[str, Any],
+) -> None:
+    command = f"CREATE TABLE IF NOT EXISTS {tablename} ("
     for name in itertools.chain(keys.keys(), values.keys()):
-        command += name + ' NOT NULL, '
-    command += 'PRIMARY KEY ({}) ON CONFLICT REPLACE)'.format(', '.join(keys.keys()))
+        command += name + " NOT NULL, "
+    command += "PRIMARY KEY ({}) ON CONFLICT REPLACE)".format(", ".join(keys.keys()))
     conn.execute(command)
 
 
-def _save(conn: sqlite3.Connection, tablename: str,
-          keys: Mapping[str, Any], values: Mapping[str, Any]) -> None:
-    """Write cached result into the table, creating it if it does not already exist."""
+def _save(
+    conn: sqlite3.Connection,
+    tablename: str,
+    keys: Mapping[str, Any],
+    values: Mapping[str, Any],
+) -> None:
+    """ Write cached result into the table, creating it if it does not already exist."""
     _create_table(conn, tablename, keys, values)
     # Combine all fields
     entries = dict(keys)
     entries.update(values)
-    command = 'INSERT OR REPLACE INTO {}({}) VALUES ({})'.format(
-        tablename,
-        ', '.join(entries.keys()),
-        ', '.join(['?' for x in entries.keys()]))
+    command = "INSERT OR REPLACE INTO {}({}) VALUES ({})".format(
+        tablename, ", ".join(entries.keys()), ", ".join(["?" for x in entries.keys()])
+    )
     # Start transaction
     with conn:
         cursor = conn.cursor()
@@ -179,7 +232,7 @@ def _save(conn: sqlite3.Connection, tablename: str,
 
 
 def _open_db() -> sqlite3.Connection:
-    cache_dir = appdirs.user_cache_dir('katsdpsigproc', 'ska-sa')
+    cache_dir = appdirs.user_cache_dir("katsdpsigproc", "ska-sa")
     try:
         os.makedirs(cache_dir)
     except OSError:
@@ -187,7 +240,7 @@ def _open_db() -> sqlite3.Connection:
         # to create it, the database open will fail.
         pass
 
-    cache_file = os.path.join(cache_dir, 'tuning.db')
+    cache_file = os.path.join(cache_dir, "tuning.db")
     conn = sqlite3.connect(cache_file)
     return conn
 
@@ -202,31 +255,32 @@ def _close_db(conn: sqlite3.Connection) -> None:
     conn.close()
 
 
-def autotuner_impl(test: Mapping[str, Any],
-                   fn: _TuningFunc,
-                   *args: Any, **kwargs: Any) -> Mapping[str, Any]:
+def autotuner_impl(
+    test: Mapping[str, Any], fn: _TuningFunc, *args: Any, **kwargs: Any
+) -> Mapping[str, Any]:
     """Implement :func:`autotuner`.
 
     It is split into a separate function so that mocks can patch it.
     """
     cls = args[0]
-    classname = f'{cls.__module__}.{cls.__name__}.{fn.__name__}'
-    tablename = classname.replace('.', '_') + \
-        '__' + str(getattr(cls, 'autotune_version', 0))
+    classname = f"{cls.__module__}.{cls.__name__}.{fn.__name__}"
+    tablename = (
+        classname.replace(".", "_") + "__" + str(getattr(cls, "autotune_version", 0))
+    )
     keys = _db_keys(fn, args, kwargs)
 
     conn = _open_db()
     conn.row_factory = sqlite3.Row
     try:
-        ans = _query(conn, tablename, keys)
+        ans = _fetch(conn, tablename, keys)
         if ans is None:
             # Nothing found in the database, so we need to tune now
-            _logger.info('Performing autotuning for %s with key %s', classname, keys)
+            _logger.info("Performing autotuning for %s with key %s", classname, keys)
             ans = fn(*args, **kwargs)
-            values = {'value_' + key: value for (key, value) in ans.items()}
+            values = {"value_" + key: value for (key, value) in ans.items()}
             _save(conn, tablename, keys, values)
         else:
-            _logger.debug('Autotuning cache hit for %s with key %s', classname, keys)
+            _logger.debug("Autotuning cache hit for %s with key %s", classname, keys)
     finally:
         _close_db(conn)
     return ans
@@ -247,6 +301,7 @@ def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
     test : dictionary
         A value that will be returned by :func:`stub_autotuner`.
     """
+
     @decorator
     def autotuner(fn: _TuningFunc, *args: Any, **kwargs: Any) -> Mapping[str, Any]:
         r"""Decorate a function to make it an autotuning function that caches the result.
@@ -259,12 +314,14 @@ def autotuner(test: Mapping[str, Any]) -> Callable[[_T], _T]:
         \*args construct may not be used.
         """
         return autotuner_impl(test, fn, *args, **kwargs)
+
     # decorator module doesn't have type annotations, so we need to force it
     return cast(Callable[[_T], _T], autotuner)
 
 
-def force_autotuner(test: Mapping[str, Any], fn: _TuningFunc,
-                    *args: Any, **kwargs: Any) -> Mapping[str, Any]:
+def force_autotuner(
+    test: Mapping[str, Any], fn: _TuningFunc, *args: Any, **kwargs: Any
+) -> Mapping[str, Any]:
     """Drop-in replacement for :func:`autotuner_impl` that does not do any caching.
 
     It is intended to be used with a mocking framework.
@@ -272,8 +329,9 @@ def force_autotuner(test: Mapping[str, Any], fn: _TuningFunc,
     return fn(*args, **kwargs)
 
 
-def stub_autotuner(test: Mapping[str, Any], fn: _TuningFunc,
-                   *args: Any, **kwargs: Any) -> Mapping[str, Any]:
+def stub_autotuner(
+    test: Mapping[str, Any], fn: _TuningFunc, *args: Any, **kwargs: Any
+) -> Mapping[str, Any]:
     """Drop-in replacement for :func:`autotuner_impl` that does not do any tuning.
 
     It instead returns the provided value. It is intended to be
@@ -282,23 +340,31 @@ def stub_autotuner(test: Mapping[str, Any], fn: _TuningFunc,
     return test
 
 
-def make_measure(queue: AbstractTuningCommandQueue, function: Callable[[], None]) -> _ScoreFunc:
+def make_measure(
+    queue: AbstractTuningCommandQueue, function: Callable[[], None]
+) -> _ScoreFunc:
     """Generate a measurement function.
 
     The result can be returned by the function passed to :func:`autotune`. It
     calls `function` (with no arguments) the appropriate number of times and
     returns the averaged elapsed time as measured by `queue`.
     """
+
     def measure(iters):
         queue.start_tuning()
         for i in range(iters):
             function()
         return queue.stop_tuning() / iters
+
     return measure
 
 
-def autotune(generate: Callable[..., Optional[_ScoreFunc]], time_limit: float = 0.1,
-             threads: Optional[int] = None, **kwargs: Any) -> Mapping[str, Any]:
+def autotune(
+    generate: Callable[..., Optional[_ScoreFunc]],
+    time_limit: float = 0.1,
+    threads: Optional[int] = None,
+    **kwargs: Any,
+) -> Mapping[str, Any]:
     """Run a number of tuning experiments and find the optimal combination of parameters.
 
     Each argument is a iterable. The `generate` function is passed each
@@ -335,9 +401,9 @@ def autotune(generate: Callable[..., Optional[_ScoreFunc]], time_limit: float = 
         if the Cartesian product is empty
     """
     opts = itertools.product(*kwargs.values())
-    best = None                # type: Optional[Mapping[str, Any]]
-    best_score = None          # type: Optional[float]
-    exc = None                 # type: Optional[Exception]
+    best = None  # type: Optional[Mapping[str, Any]]
+    best_score = None  # type: Optional[float]
+    exc = None  # type: Optional[Exception]
     if threads is None:
         try:
             threads = multiprocessing.cpu_count()
@@ -349,7 +415,9 @@ def autotune(generate: Callable[..., Optional[_ScoreFunc]], time_limit: float = 
             if not batch:
                 break
             batch_keywords = [dict(zip(kwargs.keys(), opt)) for opt in batch]
-            futures = [thread_pool.submit(generate, **keywords) for keywords in batch_keywords]
+            futures = [
+                thread_pool.submit(generate, **keywords) for keywords in batch_keywords
+            ]
             concurrent.futures.wait(futures)
             for keywords, future in zip(batch_keywords, futures):
                 try:
@@ -366,18 +434,25 @@ def autotune(generate: Callable[..., Optional[_ScoreFunc]], time_limit: float = 
                     # Guess how many iterations we can do in the allotted time
                     iters = max(3, int(time_limit / elapsed))
                     score = measure(iters)
-                    _logger.debug("Configuration %s scored %f in %d iterations",
-                                  keywords, score, iters)
+                    _logger.debug(
+                        "Configuration %s scored %f in %d iterations",
+                        keywords,
+                        score,
+                        iters,
+                    )
                     if best_score is None or score < best_score:
                         best = keywords
                         best_score = score
                 except Exception as e:
                     exc = e
-                    _logger.debug("Caught exception while testing configuration %s",
-                                  keywords, exc_info=True)
+                    _logger.debug(
+                        "Caught exception while testing configuration %s",
+                        keywords,
+                        exc_info=True,
+                    )
     if best is None:
         if exc is not None:
             raise exc
         else:
-            raise ValueError('No options to test')
+            raise ValueError("No options to test")
     return best

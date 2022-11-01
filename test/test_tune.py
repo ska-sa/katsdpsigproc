@@ -18,7 +18,7 @@
 
 import threading
 from unittest import mock
-from typing import Generator, NoReturn, Any
+from typing import Any, Generator, Mapping, NoReturn
 
 import pytest
 import sqlite3
@@ -104,22 +104,61 @@ class TestAutotuner:
 
     @classmethod
     @tune.autotuner(test={'a': 3, 'b': -1})
-    def autotune(cls, context: AbstractContext, param: str) -> mock.Mock:
+    def autotune(cls, context: AbstractContext, param: str) -> Mapping[str, Any]:
         return cls.autotune_mock(context, param)
 
     @mock.patch('katsdpsigproc.tune._close_db')
     @mock.patch('katsdpsigproc.tune._open_db')
-    def test(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
-             conn: sqlite3.Connection) -> None:
+    @mock.patch('katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH', 'exact')
+    def test_autotune_match(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
+                            conn: sqlite3.Connection) -> None:
+        ''' Tests behaviour of both autotune matching options ('exact' and 'nearest'). '''
         open_db_mock.return_value = conn
-        tuning = {'a': 1, 'b': 2}
         context = mock.NonCallableMock()
+
+        # First populate the database with one config
+        tuning = {'a': 1, 'b': 2}
+        self.autotune_mock.return_value = tuning
         context.device.driver_version = 'mock version'
         context.device.platform_name = 'mock platform'
         context.device.name = 'mock device'
-        self.autotune_mock.return_value = tuning
         ret1 = self.autotune(context, 'xyz')
         ret2 = self.autotune(context, 'xyz')
         self.autotune_mock.assert_called_once_with(context, 'xyz')
         assert ret1 == tuning
         assert ret2 == tuning
+
+        # Check that using a different config re-runs tuning
+        # This also populates the database with another config
+        another_tuning = {'a': 3, 'b': 4}
+        self.autotune_mock.return_value = another_tuning
+        context.device.driver_version = 'another version'
+        context.device.platform_name = 'another platform'
+        context.device.name = 'another device'
+        ret3 = self.autotune(context, 'xyz')
+        assert ret3 == another_tuning
+
+        # Now test incremental fallback on device  [ driver version | platform | name ] when
+        # KATSDPSIGPROC_TUNE_MATCH is set to 'nearest'
+        with mock.patch('katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH', 'nearest'):
+            # Re-run with different configurations, and make sure it always uses cached values.
+            self.autotune_mock.side_effect = RuntimeError
+
+            context.device.driver_version = 'abc'
+            context.device.platform_name = 'mock platform'
+            context.device.name = 'mock device'
+            ret4 = self.autotune(context, 'xyz')
+            assert ret4 == tuning
+
+            context.device.driver_version = 'abc'
+            context.device.platform_name = 'abc'
+            context.device.name = 'another device'
+            ret5 = self.autotune(context, 'xyz')
+            assert ret5 == another_tuning
+
+            # If there is no match in the database, any tuning will suffice
+            context.device.driver_version = 'abc'
+            context.device.platform_name = 'abc'
+            context.device.name = 'abc'
+            ret6 = self.autotune(context, 'xyz')
+            assert ret6 == tuning or ret6 == another_tuning
