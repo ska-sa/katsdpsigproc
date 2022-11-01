@@ -1,6 +1,11 @@
 Changelog
 =========
 
+.. rubric:: 1.5.0
+
+- Add :envvar:`KATSDPSIGPROC_TUNE_MATCH` environment variable to control use of
+  partial matches from the autotuning database.
+
 .. rubric:: 1.4.3
 
 - Switching testing from nose to pytest.
