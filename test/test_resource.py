@@ -95,7 +95,7 @@ class DummyEvent(AbstractEvent):
 
 
 class TestResource:
-    def setup(self) -> None:
+    def setup_method(self) -> None:
         self.completed = queue.Queue()      # type: queue.Queue[resource.ResourceAllocation[int]]
 
     async def _run_frame(self, acq: resource.ResourceAllocation[int],
@@ -156,11 +156,12 @@ class TestResource:
 
 
 class TestJobQueue:
-    def setup(self) -> None:
+    @pytest.fixture(autouse=True)
+    def setup(self, event_loop) -> None:
         self.jobs = resource.JobQueue()
-        self.finished = [asyncio.Future()
+        self.finished = [event_loop.create_future()
                          for i in range(5)]      # type: List[asyncio.Future[int]]
-        self.unfinished = [asyncio.Future()
+        self.unfinished = [event_loop.create_future()
                            for i in range(5)]    # type: List[asyncio.Future[int]]
         for i, future in enumerate(self.finished):
             future.set_result(i)
