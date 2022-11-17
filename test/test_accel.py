@@ -470,8 +470,9 @@ class TestDimension:
 class TestIOSlot:
     """Tests for :class:`katsdpsigproc.accel.IOSlot`."""
 
+    @pytest.mark.parametrize("bind", [True, False])
     @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
-    def test_allocate(self, DeviceArray: mock.Mock) -> None:
+    def test_allocate(self, DeviceArray: mock.Mock, bind: bool) -> None:
         """IOSlot.allocate must correctly allocate a buffer."""
         dims = (
             accel.Dimension(50, min_padded_size=60, alignment=8),
@@ -490,14 +491,32 @@ class TestIOSlot:
         DeviceArray.return_value = ary
         # Run the system under test
         slot = accel.IOSlot(dims, dtype)
-        ret = slot.allocate(accel.DeviceAllocator(mock.sentinel.context))
+        ret = slot.allocate(accel.DeviceAllocator(mock.sentinel.context), bind=bind)
         # Validation
         assert ret == ary
-        assert slot.buffer == ary
+        if bind:
+            assert slot.buffer == ary
+        else:
+            assert slot.buffer is None
         DeviceArray.assert_called_once_with(
             mock.sentinel.context, shape, dtype, padded_shape, None)
         # Check that the inner dimension had a type hint set
         assert dims[1].alignment_hint == accel.Dimension.ALIGN_BYTES
+
+    @mock.patch('katsdpsigproc.accel.HostArray', spec=True)
+    def test_allocate_host(self, HostArray: mock.Mock) -> None:
+        dims = (
+            accel.Dimension(50, min_padded_size=60, alignment=8),
+            accel.Dimension(30, min_padded_size=50, alignment=4)
+        )
+        shape = (50, 30)
+        padded_shape = (64, 52)
+        dtype = np.int16
+        slot = accel.IOSlot(dims, dtype)
+        HostArray.return_value = mock.sentinel.host_array
+        ret = slot.allocate_host(mock.sentinel.context)
+        assert ret is mock.sentinel.host_array
+        HostArray.assert_called_with(shape, dtype, padded_shape, context=mock.sentinel.context)
 
     @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
     def test_allocate_raw(self, DeviceArray: mock.Mock) -> None:
@@ -696,6 +715,14 @@ class TestAliasIOSlot:
         assert slot.raw is raw
         assert self.slot1.buffer is not None
         assert self.slot2.buffer is not None
+
+    @mock.patch('katsdpsigproc.accel.HostArray', spec=True)
+    def test_allocate_host(self, HostArray: mock.Mock) -> None:
+        HostArray.return_value = mock.sentinel.host_array
+        slot = accel.AliasIOSlot([self.slot1, self.slot2])
+        ret = slot.allocate_host(mock.sentinel.context)
+        assert ret is mock.sentinel.host_array
+        HostArray.assert_called_with((120,), np.uint8, context=mock.sentinel.context)
 
 
 class TestVisualizeOperation:
