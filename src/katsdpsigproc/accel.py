@@ -1192,11 +1192,13 @@ class IOSlotBase(ABC):
         return self.is_root and not self.is_bound()
 
     @abstractmethod
-    def _allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None) -> Any:
+    def _allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None,
+                  *, bind: bool) -> Any:
         """Variant of :meth:`allocate` that does not check whether this is a root slot."""
 
-    def allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None) -> Any:
-        """Allocate and immediately bind a buffer satisfying the requirements.
+    def allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None,
+                 *, bind: bool = True) -> Any:
+        """Allocate and optionally bind a buffer satisfying the requirements.
 
         .. warning:: When `raw` is provided, there is no check that the storage is large enough.
 
@@ -1206,6 +1208,10 @@ class IOSlotBase(ABC):
             Memory allocator from which to obtain the memory
         raw : PyCUDA DeviceAllocation or PyOpenCL Buffer, optional
             Backing storage for the allocation
+        bind
+            If true (the default), the allocated buffer is immediately bound.
+            If false, the buffer is returned and not bound, and can be bound
+            later.
 
         Raises
         ------
@@ -1213,7 +1219,16 @@ class IOSlotBase(ABC):
             If this is not a root slot
         """
         self.check_root()
-        return self._allocate(allocator, raw)
+        return self._allocate(allocator, raw, bind=bind)
+
+    @abstractmethod
+    def _allocate_host(self, context: AbstractContext) -> HostArray:
+        """Variant of :meth:`allocate_host` that does not check whether this is a root slot."""
+
+    def allocate_host(self, context: AbstractContext) -> HostArray:
+        """Allocate a HostArray compatible with this slot."""
+        self.check_root()
+        return self._allocate_host(context)
 
 
 class IOSlot(IOSlotBase):
@@ -1317,15 +1332,19 @@ class IOSlot(IOSlotBase):
         return int(np.product(self.required_padded_shape()) * self.dtype.itemsize)
 
     def _allocate(self, allocator: AbstractAllocator[_RB],
-                  raw: Optional[_RB] = None) -> DeviceArray:
+                  raw: Optional[_RB] = None, *, bind: bool = True) -> DeviceArray:
         buffer = allocator.allocate(self.shape, self.dtype, self.required_padded_shape(), raw=raw)
-        self._bind(buffer)
+        if bind:
+            self._bind(buffer)
         return buffer
 
+    def _allocate_host(self, context: AbstractContext) -> HostArray:
+        return HostArray(self.shape, self.dtype, self.required_padded_shape(), context=context)
+
     def allocate(self, allocator: AbstractAllocator[_RB],
-                 raw: Optional[_RB] = None) -> DeviceArray:
+                 raw: Optional[_RB] = None, *, bind: bool = True) -> DeviceArray:
         # Overloaded just to restrict the type signature
-        return super().allocate(allocator, raw)
+        return super().allocate(allocator, raw, bind=bind)
 
 
 class CompoundIOSlot(IOSlot):
@@ -1415,12 +1434,17 @@ class AliasIOSlot(IOSlotBase):
     def required_bytes(self) -> int:
         return max([child.required_bytes() for child in self.children])
 
-    def _allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None) -> _RB:
+    def _allocate_host(self, context: AbstractContext) -> HostArray:
+        return HostArray((self.required_bytes(),), np.uint8, context=context)
+
+    def _allocate(self, allocator: AbstractAllocator[_RB],
+                  raw: Optional[_RB] = None, *, bind: bool = True) -> _RB:
         if raw is None:
             raw = allocator.allocate_raw(self.required_bytes())
-        for child in self.children:
-            child._allocate(allocator, raw)
-        self.raw = raw
+        if bind:
+            for child in self.children:
+                child._allocate(allocator, raw, bind=bind)
+            self.raw = raw
         return raw
 
 
