@@ -611,7 +611,7 @@ class TestIOSlot:
 class TestCompoundIOSlot:
     """Tests for :class:`katsdpsigproc.accel.CompoundIOSlot`."""
 
-    def setup(self) -> None:
+    def setup_method(self) -> None:
         self.dims1 = (
             accel.Dimension(13, min_padded_size=17, alignment=1),
             accel.Dimension(7, min_padded_size=8, alignment=8),
@@ -693,7 +693,7 @@ class TestCompoundIOSlot:
 class TestAliasIOSlot:
     """Tests for :class:`katsdpsigproc.accel.AliasIOSlot`."""
 
-    def setup(self) -> None:
+    def setup_method(self) -> None:
         self.slot1 = accel.IOSlot((3, 7), np.float32)
         self.slot2 = accel.IOSlot((5, 3), np.complex64)
 
@@ -736,10 +736,10 @@ class TestVisualizeOperation:
         def _run(self) -> None:
             pass
 
-    def setup(self) -> None:
+    def setup_method(self) -> None:
         self.tmpdir = tempfile.mkdtemp()
 
-    def teardown(self) -> None:
+    def teardown_method(self) -> None:
         shutil.rmtree(self.tmpdir)
 
     def test(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:

@@ -46,7 +46,7 @@ def setup() -> None:
 
 
 class TestBackgroundMedianFilterHost:
-    def setup(self) -> None:
+    def setup_method(self) -> None:
         self.background = host.BackgroundMedianFilterHost(3)
 
     def test(self) -> None:
