@@ -1,6 +1,12 @@
 Changelog
 =========
 
+.. rubric:: 1.6.0
+
+- Add `bind` argument to :meth:`.IOSlotBase.allocate`.
+- Add :meth:`.IOSlotBase.allocate_host`.
+- Update tests to avoid triggering deprecation warnings.
+
 .. rubric:: 1.5.0
 
 - Add :envvar:`KATSDPSIGPROC_TUNE_MATCH` environment variable to control use of
