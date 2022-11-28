@@ -72,8 +72,8 @@ async def async_wait_for_events(events: Iterable[AbstractEvent],
 
     if loop is None:
         loop = asyncio.get_event_loop()
+    events = list(events)
     if events:
-        events = list(events)
         await loop.run_in_executor(None, wait_for_events, events)
 
 
