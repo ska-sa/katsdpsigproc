@@ -58,11 +58,21 @@ async def wait_until(future: Awaitable[_T], when: float,
 async def async_wait_for_events(events: Iterable[AbstractEvent],
                                 loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
     """Coroutine that waits for a list of device events."""
-    def wait_for_events(events: Iterable[AbstractEvent]) -> None:
+    def wait_for_events(events: List[AbstractEvent]) -> None:
         for event in events:
             event.wait()
+        # Remove references to events before the future is resolved. This
+        # prevents a race condition where a caller might await
+        # async_wait_for_events, then drop its references to the events before
+        # the executor's worker thread has a chance to, causing the event to be
+        # destroyed in the worker thread. That in turn leads to a warning from
+        # PyCUDA (and a resource leak) if the context can't be made current in
+        # the worker thread.
+        events.clear()
+
     if loop is None:
         loop = asyncio.get_event_loop()
+    events = list(events)
     if events:
         await loop.run_in_executor(None, wait_for_events, events)
 
