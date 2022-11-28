@@ -1,6 +1,12 @@
 Changelog
 =========
 
+.. rubric:: 1.6.1
+
+- Fix a race condition that sometimes caused events passed to
+  :func:`.async_wait_for_events` to be garbage-collected in a worker thread,
+  and thus leak if the CUDA context could not be made current.
+
 .. rubric:: 1.6.0
 
 - Add `bind` argument to :meth:`.IOSlotBase.allocate`.
