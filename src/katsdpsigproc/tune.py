@@ -132,11 +132,13 @@ def _db_keys(fn: _TuningFunc, args: Sequence, kwargs: Mapping) -> Dict[str, Any]
 def _query(
     conn: sqlite3.Connection, tablename: str, keys: Mapping[str, Any]
 ) -> Optional[sqlite3.Row]:
-    query = f"SELECT * FROM {tablename} WHERE"
+    query = f"SELECT * FROM {tablename}"
     query_args = []
     first = True
     for key, value in keys.items():
-        if not first:
+        if first:
+            query += " WHERE"
+        else:
             query += " AND"
         first = False
         query += f" {key}=?"
