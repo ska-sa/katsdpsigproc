@@ -116,48 +116,43 @@ class TestAutotuner:
         open_db_mock.return_value = conn
         context = mock.NonCallableMock()
 
-        # First populate the database with one config
-        tuning = {'a': 1, 'b': 2}
-        self.autotune_mock.return_value = tuning
+        # Check that autotuning is only performed once for a particular
+        # context+arg_parameters set
+        tuning_1 = {'a': 1, 'b': 2}
+        self.autotune_mock.return_value = tuning_1
         context.device.driver_version = 'mock version'
         context.device.platform_name = 'mock platform'
         context.device.name = 'mock device'
         ret = self.autotune(context, 'xyz')
         ret2 = self.autotune(context, 'xyz')
         self.autotune_mock.assert_called_once_with(context, 'xyz')
-        assert ret == tuning
-        assert ret2 == tuning
+        assert ret == ret2 == tuning_1
 
-        # Check that using a different config re-runs tuning
-        # This also populates the database with another config
-        another_tuning = {'a': 3, 'b': 4}
-        self.autotune_mock.return_value = another_tuning
+        # An empty arg_parameter set should not trigger autotuning
+        ret = self.autotune(context, None)
+        assert ret == tuning_1
+
+        # Check that using a different context+arg_parameters set causes tuning to be
+        # re-run. This also populates the database with another set
+        tuning_2 = {'a': 3, 'b': 4}
+        self.autotune_mock.return_value = tuning_2
         context.device.driver_version = 'another version'
         context.device.platform_name = 'another platform'
         context.device.name = 'another device'
         ret = self.autotune(context, 'xyz')
-        assert ret == another_tuning
+        assert ret == tuning_2
 
-        # Populate with an empty parameter set
-        third_tuning = {'a': 5, 'b': 6}
-        self.autotune_mock.return_value = third_tuning
-        context.device.driver_version = 'another version'
-        context.device.platform_name = 'another platform'
-        context.device.name = 'another device'
-        ret = self.autotune(context, '')
-        assert ret == third_tuning
-
-        # Now test incremental fallback on device  [ driver version | platform | name ] when
-        # KATSDPSIGPROC_TUNE_MATCH is set to 'nearest'
+        # Now test incremental fallback on device  [ driver version | platform | name ]
+        # when KATSDPSIGPROC_TUNE_MATCH is set to 'nearest'
         with mock.patch('katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH', 'nearest'):
-            # make sure autotuning re-runs if fn parameters are different
-            fourth_tuning = {'a': 7, 'b': 8}
-            self.autotune_mock.return_value = fourth_tuning
-            context.device.driver_version = 'mock_version'
+            # autotuning re-runs if arg_parameters are different
+            tuning_4 = {'a': 7, 'b': 8}
+            self.autotune_mock.return_value = tuning_4
+            context.device.driver_version = 'mock version'
             context.device.platform_name = 'mock platform'
             context.device.name = 'mock device'
             ret = self.autotune(context, 'zzz')
-            assert ret == fourth_tuning
+            assert ret == tuning_4
 
             # Re-run with different configurations making sure the cached values are returned if
             # they exist in any configuration, and that autotuning does not run.
@@ -167,22 +162,20 @@ class TestAutotuner:
             context.device.platform_name = 'mock platform'
             context.device.name = 'mock device'
             ret = self.autotune(context, 'xyz')
-            assert ret == tuning
+            assert ret == tuning_1
 
             context.device.driver_version = 'abc'
             context.device.platform_name = 'abc'
             context.device.name = 'another device'
             ret = self.autotune(context, 'xyz')
-            assert ret == another_tuning
+            assert ret == tuning_2
 
-            context.device.driver_version = 'mock_version'
+            context.device.driver_version = 'mock version'
             context.device.platform_name = 'mock platform'
             context.device.name = 'mock device'
             ret = self.autotune(context, 'xyz')
-            assert ret == tuning
+            assert ret == tuning_1
 
-            context.device.driver_version = 'abc'
-            context.device.platform_name = 'abc'
-            context.device.name = 'abc'
-            ret = self.autotune(context, '')
-            assert ret == third_tuning
+            # Autotuning does not run for empty arg_parameter sets
+            ret = self.autotune(context, None)
+            assert ret == tuning_1
