@@ -18,7 +18,7 @@
 
 import threading
 from unittest import mock
-from typing import Any, Generator, Mapping, NoReturn
+from typing import Any, Generator, Mapping, NoReturn, Optional
 
 import pytest
 import sqlite3
@@ -104,7 +104,7 @@ class TestAutotuner:
 
     @classmethod
     @tune.autotuner(test={'a': 3, 'b': -1})
-    def autotune(cls, context: AbstractContext, param: str) -> Mapping[str, Any]:
+    def autotune(cls, context: AbstractContext, param: Optional[str]) -> Mapping[str, Any]:
         return cls.autotune_mock(context, param)
 
     @mock.patch('katsdpsigproc.tune._close_db')
