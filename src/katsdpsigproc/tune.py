@@ -136,8 +136,6 @@ def _query(
     query_args = []
     first = True
     for key, value in keys.items():
-        if key == 'arg_param' and value is None:
-            continue
         if first:
             query += " WHERE"
         else:

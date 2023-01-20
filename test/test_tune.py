@@ -18,7 +18,7 @@
 
 import threading
 from unittest import mock
-from typing import Any, Generator, Mapping, NoReturn, Optional
+from typing import Any, Generator, Mapping, NoReturn
 
 import pytest
 import sqlite3
@@ -104,7 +104,7 @@ class TestAutotuner:
 
     @classmethod
     @tune.autotuner(test={'a': 3, 'b': -1})
-    def autotune(cls, context: AbstractContext, param: Optional[str]) -> Mapping[str, Any]:
+    def autotune(cls, context: AbstractContext, param: str) -> Mapping[str, Any]:
         return cls.autotune_mock(context, param)
 
     @mock.patch('katsdpsigproc.tune._close_db')
@@ -124,13 +124,9 @@ class TestAutotuner:
         context.device.platform_name = 'mock platform'
         context.device.name = 'mock device'
         ret = self.autotune(context, 'xyz')
-        ret2 = self.autotune(context, 'xyz')
+        ret_2 = self.autotune(context, 'xyz')
         self.autotune_mock.assert_called_once_with(context, 'xyz')
-        assert ret == ret2 == tuning_1
-
-        # An empty arg_parameter set should not trigger autotuning
-        ret = self.autotune(context, None)
-        assert ret == tuning_1
+        assert ret == ret_2 == tuning_1
 
         # Check that using a different context+arg_parameters set causes tuning to be
         # re-run. This also populates the database with another set
@@ -176,6 +172,46 @@ class TestAutotuner:
             ret = self.autotune(context, 'xyz')
             assert ret == tuning_1
 
-            # Autotuning does not run for empty arg_parameter sets
-            ret = self.autotune(context, None)
-            assert ret == tuning_1
+
+class TestAutotunerNoParam:
+    """Tests for class that implements autotune with no parameters
+    """
+
+    autotune_mock = mock.Mock()
+
+    @pytest.fixture
+    def conn(self) -> Generator[sqlite3.Connection, None, None]:
+        conn = sqlite3.connect(':memory:')
+        yield conn
+        conn.close()
+
+    @pytest.fixture(autouse=True)
+    def _prepare_autotune_mock(self) -> Generator[None, None, None]:
+        # The autotune method has to be a class method due to magic in the
+        # autotuner decorator, and hence autotune_mock has to be at class
+        # scope. But we want it reset for each test.
+        self.autotune_mock.reset()
+        yield
+        self.autotune_mock.reset()
+
+    @classmethod
+    @tune.autotuner(test={'a': 3, 'b': -1})
+    def autotune(cls, context: AbstractContext) -> Any:
+        return cls.autotune_mock(context)
+
+    @mock.patch('katsdpsigproc.tune._close_db')
+    @mock.patch('katsdpsigproc.tune._open_db')
+    def test_autotune_empty_arg(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
+                                conn: sqlite3.Connection) -> None:
+        ''' Tests behaviour of empy argument parameter sets. '''
+        open_db_mock.return_value = conn
+        context = mock.NonCallableMock()
+
+        tuning_1 = {'a': 1, 'b': 2}
+        self.autotune_mock.return_value = tuning_1
+        context.device.driver_version = 'mock version'
+        context.device.platform_name = 'mock platform'
+        context.device.name = 'mock device'
+
+        ret = self.autotune(context)
+        assert ret == tuning_1
