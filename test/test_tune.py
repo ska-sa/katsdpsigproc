@@ -86,7 +86,6 @@ class TestAutotuner:
     """
 
     autotune_mock = mock.Mock()
-    autotune_mock_no_args = mock.Mock()
 
     @pytest.fixture
     def conn(self) -> Generator[sqlite3.Connection, None, None]:
@@ -111,24 +110,7 @@ class TestAutotuner:
     @classmethod
     @tune.autotuner(test={'a': 3, 'b': -1})
     def autotune_no_args(cls, context: AbstractContext) -> Any:
-        return cls.autotune_mock_no_args(context)
-
-    @mock.patch('katsdpsigproc.tune._close_db')
-    @mock.patch('katsdpsigproc.tune._open_db')
-    def test_autotune_empty_arg(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
-                                conn: sqlite3.Connection) -> None:
-        """Test behaviour of empy parameter sets."""
-        open_db_mock.return_value = conn
-        context = mock.NonCallableMock()
-
-        tuning = {'a': 1, 'b': 2}
-        self.autotune_mock_no_args.return_value = tuning
-        context.device.driver_version = 'mock version'
-        context.device.platform_name = 'mock platform'
-        context.device.name = 'mock device'
-
-        ret = self.autotune_no_args(context)
-        assert ret == tuning
+        return cls.autotune_mock(context)
 
     @mock.patch('katsdpsigproc.tune._close_db')
     @mock.patch('katsdpsigproc.tune._open_db')
@@ -138,7 +120,6 @@ class TestAutotuner:
         """Test behaviour of both autotune matching options ('exact' and 'nearest')."""
         open_db_mock.return_value = conn
         context = mock.NonCallableMock()
-        self.autotune_mock.reset()
 
         # Check that autotuning is only performed once for a particular
         # context+arg_parameters set
@@ -203,3 +184,23 @@ class TestAutotuner:
             context.device.name = 'z'
             ret = self.autotune(context, 'xyz')
             assert ret == tuning_1 or ret == tuning_2
+
+            # manually reset autotune_mock to no longer raise RuntimeError
+            self.autotune_mock.side_effect = None
+
+    @mock.patch('katsdpsigproc.tune._close_db')
+    @mock.patch('katsdpsigproc.tune._open_db')
+    def test_autotune_empty_arg(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
+                                conn: sqlite3.Connection) -> None:
+        """Test behaviour of empty parameter sets."""
+        open_db_mock.return_value = conn
+        context = mock.NonCallableMock()
+
+        tuning = {'a': 1, 'b': 2}
+        self.autotune_mock.return_value = tuning
+        context.device.driver_version = 'mock version'
+        context.device.platform_name = 'mock platform'
+        context.device.name = 'mock device'
+
+        ret = self.autotune_no_args(context)
+        assert ret == tuning
