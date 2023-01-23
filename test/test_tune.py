@@ -86,6 +86,7 @@ class TestAutotuner:
     """
 
     autotune_mock = mock.Mock()
+    autotune_mock_no_args = mock.Mock()
 
     @pytest.fixture
     def conn(self) -> Generator[sqlite3.Connection, None, None]:
@@ -107,14 +108,37 @@ class TestAutotuner:
     def autotune(cls, context: AbstractContext, param: str) -> Mapping[str, Any]:
         return cls.autotune_mock(context, param)
 
+    @classmethod
+    @tune.autotuner(test={'a': 3, 'b': -1})
+    def autotune_no_args(cls, context: AbstractContext) -> Any:
+        return cls.autotune_mock_no_args(context)
+
+    @mock.patch('katsdpsigproc.tune._close_db')
+    @mock.patch('katsdpsigproc.tune._open_db')
+    def test_autotune_empty_arg(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
+                                conn: sqlite3.Connection) -> None:
+        """Test behaviour of empy parameter sets."""
+        open_db_mock.return_value = conn
+        context = mock.NonCallableMock()
+
+        tuning = {'a': 1, 'b': 2}
+        self.autotune_mock_no_args.return_value = tuning
+        context.device.driver_version = 'mock version'
+        context.device.platform_name = 'mock platform'
+        context.device.name = 'mock device'
+
+        ret = self.autotune_no_args(context)
+        assert ret == tuning
+
     @mock.patch('katsdpsigproc.tune._close_db')
     @mock.patch('katsdpsigproc.tune._open_db')
     @mock.patch('katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH', 'exact')
     def test_autotune_match(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
                             conn: sqlite3.Connection) -> None:
-        ''' Tests behaviour of both autotune matching options ('exact' and 'nearest'). '''
+        """Test behaviour of both autotune matching options ('exact' and 'nearest')."""
         open_db_mock.return_value = conn
         context = mock.NonCallableMock()
+        self.autotune_mock.reset()
 
         # Check that autotuning is only performed once for a particular
         # context+arg_parameters set
@@ -172,46 +196,10 @@ class TestAutotuner:
             ret = self.autotune(context, 'xyz')
             assert ret == tuning_1
 
-
-class TestAutotunerNoParam:
-    """Tests for class that implements autotune with no parameters
-    """
-
-    autotune_mock = mock.Mock()
-
-    @pytest.fixture
-    def conn(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(':memory:')
-        yield conn
-        conn.close()
-
-    @pytest.fixture(autouse=True)
-    def _prepare_autotune_mock(self) -> Generator[None, None, None]:
-        # The autotune method has to be a class method due to magic in the
-        # autotuner decorator, and hence autotune_mock has to be at class
-        # scope. But we want it reset for each test.
-        self.autotune_mock.reset()
-        yield
-        self.autotune_mock.reset()
-
-    @classmethod
-    @tune.autotuner(test={'a': 3, 'b': -1})
-    def autotune(cls, context: AbstractContext) -> Any:
-        return cls.autotune_mock(context)
-
-    @mock.patch('katsdpsigproc.tune._close_db')
-    @mock.patch('katsdpsigproc.tune._open_db')
-    def test_autotune_empty_arg(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
-                                conn: sqlite3.Connection) -> None:
-        ''' Tests behaviour of empy argument parameter sets. '''
-        open_db_mock.return_value = conn
-        context = mock.NonCallableMock()
-
-        tuning_1 = {'a': 1, 'b': 2}
-        self.autotune_mock.return_value = tuning_1
-        context.device.driver_version = 'mock version'
-        context.device.platform_name = 'mock platform'
-        context.device.name = 'mock device'
-
-        ret = self.autotune(context)
-        assert ret == tuning_1
+            # If there is no match in the database, any tuning (for that parameter set) will
+            # suffice
+            context.device.driver_version = 'x'
+            context.device.platform_name = 'y'
+            context.device.name = 'z'
+            ret = self.autotune(context, 'xyz')
+            assert ret == tuning_1 or ret == tuning_2
