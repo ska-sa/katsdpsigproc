@@ -99,6 +99,7 @@ class TestAutotuner:
         # autotuner decorator, and hence autotune_mock has to be at class
         # scope. But we want it reset for each test.
         self.autotune_mock.reset()
+        self.autotune_mock.side_effect = None
         yield
         self.autotune_mock.reset()
 
@@ -184,9 +185,6 @@ class TestAutotuner:
             context.device.name = 'z'
             ret = self.autotune(context, 'xyz')
             assert ret == tuning_1 or ret == tuning_2
-
-            # manually reset autotune_mock to no longer raise RuntimeError
-            self.autotune_mock.side_effect = None
 
     @mock.patch('katsdpsigproc.tune._close_db')
     @mock.patch('katsdpsigproc.tune._open_db')
