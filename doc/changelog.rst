@@ -1,6 +1,10 @@
 Changelog
 =========
 
+.. rubric:: Development version
+
+- Add `relaxed_command_queues` option to :class:`~.OperationSequence`.
+
 .. rubric:: 1.6.1
 
 - Fix a race condition that sometimes caused events passed to
