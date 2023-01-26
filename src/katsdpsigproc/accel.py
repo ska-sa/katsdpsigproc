@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2014-2021, National Research Foundation (SARAO)
+# Copyright (c) 2014-2023, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -1611,17 +1611,25 @@ class OperationSequence(Operation):
         Names for alias slots, mapped to the original slot names that are replaced
     allocator : :class:`DeviceAllocator` or :class:`SVMAllocator`, optional
         Allocator used to allocate unbound slots
+    relaxed_command_queues
+        If set to true, allows the individual operations to use command queues that
+        are not the same as `command_queue`. In this case you should override
+        :meth:`_run` so that there is proper synchronisation between the
+        queues. This may be useful if some parts of the operation are
+        independent and can run in parallel.
     """
 
     def __init__(self, command_queue: AbstractCommandQueue,
                  operations: Iterable[Tuple[str, Operation]],
                  compounds: Optional[Mapping[str, Iterable[str]]] = None,
                  aliases: Optional[Mapping[str, Iterable[str]]] = None,
-                 allocator: Optional[AbstractAllocator] = None) -> None:
+                 allocator: Optional[AbstractAllocator] = None,
+                 *,
+                 relaxed_command_queues: bool = False) -> None:
         super().__init__(command_queue, allocator)
         self.operations = OrderedDict(operations)
         for (name, operation) in self.operations.items():
-            if operation.command_queue is not command_queue:
+            if operation.command_queue is not command_queue and not relaxed_command_queues:
                 raise ValueError('child has a different command queue to the parent')
             if not operation.is_root:
                 raise ValueError('child already has another parent')
