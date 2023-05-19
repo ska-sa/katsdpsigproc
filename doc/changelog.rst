@@ -1,6 +1,10 @@
 Changelog
 =========
 
+.. rubric:: Development version
+
+- Remove use of deprecated :func:`numba.generated_jit` decorator.
+
 .. rubric:: 1.7.0
 
 - Add :meth:`.Operation.ensure_bound`.

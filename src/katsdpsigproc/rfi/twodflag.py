@@ -42,20 +42,21 @@ def _as_min_dtype(value):
     return np.array(value, dtype)
 
 
-@numba.generated_jit(nopython=True, nogil=True)
 def _asbool(data):
     """Create a boolean array with the same values as `data`.
 
-    The `data` contain only 0's and 1's. If possible, a view is returned,
+    The `data` must contain only 0's and 1's. If possible, a view is returned,
     otherwise a copy.
     """
-    if isinstance(data, np.ndarray):
-        # We're being called as a regular function due to NUMBA_DISABLE_JIT.
-        if data.dtype.itemsize == 1:
-            return data.view(np.bool_)
-        else:
-            return data.astype(np.bool_)
-    elif (isinstance(data.dtype, numba.types.Boolean)
+    if data.dtype.itemsize == 1:
+        return data.view(np.bool_)
+    else:
+        return data.astype(np.bool_)
+
+
+@numba.extending.overload(_asbool, jit_options=dict(nopython=True, nogil=True))
+def _overload_asbool(data):
+    if (isinstance(data.dtype, numba.types.Boolean)
             or (isinstance(data.dtype, numba.types.Integer) and data.dtype.bitwidth == 8)):
         return lambda data: data.view(np.bool_)
     else:
