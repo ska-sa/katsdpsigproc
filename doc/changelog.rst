@@ -1,6 +1,11 @@
 Changelog
 =========
 
+.. rubric:: Development version
+
+- Remove dependency on deprecated :mod:`pkg_resources` and use
+  :mod:`importlib.resources` instead.
+
 .. rubric:: 1.6.1
 
 - Fix a race condition that sometimes caused events passed to

@@ -2,6 +2,7 @@
 
 appdirs
 decorator
+importlib-resources
 mako
 numba
 numpy

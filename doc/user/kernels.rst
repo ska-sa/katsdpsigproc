@@ -93,8 +93,12 @@ function. Usage might look like
 
   program = accel.build(
       ctx, 'my_kernel.mako', {'block': block},
-      extra_dirs=[pkg_resources.resource_filename(__name__, '')]
+      extra_dirs=[importlib.resources.files('packagename')]
   )
+
+Note that using :func:`importlib.resources.files` like this is hacky, as it
+will only work if it returns a real filesystem path rather than an arbitrary
+loader.
 
 The dictionary argument provides variables that can be expanded in the
 template, using ``${varname}`` syntax.

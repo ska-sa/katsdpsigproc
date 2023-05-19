@@ -50,7 +50,10 @@ except ImportError:
 import mako.lexer
 from mako.template import Template
 from mako.lookup import TemplateLookup
-import pkg_resources
+if sys.version_info >= (3, 9):
+    import importlib.resources as importlib_resources
+else:
+    import importlib_resources
 
 from .abc import (AbstractContext, AbstractDevice, AbstractCommandQueue,  # noqa: F401
                   AbstractTuningCommandQueue, AbstractProgram)
@@ -124,8 +127,8 @@ class LinenoLexer(mako.lexer.Lexer):
         return ''.join(out)
 
 
-def _make_lookup(extra_dirs: List[str]) -> TemplateLookup:
-    dirs = extra_dirs + [pkg_resources.resource_filename(__name__, '')]
+def _make_lookup(extra_dirs: List[Union[str, os.PathLike]]) -> TemplateLookup:
+    dirs = extra_dirs + [importlib_resources.files("katsdpsigproc")]
     return TemplateLookup(dirs, lexer_cls=LinenoLexer, strict_undefined=True)
 
 
@@ -135,7 +138,7 @@ _lookup = _make_lookup([])
 
 def build(context: AbstractContext, name: str,
           render_kws: Optional[Mapping[str, Any]] = None,
-          extra_dirs: Optional[List[str]] = None,
+          extra_dirs: Optional[List[Union[str, os.PathLike]]] = None,
           extra_flags: Optional[List[str]] = None,
           source: Optional[str] = None) -> AbstractProgram:
     """Build a source module from a mako template.
