@@ -1523,6 +1523,12 @@ class Operation(ABC):
                 raise TypeError(f'Slot {slot} is not an IOSlot')
             slot.bind(buffer)
 
+    def ensure_bound(self, name: str) -> None:
+        """Make sure that a specific slot has a buffer bound, allocating if necessary."""
+        slot = self.slots[name]
+        if not slot.is_bound():
+            slot.allocate(self.allocator)
+
     def ensure_all_bound(self) -> None:
         """Make sure that all slots have a buffer bound, allocating if necessary."""
         for slot in self.slots.values():
