@@ -3,6 +3,7 @@ Changelog
 
 .. rubric:: Development version
 
+- Add :meth:`.Operation.ensure_bound`.
 - Remove dependency on deprecated :mod:`pkg_resources` and use
   :mod:`importlib.resources` instead.
 
