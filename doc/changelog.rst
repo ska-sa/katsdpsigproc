@@ -1,11 +1,14 @@
 Changelog
 =========
 
-.. rubric:: Development version
+.. rubric:: 1.7.0
 
 - Add :meth:`.Operation.ensure_bound`.
 - Remove dependency on deprecated :mod:`pkg_resources` and use
   :mod:`importlib.resources` instead.
+- Fix :func:`.autotuner` decorator for autotune functions with no parameters.
+- Update type annotations to allow :class:`os.PathLike` in the `extra_dirs`
+  argument to :func:`.build`.
 
 .. rubric:: 1.6.1
 
