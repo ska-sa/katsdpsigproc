@@ -5,6 +5,7 @@
 # (and it can't, because things like pycuda won't install).
 appdirs
 decorator
+importlib-resources
 mako
 numba
 pandas
