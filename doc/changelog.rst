@@ -1,8 +1,10 @@
 Changelog
 =========
 
-.. rubric:: Development version
+.. rubric:: 1.8.0
 
+- Add :envvar:`KATSDPSIGPROC_TUNE_DB` environment variable to override the
+  location of the tuning database.
 - Remove use of deprecated :func:`numba.generated_jit` decorator.
 
 .. rubric:: 1.7.0
