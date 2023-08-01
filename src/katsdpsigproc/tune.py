@@ -234,17 +234,12 @@ def _save(
 
 
 def _open_db() -> sqlite3.Connection:
-    cache_dir = appdirs.user_cache_dir("katsdpsigproc", "ska-sa")
-    try:
-        os.makedirs(cache_dir)
-    except OSError:
-        # This happens if the directory already exists. If we failed
-        # to create it, the database open will fail.
-        pass
-
-    cache_file = os.path.join(cache_dir, "tuning.db")
-    conn = sqlite3.connect(cache_file)
-    return conn
+    cache_file = os.getenv("KATSDPSIGPROC_TUNE_DB")
+    if cache_file is None:
+        cache_dir = appdirs.user_cache_dir("katsdpsigproc", "ska-sa")
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_file = os.path.join(cache_dir, "tuning.db")
+    return sqlite3.connect(cache_file)
 
 
 def _close_db(conn: sqlite3.Connection) -> None:
