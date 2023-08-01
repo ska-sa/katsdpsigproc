@@ -54,7 +54,7 @@ def _asbool(data):
         return data.astype(np.bool_)
 
 
-@numba.extending.overload(_asbool, jit_options=dict(nopython=True, nogil=True))
+@numba.extending.overload(_asbool, jit_options=dict(nogil=True))
 def _overload_asbool(data):
     if (isinstance(data.dtype, numba.types.Boolean)
             or (isinstance(data.dtype, numba.types.Integer) and data.dtype.bitwidth == 8)):
