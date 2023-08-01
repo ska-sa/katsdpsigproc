@@ -162,6 +162,9 @@ the device driver, then platform, then device name. If no match is found,
 autotuning will proceed. If `KATSDPSIGPROC_TUNE_MATCH` is set to "exact" (or
 anything else), default behaviour will proceed.
 
+It is also possible to override the location of the tuning database by
+setting the environment variable :envvar:`KATSDPSIGPROC_TUNE_DB`.
+
 .. _autotune-testing:
 
 Testing
