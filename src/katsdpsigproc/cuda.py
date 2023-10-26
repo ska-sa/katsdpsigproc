@@ -148,7 +148,7 @@ class _RawManaged:
 
     def get_array(self, shape: Tuple[int, ...], dtype: DTypeLike) -> np.ndarray:
         """Return a view of (a prefix of) the memory, with the given shape and type."""
-        size = int(np.product(shape)) * np.dtype(dtype).itemsize
+        size = int(np.prod(shape)) * np.dtype(dtype).itemsize
         return self._wrapped[:size].view(dtype).reshape(shape)
 
 

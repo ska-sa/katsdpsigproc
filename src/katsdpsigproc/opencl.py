@@ -61,7 +61,7 @@ class _PinnedAMD(np.ndarray):
     def __new__(cls, context: 'Context', queue: 'CommandQueue',
                 shape: Tuple[int, ...], dtype: DTypeLike) -> '_PinnedAMD':
         dtype = np.dtype(dtype)
-        n_bytes = int(np.product(shape)) * dtype.itemsize
+        n_bytes = int(np.prod(shape)) * dtype.itemsize
         # Do not add READ or WRITE to the flags: doing so seems to cause AMD
         # drivers to allocate GPU memory.
         buffer = pyopencl.Buffer(
@@ -292,7 +292,7 @@ class Context(AbstractContext[pyopencl.array.Array, pyopencl.Buffer, None,
         elif device.platform.name == 'NVIDIA CUDA':
             # Based on NVIDIA's recommendation: create a device buffer and
             # leave it mapped permanently.
-            n_bytes = int(np.product(shape)) * dtype.itemsize
+            n_bytes = int(np.prod(shape)) * dtype.itemsize
             buf = pyopencl.Buffer(
                 self._pyopencl_context,
                 pyopencl.mem_flags.ALLOC_HOST_PTR | pyopencl.mem_flags.READ_ONLY,
