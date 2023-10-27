@@ -1332,7 +1332,7 @@ class IOSlot(IOSlotBase):
         return tuple(x.required_padded_size() for x in self.dimensions)
 
     def required_bytes(self) -> int:
-        return int(np.product(self.required_padded_shape()) * self.dtype.itemsize)
+        return int(np.prod(self.required_padded_shape()) * self.dtype.itemsize)
 
     def _allocate(self, allocator: AbstractAllocator[_RB],
                   raw: Optional[_RB] = None, *, bind: bool = True) -> DeviceArray:

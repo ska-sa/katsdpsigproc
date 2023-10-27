@@ -120,7 +120,7 @@ class Fill(accel.Operation):
     def _run(self) -> None:
         data = self.buffer('data')
 
-        elements = int(np.product(data.padded_shape))
+        elements = int(np.prod(data.padded_shape))
         global_size = accel.roundup(elements, self.template.wgs)
         self.command_queue.enqueue_kernel(
             self.kernel,

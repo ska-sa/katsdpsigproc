@@ -291,7 +291,7 @@ class FftTemplate:
         self._needs_synchronize_workaround = (
             version.value < 8000 and any(x <= 1920 for x in shape[:N])
         )
-        batches = int(np.product(padded_shape_src[:-N]))
+        batches = int(np.prod(padded_shape_src[:-N]))
         with context:
             arr_type = ctypes.c_longlong * N
             work_size = ctypes.c_size_t()
@@ -304,10 +304,10 @@ class FftTemplate:
                 arr_type(*shape[-N:]),                    # n
                 arr_type(*padded_shape_src[-N:]),         # inembed
                 1,                                        # istride
-                int(np.product(padded_shape_src[-N:])),   # idist
+                int(np.prod(padded_shape_src[-N:])),      # idist
                 arr_type(*padded_shape_dest[-N:]),        # onembed
                 1,                                        # ostride
-                int(np.product(padded_shape_dest[-N:])),  # odist
+                int(np.prod(padded_shape_dest[-N:])),     # odist
                 fft_type,                                 # type
                 batches,                                  # batch
                 ctypes.byref(work_size)                   # workSize
