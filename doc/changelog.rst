@@ -1,6 +1,11 @@
 Changelog
 =========
 
+.. rubric:: 1.8.1
+
+- Use :func:`np.prod` instead of deprecated :func:`np.product`.
+- Improve the exception display when accessing an unknown slot.
+
 .. rubric:: 1.8.0
 
 - Add :envvar:`KATSDPSIGPROC_TUNE_DB` environment variable to override the
