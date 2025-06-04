@@ -340,13 +340,8 @@ class Fft(accel.Operation):
     **work_area**
         Scratch area for work. The contents should not be used; it is made
         available so that it can be aliased with other scratch areas.
-        NOTE: As of CUDA 12.9, the required workspace for cuFFT is now
-        zero for most small FFT work sizes that can be factored into small
-        prime numbers. As a result, this buffer only exists for a positive
-        :attr:`FftTemplate._work_size` value. No exception is thrown for
-        creation of this slot, rather when you attempt to access the
-        underlying :class:`pycuda.gpuarray.GPUArray`.
-        https://docs.nvidia.com/cuda/archive/12.9.0/cuda-toolkit-release-notes/index.html#cufft-release-12-9
+        If the implementation does not need any device memory for scratch
+        space, this slot will not exist.
 
     Parameters
     ----------
