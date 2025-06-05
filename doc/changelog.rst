@@ -1,6 +1,12 @@
 Changelog
 =========
 
+.. rubric:: 1.9.0
+
+- Make :class:`.Fft` work with CUDA 12.9. Note that the ``work_area`` slot may
+  now be absent in some cases.
+- Bring readthedocs configuration up to date.
+
 .. rubric:: 1.8.1
 
 - Use :func:`np.prod` instead of deprecated :func:`np.product`.
