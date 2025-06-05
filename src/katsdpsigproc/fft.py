@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2021, National Research Foundation (SARAO)
+# Copyright (c) 2021, 2025 National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -340,6 +340,8 @@ class Fft(accel.Operation):
     **work_area**
         Scratch area for work. The contents should not be used; it is made
         available so that it can be aliased with other scratch areas.
+        If the implementation does not need any device memory for scratch
+        space, this slot will not exist.
 
     Parameters
     ----------
@@ -382,13 +384,13 @@ class Fft(accel.Operation):
                           for d in zip(dest_shape, template.padded_shape_dest))
         self.slots['src'] = accel.IOSlot(src_dims, template.dtype_src)
         self.slots['dest'] = accel.IOSlot(dest_dims, template.dtype_dest)
-        self.slots['work_area'] = accel.IOSlot((template._work_size,), np.uint8)
+        if template._work_size > 0:
+            self.slots['work_area'] = accel.IOSlot((template._work_size,), np.uint8)
         self.mode = mode
 
     def _run(self) -> None:
         src_buffer = self.buffer('src')
         dest_buffer = self.buffer('dest')
-        work_area_buffer = self.buffer('work_area')
         context = self.command_queue.context
         cufft = self.template._cufft
         with context, self.template._lock:
@@ -396,10 +398,12 @@ class Fft(accel.Operation):
                 self.template._plan,
                 self.command_queue._pycuda_stream.handle
             )
-            cufft.cufftSetWorkArea(
-                self.template._plan,
-                work_area_buffer.buffer.ptr
-            )
+            if "work_area" in self.slots:
+                work_area_buffer = self.buffer('work_area')
+                cufft.cufftSetWorkArea(
+                    self.template._plan,
+                    work_area_buffer.buffer.ptr
+                )
             func = cufft.cufftExec[self.template._fft_type]
             args = [self.template._plan, src_buffer.buffer.ptr, dest_buffer.buffer.ptr]
             if len(func.argtypes) == 4:
