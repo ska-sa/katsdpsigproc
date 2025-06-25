@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2014-2022, National Research Foundation (SARAO)
+# Copyright (c) 2014-2022, 2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -32,7 +32,7 @@ _spikes: np.ndarray
 _input_flags: np.ndarray
 
 
-def setup():   # type: () -> None
+def setup_module():   # type: () -> None
     global _vis, _spikes, _input_flags
     shape = (117, 131)
     # Use a fixed seed to make the test repeatable
