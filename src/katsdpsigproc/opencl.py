@@ -73,7 +73,7 @@ class _PinnedAMD(np.ndarray):
             buffer,
             pyopencl.map_flags.READ | pyopencl.map_flags.WRITE,
             0, shape, dtype)[0]
-        mapping = array.base               # type: pyopencl.MemoryMap
+        mapping: pyopencl.MemoryMap = array.base
         array = array.view(_PinnedAMD)
         array._buffer = buffer
         array._mapping = mapping
@@ -489,7 +489,7 @@ class TuningCommandQueue(CommandQueue,
         kwargs['profile'] = True
         super().__init__(*args, **kwargs)
         self.is_tuning = False
-        self.events = []        # type: List[pyopencl.Event]
+        self.events: List[pyopencl.Event] = []
 
     def start_tuning(self) -> None:
         self.is_tuning = True

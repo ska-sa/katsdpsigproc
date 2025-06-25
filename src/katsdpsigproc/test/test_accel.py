@@ -18,8 +18,8 @@ from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
 
 _T = TypeVar('_T')
 _F = TypeVar('_F', bound=Callable)
-_test_context = None           # type: Optional[AbstractContext]
-_test_command_queue = None     # type: Optional[AbstractCommandQueue]
+_test_context: Optional[AbstractContext] = None
+_test_command_queue: Optional[AbstractCommandQueue] = None
 _test_initialized = False
 
 

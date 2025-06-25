@@ -244,7 +244,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
 class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
     """Abstraction of a command queue."""
 
-    context = None     # type: _C
+    context: _C
 
     @abstractmethod
     def enqueue_read_buffer(self, buffer: _B, data: Any, blocking: bool = True) -> None:

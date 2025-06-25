@@ -418,7 +418,7 @@ class TuningCommandQueue(CommandQueue,
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.is_tuning = False
-        self._start_event = None    # type: Optional[Event]
+        self._start_event: Optional[Event] = None
 
     def start_tuning(self) -> None:
         self.is_tuning = True

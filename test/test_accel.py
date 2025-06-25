@@ -60,7 +60,7 @@ class TestLinenoLexer:
 
 
 class TestHostArray:
-    cls = HostArray      # type: Type[HostArray]
+    cls: Type[HostArray] = HostArray
 
     @pytest.fixture
     def factory(self) -> Callable[[Tuple[int, ...], DTypeLike, Tuple[int, ...]], HostArray]:
@@ -84,7 +84,7 @@ class TestHostArray:
 
 
 class TestDeviceArray:
-    cls = DeviceArray      # type: Type[DeviceArray]
+    cls: Type[DeviceArray] = DeviceArray
 
     @pytest.fixture
     def shape(self) -> Tuple[int, ...]:

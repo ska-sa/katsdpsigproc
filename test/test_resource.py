@@ -31,7 +31,7 @@ from katsdpsigproc.abc import AbstractEvent
 class TestWaitUntil:
     async def test_result(self) -> None:
         """wait_until returns before the timeout if a result is set."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
         loop.call_later(0.1, future.set_result, 42)
         result = await resource.wait_until(future, loop.time() + 1000000)
@@ -39,7 +39,7 @@ class TestWaitUntil:
 
     async def test_already_set(self) -> None:
         """wait_until returns if a future has a result set before the call."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         future.set_result(42)
         loop = asyncio.get_event_loop()
         result = await resource.wait_until(future, loop.time() + 1000000)
@@ -47,7 +47,7 @@ class TestWaitUntil:
 
     async def test_exception(self) -> None:
         """wait_until rethrows an exception set on the future."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
         loop.call_later(0.1, future.set_exception, ValueError('test'))
         with pytest.raises(ValueError):
@@ -55,7 +55,7 @@ class TestWaitUntil:
 
     async def test_timeout(self) -> None:
         """wait_until throws `asyncio.TimeoutError` if it times out, and cancels the future."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
         with pytest.raises(asyncio.TimeoutError):
             await resource.wait_until(future, loop.time() + 0.01)
@@ -63,7 +63,7 @@ class TestWaitUntil:
 
     async def test_shield(self) -> None:
         """wait_until does not cancel the future if it is wrapped in shield."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
         with pytest.raises(asyncio.TimeoutError):
             await resource.wait_until(asyncio.shield(future), loop.time() + 0.01)
@@ -96,7 +96,7 @@ class DummyEvent(AbstractEvent):
 
 class TestResource:
     def setup_method(self) -> None:
-        self.completed = queue.Queue()      # type: queue.Queue[resource.ResourceAllocation[int]]
+        self.completed: queue.Queue[resource.ResourceAllocation[int]] = queue.Queue()
 
     async def _run_frame(self, acq: resource.ResourceAllocation[int],
                          event: AbstractEvent) -> None:
@@ -159,10 +159,8 @@ class TestJobQueue:
     @pytest.fixture(autouse=True)
     def setup(self, event_loop) -> None:
         self.jobs = resource.JobQueue()
-        self.finished = [event_loop.create_future()
-                         for i in range(5)]      # type: List[asyncio.Future[int]]
-        self.unfinished = [event_loop.create_future()
-                           for i in range(5)]    # type: List[asyncio.Future[int]]
+        self.finished: List[asyncio.Future[int]] = [event_loop.create_future() for i in range(5)]
+        self.unfinished: List[asyncio.Future[int]] = [event_loop.create_future() for i in range(5)]
         for i, future in enumerate(self.finished):
             future.set_result(i)
 

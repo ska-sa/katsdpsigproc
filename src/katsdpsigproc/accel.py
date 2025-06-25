@@ -183,7 +183,7 @@ def build(context: AbstractContext, name: str,
 
 def all_devices() -> List[AbstractDevice]:
     """Return a list of all discovered devices."""
-    devices = []     # type: List[AbstractDevice]
+    devices: List[AbstractDevice] = []
     if have_cuda:
         pycuda.driver.init()
         devices.extend(cuda.Device.get_devices())
@@ -233,20 +233,18 @@ def candidate_devices(device_filter: Optional[Callable[[AbstractDevice], bool]] 
                 pass
         return None
 
-    cuda_id = None         # type: Optional[int]
-    opencl_id = None       # type: Optional[List[int]]
-    device_id = None       # type: Optional[int]
-
-    device_id = parse_id('KATSDPSIGPROC_DEVICE')
+    cuda_id: Optional[int] = None
+    opencl_id: Optional[List[int]] = None
+    device_id: Optional[int] = parse_id('KATSDPSIGPROC_DEVICE')
     if device_id is None:
         cuda_id = parse_id('CUDA_DEVICE')
         if cuda_id is None:
             # Fields are platform number and device number
             opencl_id = parse_id_list('PYOPENCL_CTX', 2)
 
-    cuda_devices = []      # type: Sequence[cuda.Device]
-    opencl_devices = []    # type: Sequence[Sequence[opencl.Device]]
-    devices = []           # type: List[AbstractDevice]
+    cuda_devices: Sequence[cuda.Device] = []
+    opencl_devices: Sequence[Sequence[opencl.Device]] = []
+    devices: List[AbstractDevice] = []
     if have_cuda:
         pycuda.driver.init()
         cuda_devices = cuda.Device.get_devices()
@@ -421,7 +419,7 @@ class HostArray(np.ndarray):
             # View casting or created from a template: we cannot vouch for it.
             self._owner = None
             if isinstance(obj, HostArray):
-                self.padded_shape = obj.padded_shape    # type: Tuple[int, ...]
+                self.padded_shape: Tuple[int, ...] = obj.padded_shape
             else:
                 self.padded_shape = None
 
@@ -577,7 +575,7 @@ class DeviceArray:
             length 1 may have a stride of 0.
         """
         origin = 0
-        copy_shape = []      # type: List[int]
+        copy_shape: List[int] = []
         copy_strides = []
         axis = 0
         if not isinstance(region, tuple):
@@ -941,7 +939,7 @@ class SVMArray(HostArray, DeviceArray):
 class AbstractAllocator(ABC, Generic[_RB]):
     """Interface for allocating device memory."""
 
-    context = None    # type: AbstractContext
+    context: AbstractContext
 
     @abstractmethod
     def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
@@ -1047,7 +1045,7 @@ class Dimension:
         if min_padded_size < size:
             raise ValueError('padded size is less than size')
 
-        self._parent = None     # type: Optional[Dimension]
+        self._parent: Optional[Dimension] = None
         self._size = size
         self._min_padded_size = min_padded_size
         self._alignment = alignment
@@ -1267,7 +1265,7 @@ class IOSlot(IOSlotBase):
         if len(self.dimensions) > 1:
             self.dimensions[-1].add_align_dtype(dtype)
         self.dtype: np.dtype = np.dtype(dtype)
-        self.buffer = None       # type: Optional[DeviceArray]
+        self.buffer: Optional[DeviceArray] = None
 
     def is_bound(self) -> bool:
         return self.buffer is not None
@@ -1422,7 +1420,7 @@ class AliasIOSlot(IOSlotBase):
     def __init__(self, children: Iterable[IOSlotBase]) -> None:
         super().__init__()
         self.children = list(children)
-        self.raw = None       # type: Optional[Any]
+        self.raw: Optional[Any] = None
         if not len(self.children):
             raise ValueError('empty child list')
         for child in self.children:
@@ -1499,8 +1497,8 @@ class Operation(ABC):
         elif allocator.context is not None:
             if allocator.context is not command_queue.context:
                 raise ValueError('command_queue and allocator have different contexts')
-        self.slots = {}            # type: Dict[str, IOSlotBase]
-        self.hidden_slots = {}     # type: Dict[str, IOSlotBase]
+        self.slots: Dict[str, IOSlotBase] = {}
+        self.hidden_slots: Dict[str, IOSlotBase] = {}
         self.command_queue = command_queue
         self.is_root = True
         self.allocator = allocator
@@ -1654,7 +1652,7 @@ class OperationSequence(Operation):
 
     def _extract_slots(self, names: Iterable[str], add_to_hidden: bool) -> List[IOSlotBase]:
         """Remove and return the slots with the given names."""
-        ans = []      # type: List[IOSlotBase]
+        ans: List[IOSlotBase] = []
         for name in names:
             try:
                 ans.append(self.slots[name])
@@ -1761,7 +1759,7 @@ def _visualize_operation(
 
     for slot in all_slots.values():
         if hasattr(slot, 'children'):
-            children = getattr(slot, 'children')  # type: Sequence[IOSlotBase]
+            children: Sequence[IOSlotBase] = getattr(slot, 'children')
             for child2 in children:
                 edges.add((child2, slot))
 
@@ -1786,8 +1784,8 @@ def visualize_operation(operation: Operation, filename: str) -> None:
 
     g = Graph()
     g.attr('graph', clusterrank='local', ranksep='3', compound='yes')
-    slot_map = {}        # type: Dict[IOSlotBase, str]
-    edges = set()        # type: Set[Tuple[IOSlotBase, IOSlotBase]]
+    slot_map: Dict[IOSlotBase, str] = {}
+    edges: Set[Tuple[IOSlotBase, IOSlotBase]] = set()
     _visualize_operation(g, operation, ('root',), slot_map, set(), edges)
     for a, b in edges:
         g.edge(slot_map[a], slot_map[b])

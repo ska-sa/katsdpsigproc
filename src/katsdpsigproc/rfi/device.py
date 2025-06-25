@@ -54,9 +54,9 @@ class AbstractBackgroundDevice(accel.Operation):
 
 
 class AbstractBackgroundDeviceTemplate(ABC):
-    use_flags = None    # type: BackgroundFlags
-    context = None      # type: AbstractContext
-    host_class = None   # type: Type[host.AbstractBackgroundHost]
+    use_flags: BackgroundFlags
+    context: AbstractContext
+    host_class: Type[host.AbstractBackgroundHost]
 
     @abstractmethod
     def instantiate(self, command_queue: AbstractCommandQueue, channels: int, baselines: int,
@@ -65,13 +65,13 @@ class AbstractBackgroundDeviceTemplate(ABC):
 
 
 class AbstractNoiseEstDevice(accel.Operation):
-    transposed = None   # type: bool
+    transposed: bool
 
 
 class AbstractNoiseEstDeviceTemplate(ABC):
-    transposed = None   # type: bool
-    context = None      # type: AbstractContext
-    host_class = None   # type: Type[host.AbstractNoiseEstHost]
+    transposed: bool
+    context: AbstractContext
+    host_class: Type[host.AbstractNoiseEstHost]
 
     @abstractmethod
     def instantiate(self, command_queue: AbstractCommandQueue, channels: int, baselines: int,
@@ -80,13 +80,13 @@ class AbstractNoiseEstDeviceTemplate(ABC):
 
 
 class AbstractThresholdDevice(accel.Operation):
-    transposed = None   # type: bool
+    transposed: bool
 
 
 class AbstractThresholdDeviceTemplate(ABC):
-    transposed = None   # type: bool
-    context = None      # type: AbstractContext
-    host_class = None   # type: Type[host.AbstractThresholdHost]
+    transposed: bool
+    context: AbstractContext
+    host_class: Type[host.AbstractThresholdHost]
 
     @abstractmethod
     def instantiate(self, command_queue: AbstractCommandQueue, channels: int, baselines: int,
@@ -901,16 +901,16 @@ class FlaggerDeviceTemplate:
 
         # Create transposition operations if needed
         if noise_est.transposed or threshold.transposed:
-            self.transpose_deviations = \
+            self.transpose_deviations: Optional[transpose.TransposeTemplate] = \
                 transpose.TransposeTemplate(
-                    context, np.float32, 'float')   # type: Optional[transpose.TransposeTemplate]
+                    context, np.float32, 'float')
         else:
             self.transpose_deviations = None
         if threshold.transposed:
-            self.transpose_flags = \
+            self.transpose_flags: Optional[transpose.TransposeTemplate] = \
                 transpose.TransposeTemplate(
                     context, np.uint8,
-                    'unsigned char')      # type: Optional[transpose.TransposeTemplate]
+                    'unsigned char')
         else:
             self.transpose_flags = None
 
@@ -995,7 +995,7 @@ class FlaggerDevice(accel.OperationSequence):
         noise_est_suffix = '_t' if self.noise_est.transposed else ''
         threshold_suffix = '_t' if self.threshold.transposed else ''
 
-        operations = []     # type: List[Tuple[str, accel.Operation]]
+        operations: List[Tuple[str, accel.Operation]] = []
         compounds = {
             'vis': ['background:vis'],
             'input_flags': ['background:flags'],

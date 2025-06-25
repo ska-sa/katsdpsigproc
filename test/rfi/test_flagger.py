@@ -34,7 +34,7 @@ _input_flags: np.ndarray
 
 
 @pytest.fixture(autouse=True)
-def setup():   # type: () -> None
+def setup() -> None:
     global _vis, _spikes, _input_flags
     shape = (117, 131)
     # Use a fixed seed to make the test repeatable
@@ -77,8 +77,8 @@ def check_flagger_device(use_flags: device.BackgroundFlags,
     global _vis, _spikes, _input_flags
     background = device.BackgroundMedianFilterDeviceTemplate(context, 13, use_flags=use_flags)
     if transpose_noise_est:
-        noise_est = device.NoiseEstMADTDeviceTemplate(
-            context, 1024)       # type: device.AbstractNoiseEstDeviceTemplate
+        noise_est: device.AbstractNoiseEstDeviceTemplate = device.NoiseEstMADTDeviceTemplate(
+            context, 1024)
     else:
         noise_est = device.NoiseEstMADDeviceTemplate(context, tuning={'wgsx': 8, 'wgsy': 8})
     threshold = device.ThresholdSimpleDeviceTemplate(

@@ -38,7 +38,7 @@ async def wait_until(future: Awaitable[_T], when: float,
 
     if loop is None:
         loop = asyncio.get_event_loop()
-    waiter = asyncio.Future(loop=loop)    # type: asyncio.Future[None]
+    waiter: asyncio.Future[None] = asyncio.Future(loop=loop)
     timeout_handle = loop.call_at(when, ready)
     # Ensure that the future is really a future, not a coroutine object
     future = asyncio.ensure_future(future, loop=loop)
@@ -181,7 +181,7 @@ class Resource(Generic[_T]):
         if loop is None:
             loop = asyncio.get_event_loop()
         self._loop = loop
-        self._future = asyncio.Future(loop=loop)  # type: asyncio.Future[List[AbstractEvent]]
+        self._future: asyncio.Future[List[AbstractEvent]] = asyncio.Future(loop=loop)
         self._future.set_result([])
         self.value = value
 
@@ -203,7 +203,7 @@ class JobQueue:
     """Maintain a list of in-flight asynchronous jobs."""
 
     def __init__(self) -> None:
-        self._jobs = collections.deque()   # type: Deque[asyncio.Future]
+        self._jobs: Deque[asyncio.Future] = collections.deque()
 
     def add(self, job: Awaitable) -> None:
         """Append a job to the list.
