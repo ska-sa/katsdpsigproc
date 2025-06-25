@@ -27,7 +27,9 @@ from . import tune
 from .abc import AbstractContext, AbstractCommandQueue
 
 
-_TuningDict = TypedDict('_TuningDict', {'size': int, 'wgsy': int})
+class _TuningDict(TypedDict):
+    size: int
+    wgsy: int
 
 
 class Percentile5Template:

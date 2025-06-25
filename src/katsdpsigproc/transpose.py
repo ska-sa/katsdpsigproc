@@ -30,7 +30,10 @@ from . import tune
 from .abc import AbstractContext, AbstractCommandQueue
 
 
-_TuningDict = TypedDict('_TuningDict', {'block': int, 'vtx': int, 'vty': int})
+class _TuningDict(TypedDict):
+    block: int
+    vtx: int
+    vty: int
 
 
 class TransposeTemplate:

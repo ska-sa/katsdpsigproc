@@ -187,7 +187,7 @@ def main():
         flags = benchmark1d(args, data)
     else:
         flags = benchmark2d(args, data)
-    print('{:.4f}% flagged'.format(100.0 * np.sum(flags) / flags.size))
+    print(f'{100.0 * np.sum(flags) / flags.size:.4f}% flagged')
 
 
 if __name__ == '__main__':

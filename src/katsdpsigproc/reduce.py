@@ -14,7 +14,9 @@ from . import tune
 from .abc import AbstractContext, AbstractCommandQueue
 
 
-_TuningDict = TypedDict('_TuningDict', {'wgsx': int, 'wgsy': int})
+class _TuningDict(TypedDict):
+    wgsx: int
+    wgsy: int
 
 
 class HReduceTemplate:

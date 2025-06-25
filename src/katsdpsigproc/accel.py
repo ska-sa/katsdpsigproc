@@ -122,7 +122,7 @@ class LinenoLexer(mako.lexer.Lexer):
             lines.pop()
         out = []
         for i, line in enumerate(lines):
-            out.append('#line {} {}\n'.format(i + 1, escaped_filename))
+            out.append(f'#line {i + 1} {escaped_filename}\n')
             out.append(line + '\n')
         return ''.join(out)
 
@@ -608,7 +608,7 @@ class DeviceArray:
                 origin += index * strides[axis]
                 axis += 1
             else:
-                raise TypeError('Invalid type in slice: {}'.format(type(index)))
+                raise TypeError(f'Invalid type in slice: {type(index)}')
         while axis < len(shape):
             copy_shape.append(shape[axis])
             copy_strides.append(strides[axis])

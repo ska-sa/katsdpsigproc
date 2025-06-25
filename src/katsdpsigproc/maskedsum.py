@@ -27,7 +27,8 @@ from . import tune
 from .abc import AbstractContext, AbstractCommandQueue
 
 
-_TuningDict = TypedDict('_TuningDict', {'size': int})
+class _TuningDict(TypedDict):
+    size: int
 
 
 class MaskedSumTemplate:
