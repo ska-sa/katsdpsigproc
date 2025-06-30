@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2014-2020, National Research Foundation (SARAO)
+# Copyright (c) 2014-2020, 2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -918,7 +918,8 @@ class SumThresholdFlagger:
         code can consume. All the actual work is done in
         :func:`_get_flags_impl`.
         """
-        averaged_channels = (in_data.shape[1] + self.average_freq - 1) // self.average_freq
+        average_freq = int(self.average_freq)  # Avoid numpy overflow errors
+        averaged_channels = (in_data.shape[1] + average_freq - 1) // average_freq
 
         # Set up frequency chunks
         freq_chunk_ends = np.linspace(0, averaged_channels, self.freq_chunks + 1).astype(np.int_)

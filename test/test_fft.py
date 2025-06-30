@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2011-2022, National Research Foundation (SARAO)
+# Copyright (c) 2011-2022, 2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -84,7 +84,7 @@ class TestFft:
         src_host = complex_normal(rs, size=src.shape).astype(dtype)
         src.set(command_queue, src_host)
         fn()
-        expected = np.fft.fftn(src_host, axes=(-2, -1))
+        expected = np.fft.fftn(src_host.astype(np.complex128), axes=(-2, -1))
         tol = np.finfo(dtype).resolution * np.max(np.abs(expected))
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
@@ -114,7 +114,9 @@ class TestFft:
         src_host = complex_normal(rs, size=src.shape).astype(dtype)
         src.set(command_queue, src_host)
         fn()
-        expected = np.fft.ifftn(src_host, axes=(-2, -1)) * (src.shape[-2] * src.shape[-1])
+        expected = np.fft.ifftn(
+            src_host.astype(np.complex128), axes=(-2, -1)
+        ) * (src.shape[-2] * src.shape[-1])
         tol = np.finfo(dtype).resolution * np.max(np.abs(expected))
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
@@ -176,7 +178,10 @@ class TestFft:
         src = fn.buffer('src')
         dest = fn.buffer('dest')
         signal = rs.standard_normal(shape).astype(np.float32) + 3
-        src.set(command_queue, np.fft.rfftn(signal, axes=(-2, -1)).astype(dtype_src))
+        src.set(
+            command_queue,
+            np.fft.rfftn(signal.astype(np.float64), axes=(-2, -1)).astype(dtype_src),
+        )
         fn()
         expected = signal * shape[2] * shape[3]  # CUFFT does unnormalised FFTs
         tol = np.finfo(dtype_src).resolution * np.max(np.abs(expected))

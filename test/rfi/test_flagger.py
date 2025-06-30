@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2014-2022, National Research Foundation (SARAO)
+# Copyright (c) 2014-2022, 2025, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -21,6 +21,7 @@ that they can be glued together properly.
 """
 
 import numpy as np
+import pytest
 
 from katsdpsigproc.rfi import host, device
 from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
@@ -32,6 +33,7 @@ _spikes: np.ndarray
 _input_flags: np.ndarray
 
 
+@pytest.fixture(autouse=True)
 def setup():   # type: () -> None
     global _vis, _spikes, _input_flags
     shape = (117, 131)
