@@ -30,7 +30,8 @@ _deviations: np.ndarray
 _spikes: np.ndarray
 
 
-def setup_module():   # type: () -> None
+@pytest.fixture(autouse=True)
+def setup():   # type: () -> None
     global _deviations, _spikes
     shape = (117, 273)
     # Use a fixed seed to make the test repeatable

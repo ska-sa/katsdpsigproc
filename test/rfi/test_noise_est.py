@@ -30,7 +30,8 @@ _deviations_big: np.ndarray
 _expected: np.ndarray
 
 
-def setup_module():   # type: () -> None
+@pytest.fixture(autouse=True)
+def setup():   # type: () -> None
     global _deviations, _deviations_big, _expected
     _deviations = np.array(
         [

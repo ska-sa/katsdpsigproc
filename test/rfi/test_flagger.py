@@ -21,6 +21,7 @@ that they can be glued together properly.
 """
 
 import numpy as np
+import pytest
 
 from katsdpsigproc.rfi import host, device
 from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
@@ -32,7 +33,8 @@ _spikes: np.ndarray
 _input_flags: np.ndarray
 
 
-def setup_module():   # type: () -> None
+@pytest.fixture(autouse=True)
+def setup():   # type: () -> None
     global _vis, _spikes, _input_flags
     shape = (117, 131)
     # Use a fixed seed to make the test repeatable
