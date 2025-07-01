@@ -15,12 +15,12 @@ host[:] = np.random.uniform(size=host.shape)
 buf.set(queue, host)
 
 program = ctx.compile(SOURCE)
-kernel = program.get_kernel('multiply')
+kernel = program.get_kernel("multiply")
 queue.enqueue_kernel(
     kernel,
     [buf.buffer, np.float32(3.0)],
     global_size=buf.padded_shape,
-    local_size=(32,)
+    local_size=(32,),
 )
 buf.get(queue, host)
 print(host)

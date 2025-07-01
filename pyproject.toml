@@ -1,6 +1,5 @@
 [build-system]
 requires = ["setuptools", "wheel", "katversion", "setuptools_scm"]
 
-[tools.ruff]
+[tool.ruff]
 line-length = 100
-exclude = ["doc/user/examples/*.py"]

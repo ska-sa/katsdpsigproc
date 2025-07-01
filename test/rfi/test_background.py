@@ -65,17 +65,27 @@ class TestBackgroundDevice:
     def amplitudes(self, request) -> bool:
         return request.param
 
-    @pytest.fixture(params=[
-        device.BackgroundFlags.NONE, device.BackgroundFlags.CHANNEL, device.BackgroundFlags.FULL
-    ])
+    @pytest.fixture(
+        params=[
+            device.BackgroundFlags.NONE,
+            device.BackgroundFlags.CHANNEL,
+            device.BackgroundFlags.FULL,
+        ]
+    )
     def use_flags(self, request) -> device.BackgroundFlags:
         return request.param
 
-    def test_result(self, context: AbstractContext, command_queue: AbstractCommandQueue,
-                    amplitudes: bool, use_flags: device.BackgroundFlags) -> None:
+    def test_result(
+        self,
+        context: AbstractContext,
+        command_queue: AbstractCommandQueue,
+        amplitudes: bool,
+        use_flags: device.BackgroundFlags,
+    ) -> None:
         width = 5
         bg_device_template = device.BackgroundMedianFilterDeviceTemplate(
-            context, width, amplitudes, use_flags)
+            context, width, amplitudes, use_flags
+        )
         bg_host = bg_device_template.host_class(width, amplitudes)
         bg_device = device.BackgroundHostFromDevice(bg_device_template, command_queue)
         if amplitudes:
@@ -94,6 +104,10 @@ class TestBackgroundDevice:
         np.testing.assert_allclose(out_host, out_device, atol=1e-6)
 
     @pytest.mark.force_autotune
-    def test_autotune(self, context: AbstractContext,
-                      amplitudes: bool, use_flags: device.BackgroundFlags) -> None:
+    def test_autotune(
+        self,
+        context: AbstractContext,
+        amplitudes: bool,
+        use_flags: device.BackgroundFlags,
+    ) -> None:
         device.BackgroundMedianFilterDeviceTemplate(context, 5, amplitudes, use_flags)

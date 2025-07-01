@@ -76,7 +76,7 @@ class BaseTestDeviceClass(ABC):
 
     @abstractmethod
     def factory(self, context: AbstractContext) -> device.AbstractThresholdDeviceTemplate:
-        pass        # pragma: nocover
+        pass  # pragma: nocover
 
 
 class TestThresholdSimpleDevice(BaseTestDeviceClass):

@@ -56,8 +56,9 @@ def _asbool(data):
 
 @numba.extending.overload(_asbool, jit_options=dict(nogil=True))
 def _overload_asbool(data):
-    if (isinstance(data.dtype, numba.types.Boolean)
-            or (isinstance(data.dtype, numba.types.Integer) and data.dtype.bitwidth == 8)):
+    if isinstance(data.dtype, numba.types.Boolean) or (
+        isinstance(data.dtype, numba.types.Integer) and data.dtype.bitwidth == 8
+    ):
         return lambda data: data.view(np.bool_)
     else:
         return lambda data: data.astype(np.bool_)
@@ -86,7 +87,7 @@ def _average_freq(in_data, in_flags, factor):
         array (so that the dtype can be extracted).
     """
     if in_data.shape != in_flags.shape:
-        raise ValueError('shape mismatch')
+        raise ValueError("shape mismatch")
     n_time, n_freq, n_bl = in_data.shape
     a_freq = (n_freq + factor - 1) // factor
     out_shape = (n_bl, n_time, a_freq)
@@ -107,7 +108,7 @@ def _average_freq(in_data, in_flags, factor):
             for k in range(a_freq):
                 flag = avg_weight[i, j, k] == 0
                 if flag:
-                    avg_data[i, j, k] = 0   # Avoid divide by zero and a NaN
+                    avg_data[i, j, k] = 0  # Avoid divide by zero and a NaN
                 else:
                     avg_data[i, j, k] /= avg_weight[i, j, k]
                 # Replace weight with flag (in-place) to save memory
@@ -150,10 +151,10 @@ def _time_median(data, flags):
                 counts[f] += 1
     for f in range(n_freq):
         if counts[f] == 0:
-            out_data[0, f] = 0     # No data
+            out_data[0, f] = 0  # No data
             out_flags[0, f] = True
         else:
-            out_data[0, f] = np.median(values[f, :counts[f]])
+            out_data[0, f] = np.median(values[f, : counts[f]])
     return out_data, out_flags
 
 
@@ -215,7 +216,7 @@ def _linearly_interpolate_nans1d(data):
     if p == n:
         data[:] = 0
         return
-    data[:p] = data[p]     # Extrapolate backwards
+    data[:p] = data[p]  # Extrapolate backwards
     p += 1
     while p < n:
         if np.isnan(data[p]):
@@ -224,7 +225,7 @@ def _linearly_interpolate_nans1d(data):
             while q < n and np.isnan(data[q]):
                 q += 1
             if q == n:
-                data[p:] = data[p - 1]   # Extrapolate forwards
+                data[p:] = data[p - 1]  # Extrapolate forwards
             else:
                 start = data[p - 1]
                 grad = (data[q] - start) / (q - (p - 1))
@@ -278,7 +279,7 @@ def _box_gaussian_filter1d(data, r, out, passes):
     padded = np.empty((data.shape[0] + padding,) + data.shape[1:], data.dtype)
     padded[:padding] = 0
     padded[padding:] = data
-    prev_start = padding   # First element with valid data
+    prev_start = padding  # First element with valid data
     s = np.zeros(data.shape[1:], np.float64)
     for p in range(1, K + 1):
         # On each pass, padded[i] is replaced by the sum of padded[i : i + d]
@@ -305,7 +306,7 @@ def _box_gaussian_filter1d(data, r, out, passes):
                 s[j] -= prev
         prev_start = start
     for idx in np.ndindex(out.shape):
-        out[idx] = padded[idx] / data.dtype.type(d)**K
+        out[idx] = padded[idx] / data.dtype.type(d) ** K
 
 
 @numba.jit(nopython=True, nogil=True)
@@ -335,7 +336,7 @@ def _box_gaussian_filter(data, sigma, out, passes=4):
         Number of boxcar filters to apply
     """
     if len(sigma) != data.ndim:
-        raise ValueError('sigma has wrong number of elements')
+        raise ValueError("sigma has wrong number of elements")
     assert data.ndim == 2
     r = (0.5 * np.sqrt(12.0 * sigma**2 / passes + 1)).astype(np.int_)
     need_copy = True
@@ -345,7 +346,7 @@ def _box_gaussian_filter(data, sigma, out, passes=4):
         for i in range(0, data.shape[1], step):
             sub = slice(i, min(i + step, data.shape[1]))
             _box_gaussian_filter1d(data[:, sub], r[0], out[:, sub], passes)
-        data = out       # Use out in next step
+        data = out  # Use out in next step
         need_copy = False
     if r[1] > 0:
         for i in range(data.shape[0]):
@@ -380,9 +381,9 @@ def masked_gaussian_filter(data, flags, sigma, out, passes=4):
         Number of boxcar filters to apply
     """
     if data.shape != flags.shape:
-        raise ValueError('shape mismatch between data and flags')
+        raise ValueError("shape mismatch between data and flags")
     if data.shape != out.shape:
-        raise ValueError('shape mismatch between data and out')
+        raise ValueError("shape mismatch between data and out")
     weight = np.empty_like(data)
     for idx in np.ndindex(data.shape):
         weight[idx] = not flags[idx]
@@ -434,7 +435,7 @@ def _get_background2d(data, flags, iterations, spike_width, reject_threshold, fr
         channels, and be strictly increasing.
     """
     n_time, n_freq = data.shape
-    flags = flags.copy()   # Gets modified
+    flags = flags.copy()  # Gets modified
     background = np.empty_like(data)
     for extend_factor in range(iterations, 0, -1):
         sigma = extend_factor * spike_width
@@ -474,7 +475,7 @@ def _convolve_flags(in_values, scale, threshold, out_flags, window):
     """
     cum_size = in_values.shape[0] + 2 * window - 1
     # TODO: could preallocate this externally
-    cum = np.empty((cum_size,) + (in_values.shape[1:]), np.uint32)     # Cumulative flagged values
+    cum = np.empty((cum_size,) + (in_values.shape[1:]), np.uint32)  # Cumulative flagged values
     cum[:window] = 0
     for i in range(in_values.shape[0]):
         for j in np.ndindex(in_values.shape[1:]):
@@ -482,10 +483,10 @@ def _convolve_flags(in_values, scale, threshold, out_flags, window):
             cum[(window + i,) + j] = cum[(window + i - 1,) + j] + flag
     # numba doesn't seem to fully support negative indices, hence
     # the addition of cum_size.
-    cum[cum_size - (window - 1):] = cum[cum_size - window]
+    cum[cum_size - (window - 1) :] = cum[cum_size - window]
     for i in range(out_flags.shape[0]):
         for j in np.ndindex(out_flags.shape[1:]):
-            out_flags[(i,) + j] |= (cum[(i + window,) + j] - cum[(i,) + j] != 0)
+            out_flags[(i,) + j] |= cum[(i + window,) + j] - cum[(i,) + j] != 0
 
 
 @numba.jit(nopython=True, nogil=True)
@@ -508,8 +509,10 @@ def _sum_threshold1d(input_data, input_flags, output_flags, windows, outlier_nsi
             else:
                 threshold[idx] *= threshold_scale
 
-        padded_slice = slice(max(chunks[ci] - np.max(windows) + 1, 0),
-                             min(chunks[ci + 1] + np.max(windows) - 1, input_data.size))
+        padded_slice = slice(
+            max(chunks[ci] - np.max(windows) + 1, 0),
+            min(chunks[ci + 1] + np.max(windows) - 1, input_data.size),
+        )
         padded_data = input_data[padded_slice]
         # TODO: can pre-allocate these outside the loop (but will need resizing)
         output_flags_pos = np.zeros(padded_data.shape, np.bool_)
@@ -550,8 +553,10 @@ def _sum_threshold1d(input_data, input_flags, output_flags, windows, outlier_nsi
 
         # Extract just the portion of output_flags_pos/neg corresponding to the
         # chunk itself, without the padding
-        rel_slice = slice(chunk_slice.start - padded_slice.start,
-                          chunk_slice.stop - padded_slice.start)
+        rel_slice = slice(
+            chunk_slice.start - padded_slice.start,
+            chunk_slice.stop - padded_slice.start,
+        )
         output_flags[chunk_slice] = output_flags_pos[rel_slice] | output_flags_neg[rel_slice]
 
 
@@ -591,11 +596,18 @@ def _sum_threshold(input_data, input_flags, axis, windows, outlier_nsigma, rho, 
         chunks = np.array([0, input_data.shape[axis]])
     output_flags = np.empty(input_data.shape, np.bool_)
     if axis < 0 or axis >= input_data.ndim:
-        raise ValueError('axis is out of range')
+        raise ValueError("axis is out of range")
     elif axis == 1:
         for i in range(input_data.shape[0]):
-            _sum_threshold1d(input_data[i], input_flags[i], output_flags[i],
-                             windows, outlier_nsigma, rho, chunks)
+            _sum_threshold1d(
+                input_data[i],
+                input_flags[i],
+                output_flags[i],
+                windows,
+                outlier_nsigma,
+                rho,
+                chunks,
+            )
     elif axis == 0:
         # The operation is independent of the other dimensions, but we process
         # them in chunks to be cache friendly. The step size should be big
@@ -605,21 +617,40 @@ def _sum_threshold(input_data, input_flags, axis, windows, outlier_nsigma, rho, 
         step = 256
         for i in range(0, input_data.shape[1], step):
             sub = slice(i, min(i + step, input_data.shape[1]))
-            _sum_threshold1d(input_data[:, sub], input_flags[:, sub], output_flags[:, sub],
-                             windows, outlier_nsigma, rho, chunks)
+            _sum_threshold1d(
+                input_data[:, sub],
+                input_flags[:, sub],
+                output_flags[:, sub],
+                windows,
+                outlier_nsigma,
+                rho,
+                chunks,
+            )
     else:
-        raise ValueError('axis must be 0 or 1')
+        raise ValueError("axis must be 0 or 1")
     return output_flags
 
 
 @numba.jit(nopython=True, nogil=True, cache=True)
 def _get_flags_impl(
-        in_data, in_flags, out_flags,
-        outlier_nsigma, windows_time, windows_freq,
-        background_reject, background_iterations,
-        spike_width_time, spike_width_freq, time_extend, freq_extend,
-        freq_chunk_ends, average_freq, flag_all_time_frac, flag_all_freq_frac,
-        rho):
+    in_data,
+    in_flags,
+    out_flags,
+    outlier_nsigma,
+    windows_time,
+    windows_freq,
+    background_reject,
+    background_iterations,
+    spike_width_time,
+    spike_width_freq,
+    time_extend,
+    freq_extend,
+    freq_chunk_ends,
+    average_freq,
+    flag_all_time_frac,
+    flag_all_freq_frac,
+    rho,
+):
     n_time, n_freq, n_bl = in_data.shape
     # Average `in_data` in frequency. This is done unconditionally, because it
     # also does other useful steps (see the documentation).
@@ -630,14 +661,24 @@ def _get_flags_impl(
     # Do operations independently per baseline.
     for bl in range(data.shape[0]):
         _get_baseline_flags(
-            data[bl], flags[bl], tmp_flags[bl],
-            outlier_nsigma, windows_time, windows_freq,
-            background_reject, background_iterations,
-            spike_width_time, spike_width_freq,
-            time_extend, freq_extend,
-            freq_chunk_ends, average_freq,
-            flag_all_time_frac, flag_all_freq_frac,
-            rho)
+            data[bl],
+            flags[bl],
+            tmp_flags[bl],
+            outlier_nsigma,
+            windows_time,
+            windows_freq,
+            background_reject,
+            background_iterations,
+            spike_width_time,
+            spike_width_freq,
+            time_extend,
+            freq_extend,
+            freq_chunk_ends,
+            average_freq,
+            flag_all_time_frac,
+            flag_all_freq_frac,
+            rho,
+        )
 
     # Transpose the output flags and explicitly flag nans from input
     for t in range(n_time):
@@ -678,7 +719,7 @@ def _combine_flags(spec_flags, time_flags, freq_flags, time_extend, out):
         t0 = max(t + time_delta_lo, 0)
         t1 = min(t + time_delta_hi, n_time)
         for f in range(n_freq):
-            out[t, f] = (flag_sum[t0, f] != flag_sum[t1, f])
+            out[t, f] = flag_sum[t0, f] != flag_sum[t1, f]
 
 
 @numba.jit(nopython=True, nogil=True)
@@ -707,7 +748,7 @@ def _unaverage_freq(flags, freq_extend, average_freq, flag_all_time_frac, flag_a
         for f in range(orig_freq):
             f0 = max(f + freq_delta_lo, 0)
             f1 = min(f + freq_delta_hi, orig_freq)
-            flag = (flag_sum[f1] != flag_sum[f0])
+            flag = flag_sum[f1] != flag_sum[f0]
             out[t, f] = flag
             tot += flag
             flag_sum_time[f] += flag
@@ -725,12 +766,24 @@ def _unaverage_freq(flags, freq_extend, average_freq, flag_all_time_frac, flag_a
 
 @numba.jit(nopython=True, nogil=True)
 def _get_baseline_flags(
-        data, flags, out_flags,
-        outlier_nsigma, windows_time, windows_freq,
-        background_reject, background_iterations,
-        spike_width_time, spike_width_freq, time_extend, freq_extend,
-        freq_chunk_ends, average_freq, flag_all_time_frac, flag_all_freq_frac,
-        rho):
+    data,
+    flags,
+    out_flags,
+    outlier_nsigma,
+    windows_time,
+    windows_freq,
+    background_reject,
+    background_iterations,
+    spike_width_time,
+    spike_width_freq,
+    time_extend,
+    freq_extend,
+    freq_chunk_ends,
+    average_freq,
+    flag_all_time_frac,
+    flag_all_freq_frac,
+    rho,
+):
     """Compute flags for a single baseline.
 
     It is called after frequency averaging, but writes back un-averaged
@@ -783,39 +836,52 @@ def _get_baseline_flags(
     n_time, n_freq = data.shape
     # Generate median spectrum, background it, and flag it
     spec_data, spec_flags = _time_median(data, flags)
-    spec_background = _get_background2d(spec_data, spec_flags, background_iterations,
-                                        np.array((0.0, spike_width_freq)),
-                                        background_reject,
-                                        freq_chunk_ends)
+    spec_background = _get_background2d(
+        spec_data,
+        spec_flags,
+        background_iterations,
+        np.array((0.0, spike_width_freq)),
+        background_reject,
+        freq_chunk_ends,
+    )
     spec_data -= spec_background
-    spec_flags = _sum_threshold(spec_data, spec_flags, 1, windows_freq,
-                                outlier_nsigma, rho, freq_chunk_ends)
+    spec_flags = _sum_threshold(
+        spec_data, spec_flags, 1, windows_freq, outlier_nsigma, rho, freq_chunk_ends
+    )
     # Broadcast spectral flags to per-timestamp
     flags |= spec_flags
 
     # Get and subtract 2D background
-    background = _get_background2d(data, flags, background_iterations,
-                                   np.array((spike_width_time, spike_width_freq)),
-                                   background_reject,
-                                   freq_chunk_ends)
+    background = _get_background2d(
+        data,
+        flags,
+        background_iterations,
+        np.array((spike_width_time, spike_width_freq)),
+        background_reject,
+        freq_chunk_ends,
+    )
     data -= background
     # SumThreshold along time axis
-    time_flags = _sum_threshold(data, flags, 0, windows_time,
-                                outlier_nsigma, rho)
+    time_flags = _sum_threshold(data, flags, 0, windows_time, outlier_nsigma, rho)
     # SumThreshold along frequency axis - with time flags in the input flags
     flags |= time_flags
-    freq_flags = _sum_threshold(data, flags, 1, windows_freq,
-                                outlier_nsigma, rho, freq_chunk_ends)
+    freq_flags = _sum_threshold(data, flags, 1, windows_freq, outlier_nsigma, rho, freq_chunk_ends)
 
     # Combine flag sources and do time smearing. We overwrite 'flags' since the
     # previous result is no longer needed.
     _combine_flags(spec_flags, time_flags, freq_flags, time_extend, flags)
 
-    _unaverage_freq(flags, freq_extend, average_freq,
-                    flag_all_time_frac, flag_all_freq_frac, out_flags)
+    _unaverage_freq(
+        flags,
+        freq_extend,
+        average_freq,
+        flag_all_time_frac,
+        flag_all_freq_frac,
+        out_flags,
+    )
 
 
-def _get_flags_mp(in_data, in_flags, flagger):    # noqa: D401
+def _get_flags_mp(in_data, in_flags, flagger):  # noqa: D401
     """Callback function for ProcessPoolExecutor.
 
     It allocates its own storage for the output.
@@ -882,11 +948,23 @@ class SumThresholdFlagger:
         Falloff exponent for SumThreshold
     """
 
-    def __init__(self, outlier_nsigma=4.5, windows_time=[1, 2, 4, 8],
-                 windows_freq=[1, 2, 4, 8], background_reject=2.0, background_iterations=1,
-                 spike_width_time=12.5, spike_width_freq=10.0, time_extend=3, freq_extend=3,
-                 freq_chunks=10, average_freq=1, flag_all_time_frac=0.6, flag_all_freq_frac=0.8,
-                 rho=1.3):
+    def __init__(
+        self,
+        outlier_nsigma=4.5,
+        windows_time=[1, 2, 4, 8],
+        windows_freq=[1, 2, 4, 8],
+        background_reject=2.0,
+        background_iterations=1,
+        spike_width_time=12.5,
+        spike_width_freq=10.0,
+        time_extend=3,
+        freq_extend=3,
+        freq_chunks=10,
+        average_freq=1,
+        flag_all_time_frac=0.6,
+        flag_all_freq_frac=0.8,
+        rho=1.3,
+    ):
         self.outlier_nsigma = outlier_nsigma
         self.windows_time = windows_time
         # Scale the frequency windows, and remove possible duplicates
@@ -929,14 +1007,24 @@ class SumThresholdFlagger:
         windows_freq = np.array([w for w in self.windows_freq if w <= averaged_channels], np.int_)
 
         _get_flags_impl(
-            in_data, in_flags, out_flags,
-            self.outlier_nsigma, windows_time, windows_freq,
-            self.background_reject, self.background_iterations,
-            self.spike_width_time, self.spike_width_freq,
-            self.time_extend, self.freq_extend,
-            freq_chunk_ends, self.average_freq,
-            self.flag_all_time_frac, self.flag_all_freq_frac,
-            self.rho)
+            in_data,
+            in_flags,
+            out_flags,
+            self.outlier_nsigma,
+            windows_time,
+            windows_freq,
+            self.background_reject,
+            self.background_iterations,
+            self.spike_width_time,
+            self.spike_width_freq,
+            self.time_extend,
+            self.freq_extend,
+            freq_chunk_ends,
+            self.average_freq,
+            self.flag_all_time_frac,
+            self.flag_all_freq_frac,
+            self.rho,
+        )
 
     def get_flags(self, data, flags, pool=None, chunk_size=None, is_multiprocess=None):
         """Compute flags in data array.
@@ -984,9 +1072,9 @@ class SumThresholdFlagger:
 
         """
         if data.shape != flags.shape:
-            raise ValueError('Shape mismatch')
+            raise ValueError("Shape mismatch")
         if data.ndim != 3:
-            raise ValueError('data has wrong number of dimensions')
+            raise ValueError("data has wrong number of dimensions")
         out_flags = np.empty(flags.shape, np.bool_)
 
         n_bl = data.shape[-1]

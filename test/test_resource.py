@@ -49,7 +49,7 @@ class TestWaitUntil:
         """wait_until rethrows an exception set on the future."""
         future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
-        loop.call_later(0.1, future.set_exception, ValueError('test'))
+        loop.call_later(0.1, future.set_exception, ValueError("test"))
         with pytest.raises(ValueError):
             await resource.wait_until(future, loop.time() + 1000000)
 
@@ -87,10 +87,10 @@ class DummyEvent(AbstractEvent):
             self.completed.put(self)
             self.complete = True
 
-    def time_since(self, prior_event: 'DummyEvent') -> float:
+    def time_since(self, prior_event: "DummyEvent") -> float:
         return 0.0
 
-    def time_till(self, next_event: 'DummyEvent') -> float:
+    def time_till(self, next_event: "DummyEvent") -> float:
         return 0.0
 
 
@@ -98,8 +98,7 @@ class TestResource:
     def setup_method(self) -> None:
         self.completed: queue.Queue[resource.ResourceAllocation[int]] = queue.Queue()
 
-    async def _run_frame(self, acq: resource.ResourceAllocation[int],
-                         event: AbstractEvent) -> None:
+    async def _run_frame(self, acq: resource.ResourceAllocation[int], event: AbstractEvent) -> None:
         with acq as value:
             assert value == 42
             await acq.wait_events()
@@ -134,7 +133,7 @@ class TestResource:
         with pytest.raises(RuntimeError):
             with a0:
                 await a0.wait_events()
-                raise RuntimeError('test exception')
+                raise RuntimeError("test exception")
         with pytest.raises(RuntimeError):
             with a1:
                 await a1.wait_events()
@@ -143,16 +142,18 @@ class TestResource:
     async def test_context_manager_no_ready(self, caplog) -> None:
         """Test using :class:`resource.ResourceAllocation` as a context \
         manager when the user does not call :meth:`.ResourceAllocation.ready`."""
-        with caplog.at_level(logging.WARNING, logger='katsdpsigproc.resource'):
+        with caplog.at_level(logging.WARNING, logger="katsdpsigproc.resource"):
             r = resource.Resource(None)
             a0 = r.acquire()
             with a0:
                 pass
-        assert caplog.record_tuples == [(
-            'katsdpsigproc.resource',
-            logging.WARNING,
-            'Resource allocation was not explicitly made ready'
-        )]
+        assert caplog.record_tuples == [
+            (
+                "katsdpsigproc.resource",
+                logging.WARNING,
+                "Resource allocation was not explicitly made ready",
+            )
+        ]
 
 
 class TestJobQueue:

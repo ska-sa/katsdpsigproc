@@ -33,6 +33,7 @@ import threading
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
+
 try:
     from numpy.typing import DTypeLike
 except ImportError:
@@ -72,11 +73,11 @@ class _Cufft:
     cudaStream_t = ctypes.c_void_p  # It's a pointer to an opaque struct
 
     class cufftType(_CEnum):
-        CUFFT_R2C = 0x2a
-        CUFFT_C2R = 0x2c
+        CUFFT_R2C = 0x2A
+        CUFFT_C2R = 0x2C
         CUFFT_C2C = 0x29
-        CUFFT_D2Z = 0x6a
-        CUFFT_Z2D = 0x6c
+        CUFFT_D2Z = 0x6A
+        CUFFT_Z2D = 0x6C
         CUFFT_Z2Z = 0x69
 
     class cufftResult(_CEnum):
@@ -141,18 +142,18 @@ class _Cufft:
             "cufftMakePlanMany64",
             [
                 self.cufftHandle,
-                ctypes.c_int,                           # rank
-                ctypes.POINTER(ctypes.c_longlong),      # n
-                ctypes.POINTER(ctypes.c_longlong),      # inembed
-                ctypes.c_longlong,                      # istride,
-                ctypes.c_longlong,                      # idist
-                ctypes.POINTER(ctypes.c_longlong),      # onembed
-                ctypes.c_longlong,                      # ostride
-                ctypes.c_longlong,                      # odist
-                self.cufftType,                         # type
-                ctypes.c_longlong,                      # batch
-                ctypes.POINTER(ctypes.c_size_t)         # workSize
-            ]
+                ctypes.c_int,  # rank
+                ctypes.POINTER(ctypes.c_longlong),  # n
+                ctypes.POINTER(ctypes.c_longlong),  # inembed
+                ctypes.c_longlong,  # istride,
+                ctypes.c_longlong,  # idist
+                ctypes.POINTER(ctypes.c_longlong),  # onembed
+                ctypes.c_longlong,  # ostride
+                ctypes.c_longlong,  # odist
+                self.cufftType,  # type
+                ctypes.c_longlong,  # batch
+                ctypes.POINTER(ctypes.c_size_t),  # workSize
+            ],
         )
         self.cufftSetAutoAllocation = self._get_function(
             "cufftSetAutoAllocation", [self.cufftHandle, ctypes.c_int]
@@ -182,12 +183,22 @@ class _Cufft:
             ),
             self.cufftType.CUFFT_C2C: self._get_function(
                 "cufftExecC2C",
-                [self.cufftHandle, ctypes.c_void_p, ctypes.c_void_p, self.cufftDirection]
+                [
+                    self.cufftHandle,
+                    ctypes.c_void_p,
+                    ctypes.c_void_p,
+                    self.cufftDirection,
+                ],
             ),
             self.cufftType.CUFFT_Z2Z: self._get_function(
                 "cufftExecZ2Z",
-                [self.cufftHandle, ctypes.c_void_p, ctypes.c_void_p, self.cufftDirection]
-            )
+                [
+                    self.cufftHandle,
+                    ctypes.c_void_p,
+                    ctypes.c_void_p,
+                    self.cufftDirection,
+                ],
+            ),
         }
 
 
@@ -244,18 +255,18 @@ class FftTemplate:
         dtype_dest: DTypeLike,
         padded_shape_src: Tuple[int, ...],
         padded_shape_dest: Tuple[int, ...],
-        tuning: Optional[Dict[str, Any]] = None
+        tuning: Optional[Dict[str, Any]] = None,
     ) -> None:
         if not isinstance(context, cuda.Context):
-            raise TypeError('Only CUDA contexts are supported')
+            raise TypeError("Only CUDA contexts are supported")
         if len(padded_shape_src) != len(shape):
-            raise ValueError('padded_shape_src and shape must have same length')
+            raise ValueError("padded_shape_src and shape must have same length")
         if len(padded_shape_dest) != len(shape):
-            raise ValueError('padded_shape_dest and shape must have same length')
+            raise ValueError("padded_shape_dest and shape must have same length")
         if padded_shape_src[:-N] != shape[:-N]:
-            raise ValueError('Source must not be padded on batch dimensions')
+            raise ValueError("Source must not be padded on batch dimensions")
         if padded_shape_dest[:-N] != shape[:-N]:
-            raise ValueError('Destination must not be padded on batch dimensions')
+            raise ValueError("Destination must not be padded on batch dimensions")
 
         if dtype_src == np.float32 and dtype_dest == np.complex64:
             fft_type = _Cufft.cufftType.CUFFT_R2C
@@ -288,8 +299,8 @@ class FftTemplate:
         # applied.
         version = ctypes.c_int()
         cufft.cufftGetVersion(ctypes.byref(version))
-        self._needs_synchronize_workaround = (
-            version.value < 8000 and any(x <= 1920 for x in shape[:N])
+        self._needs_synchronize_workaround = version.value < 8000 and any(
+            x <= 1920 for x in shape[:N]
         )
         batches = int(np.prod(padded_shape_src[:-N]))
         with context:
@@ -299,18 +310,18 @@ class FftTemplate:
             cufft.cufftCreate(ctypes.byref(self._plan))
             cufft.cufftSetAutoAllocation(self._plan, False)
             cufft.cufftMakePlanMany64(
-                self._plan,                               # handle
-                N,                                        # rank
-                arr_type(*shape[-N:]),                    # n
-                arr_type(*padded_shape_src[-N:]),         # inembed
-                1,                                        # istride
-                int(np.prod(padded_shape_src[-N:])),      # idist
-                arr_type(*padded_shape_dest[-N:]),        # onembed
-                1,                                        # ostride
-                int(np.prod(padded_shape_dest[-N:])),     # odist
-                fft_type,                                 # type
-                batches,                                  # batch
-                ctypes.byref(work_size)                   # workSize
+                self._plan,  # handle
+                N,  # rank
+                arr_type(*shape[-N:]),  # n
+                arr_type(*padded_shape_src[-N:]),  # inembed
+                1,  # istride
+                int(np.prod(padded_shape_src[-N:])),  # idist
+                arr_type(*padded_shape_dest[-N:]),  # onembed
+                1,  # ostride
+                int(np.prod(padded_shape_dest[-N:])),  # odist
+                fft_type,  # type
+                batches,  # batch
+                ctypes.byref(work_size),  # workSize
             )
         self._work_size = work_size.value
         self._cufft = cufft
@@ -323,7 +334,7 @@ class FftTemplate:
         return Fft(self, *args, **kwargs)
 
     def __del__(self):
-        if hasattr(self, '_plan'):
+        if hasattr(self, "_plan"):
             with self.context:
                 self._cufft.cufftDestroy(self._plan)
 
@@ -362,52 +373,50 @@ class Fft(accel.Operation):
         template: FftTemplate,
         command_queue: AbstractCommandQueue,
         mode: FftMode,
-        allocator: Optional[AbstractAllocator] = None
+        allocator: Optional[AbstractAllocator] = None,
     ) -> None:
         if not isinstance(command_queue, cuda.CommandQueue):
-            raise TypeError('Only CUDA command queues are supported')
+            raise TypeError("Only CUDA command queues are supported")
         super().__init__(command_queue, allocator)
         self.template = template
         src_shape = list(template.shape)
         dest_shape = list(template.shape)
-        if template.dtype_src.kind != 'c':
+        if template.dtype_src.kind != "c":
             if mode != FftMode.FORWARD:
-                raise ValueError('R2C transform must use FftMode.FORWARD')
+                raise ValueError("R2C transform must use FftMode.FORWARD")
             dest_shape[-1] = template.shape[-1] // 2 + 1
-        if template.dtype_dest.kind != 'c':
+        if template.dtype_dest.kind != "c":
             if mode != FftMode.INVERSE:
-                raise ValueError('C2R transform must use FftMode.INVERSE')
+                raise ValueError("C2R transform must use FftMode.INVERSE")
             src_shape[-1] = template.shape[-1] // 2 + 1
-        src_dims = tuple(accel.Dimension(d[0], min_padded_size=d[1], exact=True)
-                         for d in zip(src_shape, template.padded_shape_src))
-        dest_dims = tuple(accel.Dimension(d[0], min_padded_size=d[1], exact=True)
-                          for d in zip(dest_shape, template.padded_shape_dest))
-        self.slots['src'] = accel.IOSlot(src_dims, template.dtype_src)
-        self.slots['dest'] = accel.IOSlot(dest_dims, template.dtype_dest)
+        src_dims = tuple(
+            accel.Dimension(d[0], min_padded_size=d[1], exact=True)
+            for d in zip(src_shape, template.padded_shape_src)
+        )
+        dest_dims = tuple(
+            accel.Dimension(d[0], min_padded_size=d[1], exact=True)
+            for d in zip(dest_shape, template.padded_shape_dest)
+        )
+        self.slots["src"] = accel.IOSlot(src_dims, template.dtype_src)
+        self.slots["dest"] = accel.IOSlot(dest_dims, template.dtype_dest)
         if template._work_size > 0:
-            self.slots['work_area'] = accel.IOSlot((template._work_size,), np.uint8)
+            self.slots["work_area"] = accel.IOSlot((template._work_size,), np.uint8)
         self.mode = mode
 
     def _run(self) -> None:
-        src_buffer = self.buffer('src')
-        dest_buffer = self.buffer('dest')
+        src_buffer = self.buffer("src")
+        dest_buffer = self.buffer("dest")
         context = self.command_queue.context
         cufft = self.template._cufft
         with context, self.template._lock:
-            cufft.cufftSetStream(
-                self.template._plan,
-                self.command_queue._pycuda_stream.handle
-            )
+            cufft.cufftSetStream(self.template._plan, self.command_queue._pycuda_stream.handle)
             if "work_area" in self.slots:
-                work_area_buffer = self.buffer('work_area')
-                cufft.cufftSetWorkArea(
-                    self.template._plan,
-                    work_area_buffer.buffer.ptr
-                )
+                work_area_buffer = self.buffer("work_area")
+                cufft.cufftSetWorkArea(self.template._plan, work_area_buffer.buffer.ptr)
             func = cufft.cufftExec[self.template._fft_type]
             args = [self.template._plan, src_buffer.buffer.ptr, dest_buffer.buffer.ptr]
             if len(func.argtypes) == 4:
-                args.append(_Cufft.cufftDirection['CUFFT_' + self.mode.name])
+                args.append(_Cufft.cufftDirection["CUFFT_" + self.mode.name])
             func(*args)
             if self.template._needs_synchronize_workaround:
                 context._pycuda_context.synchronize()

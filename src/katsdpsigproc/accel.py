@@ -38,34 +38,59 @@ import io
 from abc import ABC, abstractmethod
 import itertools
 from collections import OrderedDict
-from typing import (List, Tuple, Dict, Set, Mapping, MutableMapping, Sequence,
-                    Callable, Iterable, Optional, Union, TypeVar, Generic, Any,
-                    cast, overload, TYPE_CHECKING)
+from typing import (
+    List,
+    Tuple,
+    Dict,
+    Set,
+    Mapping,
+    MutableMapping,
+    Sequence,
+    Callable,
+    Iterable,
+    Optional,
+    Union,
+    TypeVar,
+    Generic,
+    Any,
+    cast,
+    overload,
+    TYPE_CHECKING,
+)
 
 import numpy as np
+
 try:
     from numpy.typing import DTypeLike
 except ImportError:
-    DTypeLike = Any     # type: ignore
+    DTypeLike = Any  # type: ignore
 import mako.lexer
 from mako.template import Template
 from mako.lookup import TemplateLookup
+
 if sys.version_info >= (3, 9):
     import importlib.resources as importlib_resources
 else:
     import importlib_resources
 
-from .abc import (AbstractContext, AbstractDevice, AbstractCommandQueue,  # noqa: F401
-                  AbstractTuningCommandQueue, AbstractProgram)
+from .abc import (
+    AbstractContext,
+    AbstractDevice,
+    AbstractCommandQueue,  # noqa: F401
+    AbstractTuningCommandQueue,
+    AbstractProgram,
+)
 
 try:
     import pycuda.driver
     from . import cuda
+
     have_cuda = True
 except ImportError:
     have_cuda = False
 try:
     from . import opencl
+
     have_opencl = True
 except ImportError:
     have_opencl = False
@@ -75,13 +100,13 @@ if TYPE_CHECKING:
 
 
 _Slice = Union[int, slice, None, Tuple[Union[int, slice, None], ...]]
-_B = TypeVar('_B')     # buffer type
-_RB = TypeVar('_RB')   # raw buffer type
-_RS = TypeVar('_RS')   # raw buffer for SVM
-_D = TypeVar('_D', bound='AbstractDevice')
-_P = TypeVar('_P', bound='AbstractProgram')
-_Q = TypeVar('_Q', bound='AbstractCommandQueue')
-_TQ = TypeVar('_TQ', bound='AbstractTuningCommandQueue')
+_B = TypeVar("_B")  # buffer type
+_RB = TypeVar("_RB")  # raw buffer type
+_RS = TypeVar("_RS")  # raw buffer for SVM
+_D = TypeVar("_D", bound="AbstractDevice")
+_P = TypeVar("_P", bound="AbstractProgram")
+_Q = TypeVar("_Q", bound="AbstractCommandQueue")
+_TQ = TypeVar("_TQ", bound="AbstractTuningCommandQueue")
 
 
 def divup(x: int, y: int) -> int:
@@ -107,24 +132,24 @@ class LinenoLexer(mako.lexer.Lexer):
     @classmethod
     def _escape_filename(cls, filename: str) -> str:
         """Escape a string for the C preprocessor."""
-        return '"' + re.sub(r'([\\"])', r'\\\1', filename) + '"'
+        return '"' + re.sub(r'([\\"])', r"\\\1", filename) + '"'
 
     def _lineno_preproc(self, source: str) -> str:
         """Insert #line directives between every line in `source` and return the result."""
         if self.filename is not None:
             escaped_filename = self._escape_filename(self.filename)
         else:
-            escaped_filename = self._escape_filename('<string>')
-        lines = source.split('\n')
+            escaped_filename = self._escape_filename("<string>")
+        lines = source.split("\n")
         # If the last line is \n-terminated, it will cause an empty
         # final string in lines
-        if len(lines) > 0 and lines[-1] == '':
+        if len(lines) > 0 and lines[-1] == "":
             lines.pop()
         out = []
         for i, line in enumerate(lines):
-            out.append(f'#line {i + 1} {escaped_filename}\n')
-            out.append(line + '\n')
-        return ''.join(out)
+            out.append(f"#line {i + 1} {escaped_filename}\n")
+            out.append(line + "\n")
+        return "".join(out)
 
 
 def _make_lookup(extra_dirs: List[Union[str, os.PathLike]]) -> TemplateLookup:
@@ -136,11 +161,14 @@ def _make_lookup(extra_dirs: List[Union[str, os.PathLike]]) -> TemplateLookup:
 _lookup = _make_lookup([])
 
 
-def build(context: AbstractContext, name: str,
-          render_kws: Optional[Mapping[str, Any]] = None,
-          extra_dirs: Optional[List[Union[str, os.PathLike]]] = None,
-          extra_flags: Optional[List[str]] = None,
-          source: Optional[str] = None) -> AbstractProgram:
+def build(
+    context: AbstractContext,
+    name: str,
+    render_kws: Optional[Mapping[str, Any]] = None,
+    extra_dirs: Optional[List[Union[str, os.PathLike]]] = None,
+    extra_flags: Optional[List[str]] = None,
+    source: Optional[str] = None,
+) -> AbstractProgram:
     """Build a source module from a mako template.
 
     Parameters
@@ -175,9 +203,7 @@ def build(context: AbstractContext, name: str,
         template = Template(source, lookup=lookup, lexer_cls=LinenoLexer)
     else:
         template = lookup.get_template(name)
-    rendered_source = template.render(
-        simd_group_size=context.device.simd_group_size,
-        **render_kws)
+    rendered_source = template.render(simd_group_size=context.device.simd_group_size, **render_kws)
     return context.compile(rendered_source, extra_flags)
 
 
@@ -192,8 +218,9 @@ def all_devices() -> List[AbstractDevice]:
     return devices
 
 
-def candidate_devices(device_filter: Optional[Callable[[AbstractDevice], bool]] = None) \
-        -> Sequence[AbstractDevice]:
+def candidate_devices(
+    device_filter: Optional[Callable[[AbstractDevice], bool]] = None,
+) -> Sequence[AbstractDevice]:
     """Get devices that are considered for :func:`create_some_context`.
 
     Refer to :func:`create_some_context` for documentation of how this list is
@@ -219,15 +246,15 @@ def candidate_devices(device_filter: Optional[Callable[[AbstractDevice], bool]] 
         """
         if envar in os.environ:
             try:
-                fields = os.environ[envar].split(':', max_parts)
+                fields = os.environ[envar].split(":", max_parts)
                 out = []
                 for value in fields:
                     num = int(value)
                     if num < 0:
-                        raise ValueError('')
+                        raise ValueError("")
                     out.append(num)
                 if not out:
-                    raise ValueError('')
+                    raise ValueError("")
                 return out
             except ValueError:
                 pass
@@ -235,12 +262,12 @@ def candidate_devices(device_filter: Optional[Callable[[AbstractDevice], bool]] 
 
     cuda_id: Optional[int] = None
     opencl_id: Optional[List[int]] = None
-    device_id: Optional[int] = parse_id('KATSDPSIGPROC_DEVICE')
+    device_id: Optional[int] = parse_id("KATSDPSIGPROC_DEVICE")
     if device_id is None:
-        cuda_id = parse_id('CUDA_DEVICE')
+        cuda_id = parse_id("CUDA_DEVICE")
         if cuda_id is None:
             # Fields are platform number and device number
-            opencl_id = parse_id_list('PYOPENCL_CTX', 2)
+            opencl_id = parse_id_list("PYOPENCL_CTX", 2)
 
     cuda_devices: Sequence[cuda.Device] = []
     opencl_devices: Sequence[Sequence[opencl.Device]] = []
@@ -267,13 +294,14 @@ def candidate_devices(device_filter: Optional[Callable[[AbstractDevice], bool]] 
             if device_id is not None:
                 devices = [devices[device_id]]
     except IndexError:
-        raise RuntimeError('Out-of-range device selected')
+        raise RuntimeError("Out-of-range device selected")
     return devices
 
 
 def create_some_context(
-        interactive: bool = True,
-        device_filter: Optional[Callable[[AbstractDevice], bool]] = None) -> AbstractContext:
+    interactive: bool = True,
+    device_filter: Optional[Callable[[AbstractDevice], bool]] = None,
+) -> AbstractContext:
     """Create a single-device context, selecting a device automatically.
 
     This is similar to `pyopencl.create_some_context`. A number of environment
@@ -302,6 +330,7 @@ def create_some_context(
     RuntimeError
         If no device could be found or the user made an invalid selection
     """
+
     def key(device: AbstractDevice) -> int:
         if device.is_cuda:
             return 100
@@ -314,21 +343,21 @@ def create_some_context(
 
     devices = candidate_devices(device_filter)
     if not devices:
-        raise RuntimeError('No compute devices found')
+        raise RuntimeError("No compute devices found")
 
     if interactive and len(devices) > 1 and sys.stdin.isatty():
         print("Select device:")
         for i, device in enumerate(devices):
             print(f"    [{i}]: {device.name} ({device.platform_name})")
         print()
-        choice_str = input('Enter selection: ')
+        choice_str = input("Enter selection: ")
         try:
             choice = int(choice_str)
             if choice < 0:
-                raise IndexError   # Otherwise Python's negative indexing kicks in
+                raise IndexError  # Otherwise Python's negative indexing kicks in
             device = devices[choice]
         except (ValueError, IndexError):
-            raise RuntimeError('Invalid device number')
+            raise RuntimeError("Invalid device number")
     else:
         device = max(devices, key=key)
 
@@ -365,9 +394,13 @@ class HostArray(np.ndarray):
         efficient copies to and from this context.
     """
 
-    def __new__(cls, shape: Tuple[int, ...], dtype: DTypeLike,
-                padded_shape: Optional[Tuple[int, ...]] = None,
-                context: Optional[AbstractContext] = None):
+    def __new__(
+        cls,
+        shape: Tuple[int, ...],
+        dtype: DTypeLike,
+        padded_shape: Optional[Tuple[int, ...]] = None,
+        context: Optional[AbstractContext] = None,
+    ):
         if padded_shape is None:
             padded_shape = shape
         assert len(padded_shape) == len(shape)
@@ -395,16 +428,15 @@ class HostArray(np.ndarray):
 
     @overload
     @classmethod
-    def padded_view(cls, obj: 'HostArray') -> np.ndarray:
-        ...
+    def padded_view(cls, obj: "HostArray") -> np.ndarray: ...
 
     @overload
     @classmethod
-    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:    # noqa: F811
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:  # noqa: F811
         ...
 
     @classmethod
-    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:    # noqa: F811
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:  # noqa: F811
         """Retrieve the view of the full memory without padding.
 
         Returns `None` if `cls.safe(obj)` is `False`.
@@ -414,7 +446,7 @@ class HostArray(np.ndarray):
         except AttributeError:
             return None
 
-    def __array_finalize__(self, obj: 'HostArray') -> None:
+    def __array_finalize__(self, obj: "HostArray") -> None:
         if obj is not None:
             # View casting or created from a template: we cannot vouch for it.
             self._owner = None
@@ -449,9 +481,14 @@ class DeviceArray:
         the `allocate_raw` method of an allocator.
     """
 
-    def __init__(self, context: AbstractContext, shape: Tuple[int, ...],
-                 dtype: DTypeLike, padded_shape: Optional[Tuple[int, ...]] = None,
-                 raw: Any = None) -> None:
+    def __init__(
+        self,
+        context: AbstractContext,
+        shape: Tuple[int, ...],
+        dtype: DTypeLike,
+        padded_shape: Optional[Tuple[int, ...]] = None,
+        raw: Any = None,
+    ) -> None:
         if padded_shape is None:
             padded_shape = shape
         assert len(shape) == len(padded_shape)
@@ -485,10 +522,12 @@ class DeviceArray:
 
     def _copyable(self, ary: np.ndarray) -> bool:
         """Whether `ary` can be copied to/from this array directly."""
-        return (HostArray.safe(ary)
-                and ary.dtype == self.dtype
-                and ary.shape == self.shape
-                and ary.padded_shape == self.padded_shape)  # type: ignore
+        return (
+            HostArray.safe(ary)
+            and ary.dtype == self.dtype
+            and ary.shape == self.shape
+            and ary.padded_shape == self.padded_shape  # type: ignore
+        )
 
     @classmethod
     def _contiguous(cls, ary: HostArray) -> np.ndarray:
@@ -509,7 +548,7 @@ class DeviceArray:
         if self._copyable(ary):
             return ary  # type: ignore
         tmp = self.empty_like()
-        np.copyto(tmp, ary, casting='no')
+        np.copyto(tmp, ary, casting="no")
         return tmp
 
     def set(self, command_queue: AbstractCommandQueue, ary: np.ndarray) -> None:
@@ -517,8 +556,9 @@ class DeviceArray:
         ary = self.asarray_like(ary)
         command_queue.enqueue_write_buffer(self.buffer, self._contiguous(ary))
 
-    def get(self, command_queue: AbstractCommandQueue,
-            ary: Optional[np.ndarray] = None) -> np.ndarray:
+    def get(
+        self, command_queue: AbstractCommandQueue, ary: Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """Copy synchronously from self to `ary`.
 
         If `ary` is None, or if it is not suitable as a target, the copy is to
@@ -533,22 +573,22 @@ class DeviceArray:
     def set_async(self, command_queue: AbstractCommandQueue, ary: np.ndarray) -> None:
         """Copy asynchronously from `ary` to self."""
         ary = self.asarray_like(ary)
-        command_queue.enqueue_write_buffer(
-            self.buffer, self._contiguous(ary), blocking=False)
+        command_queue.enqueue_write_buffer(self.buffer, self._contiguous(ary), blocking=False)
 
-    def get_async(self, command_queue: AbstractCommandQueue,
-                  ary: Optional[np.ndarray] = None) -> np.ndarray:
+    def get_async(
+        self, command_queue: AbstractCommandQueue, ary: Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """Copy asynchronously from self to `ary` (see :meth:`get`)."""
         if ary is None or not self._copyable(ary):
             ary = self.empty_like()
         assert isinstance(ary, HostArray)
-        command_queue.enqueue_read_buffer(
-            self.buffer, self._contiguous(ary), blocking=False)
+        command_queue.enqueue_read_buffer(self.buffer, self._contiguous(ary), blocking=False)
         return ary
 
     @classmethod
-    def _canonical_slice(cls, region: _Slice, shape: Tuple[int, ...],
-                         strides: Tuple[int, ...]) -> Tuple[int, Tuple[int, ...], Tuple[int, ...]]:
+    def _canonical_slice(
+        cls, region: _Slice, shape: Tuple[int, ...], strides: Tuple[int, ...]
+    ) -> Tuple[int, Tuple[int, ...], Tuple[int, ...]]:
         """Transform a slice selection into a form that is easier to consume internally.
 
         See :meth:`copy_region` for a description of what slice
@@ -586,27 +626,27 @@ class DeviceArray:
                 copy_strides.append(0)
             elif isinstance(index, slice):
                 if axis >= len(shape):
-                    raise IndexError('Too many axes in index expression')
+                    raise IndexError("Too many axes in index expression")
                 start, stop, stride = index.indices(shape[axis])
                 if stride <= 0:
-                    raise IndexError('Only positive strides are supported')
+                    raise IndexError("Only positive strides are supported")
                 origin += start * strides[axis]
                 copy_shape.append((stop - start) // stride)
                 if copy_shape[-1] <= 0:
-                    raise IndexError('Empty slice selection')
+                    raise IndexError("Empty slice selection")
                 copy_strides.append(stride * strides[axis])
                 axis += 1
             elif isinstance(index, int):
                 if axis >= len(shape):
-                    raise IndexError('Too many axes in index expression')
+                    raise IndexError("Too many axes in index expression")
                 if index < 0:
                     index += shape[axis]
                 if index < 0 or index >= shape[axis]:
-                    raise IndexError('Index out of range')
+                    raise IndexError("Index out of range")
                 origin += index * strides[axis]
                 axis += 1
             else:
-                raise TypeError(f'Invalid type in slice: {type(index)}')
+                raise TypeError(f"Invalid type in slice: {type(index)}")
         while axis < len(shape):
             copy_shape.append(shape[axis])
             copy_strides.append(strides[axis])
@@ -615,10 +655,8 @@ class DeviceArray:
 
     @classmethod
     def _region_transfer_params(
-            cls, src: Any, dest: Any,
-            src_region: _Slice,
-            dest_region: _Slice) -> Tuple[int, int, Tuple[int, ...],
-                                          Tuple[int, ...], Tuple[int, ...]]:
+        cls, src: Any, dest: Any, src_region: _Slice, dest_region: _Slice
+    ) -> Tuple[int, int, Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]:
         """Compute offsets, strides and shape for a copy.
 
         Where possible, the dimension of the copy is reduced by exploiting
@@ -653,50 +691,76 @@ class DeviceArray:
             if the source or destination regions are unsupported or out-of-range
         """
         if src.dtype != dest.dtype:
-            raise TypeError(f'dtypes do not match ({src.dtype} and {dest.dtype})')
+            raise TypeError(f"dtypes do not match ({src.dtype} and {dest.dtype})")
         src_origin, src_shape, src_strides = cls._canonical_slice(
-            src_region, src.shape, src.strides)
+            src_region, src.shape, src.strides
+        )
         dest_origin, dest_shape, dest_strides = cls._canonical_slice(
-            dest_region, dest.shape, dest.strides)
+            dest_region, dest.shape, dest.strides
+        )
         if src_shape != dest_shape:
-            raise ValueError('Source and destination shapes for the copy do not match')
+            raise ValueError("Source and destination shapes for the copy do not match")
         # Search for axes that can be collapsed together
         new_shape = [src.dtype.itemsize]
         new_src_strides = [1]
         new_dest_strides = [1]
         for axis in range(len(src_shape) - 1, -1, -1):
             if src_shape[axis] == 1:
-                continue    # Can just ignore this axis
-            if (src_strides[axis] == new_shape[-1] * new_src_strides[-1]
-                    and dest_strides[axis] == new_shape[-1] * new_dest_strides[-1]):
+                continue  # Can just ignore this axis
+            if (
+                src_strides[axis] == new_shape[-1] * new_src_strides[-1]
+                and dest_strides[axis] == new_shape[-1] * new_dest_strides[-1]
+            ):
                 new_shape[-1] *= src_shape[axis]
             else:
                 new_shape.append(src_shape[axis])
                 new_src_strides.append(src_strides[axis])
                 new_dest_strides.append(dest_strides[axis])
-        return (src_origin, dest_origin,
-                tuple(new_shape), tuple(new_src_strides), tuple(new_dest_strides))
+        return (
+            src_origin,
+            dest_origin,
+            tuple(new_shape),
+            tuple(new_src_strides),
+            tuple(new_dest_strides),
+        )
 
     @classmethod
-    def _transfer_region(cls, func: Callable,
-                         buffer1: Any, buffer2: Any,
-                         origin1: int, origin2: int,
-                         shape: Tuple[int, ...],
-                         strides1: Tuple[int, ...], strides2: Tuple[int, ...],
-                         **kwargs) -> None:
+    def _transfer_region(
+        cls,
+        func: Callable,
+        buffer1: Any,
+        buffer2: Any,
+        origin1: int,
+        origin2: int,
+        shape: Tuple[int, ...],
+        strides1: Tuple[int, ...],
+        strides2: Tuple[int, ...],
+        **kwargs,
+    ) -> None:
         """Wrap the command-queue's copy and handle high dimensions by looping."""
         if len(shape) > 3:
             for i in range(shape[-1]):
                 cls._transfer_region(
-                    func, buffer1, buffer2,
+                    func,
+                    buffer1,
+                    buffer2,
                     origin1 + strides1[-1] * i,
                     origin2 + strides2[-1] * i,
-                    shape[:-1], strides1[:-1], strides2[:-1], **kwargs)
+                    shape[:-1],
+                    strides1[:-1],
+                    strides2[:-1],
+                    **kwargs,
+                )
         else:
             func(buffer1, buffer2, origin1, origin2, shape, strides1, strides2, **kwargs)
 
-    def copy_region(self, command_queue: AbstractCommandQueue, dest: 'DeviceArray',
-                    src_region: _Slice, dest_region: _Slice) -> None:
+    def copy_region(
+        self,
+        command_queue: AbstractCommandQueue,
+        dest: "DeviceArray",
+        src_region: _Slice,
+        dest_region: _Slice,
+    ) -> None:
         """Perform a device-to-device copy of a subregion of `self` to `dest`.
 
         If the source and destination memory overlap, the result is undefined.
@@ -732,15 +796,28 @@ class DeviceArray:
         IndexError
             if the source or destination regions are unsupported or out-of-range
         """
-        src_origin, dest_origin, shape, src_strides, dest_strides = \
-            self._region_transfer_params(self, dest, src_region, dest_region)
+        src_origin, dest_origin, shape, src_strides, dest_strides = self._region_transfer_params(
+            self, dest, src_region, dest_region
+        )
         self._transfer_region(
             command_queue.enqueue_copy_buffer_rect,
-            self.buffer, dest.buffer, src_origin, dest_origin,
-            shape, src_strides, dest_strides)
+            self.buffer,
+            dest.buffer,
+            src_origin,
+            dest_origin,
+            shape,
+            src_strides,
+            dest_strides,
+        )
 
-    def get_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
-                   device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
+    def get_region(
+        self,
+        command_queue: AbstractCommandQueue,
+        ary: np.ndarray,
+        device_region: _Slice,
+        ary_region: _Slice,
+        blocking: bool = True,
+    ) -> None:
         """Perform a device-to-host copy of a subregion of `self` to `ary`.
 
         See :meth:`~DeviceArray.copy_region` for a description of how regions
@@ -770,17 +847,31 @@ class DeviceArray:
             if the source or destination regions are unsupported or out-of-range
         """
         if not HostArray.safe(ary):
-            raise ValueError('Target region is not suitable for device-to-host copy')
+            raise ValueError("Target region is not suitable for device-to-host copy")
         assert isinstance(ary, HostArray)
-        device_origin, ary_origin, shape, device_strides, ary_strides = \
+        device_origin, ary_origin, shape, device_strides, ary_strides = (
             self._region_transfer_params(self, ary, device_region, ary_region)
+        )
         self._transfer_region(
             command_queue.enqueue_read_buffer_rect,
-            self.buffer, self._contiguous(ary), device_origin, ary_origin,
-            shape, device_strides, ary_strides, blocking=blocking)
+            self.buffer,
+            self._contiguous(ary),
+            device_origin,
+            ary_origin,
+            shape,
+            device_strides,
+            ary_strides,
+            blocking=blocking,
+        )
 
-    def set_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
-                   device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
+    def set_region(
+        self,
+        command_queue: AbstractCommandQueue,
+        ary: np.ndarray,
+        device_region: _Slice,
+        ary_region: _Slice,
+        blocking: bool = True,
+    ) -> None:
         """Perform a host-to-device copy of a subregion `ary` to `self`.
 
         See :meth:`~DeviceArray.copy_region` for a description of how regions
@@ -809,16 +900,24 @@ class DeviceArray:
         """
         if not HostArray.safe(ary):
             tmp = HostArray(ary[ary_region].shape, ary.dtype, context=self.context)
-            np.copyto(tmp, ary[ary_region], casting='no')
+            np.copyto(tmp, ary[ary_region], casting="no")
             ary = tmp
             ary_region = np.s_[()]
         assert isinstance(ary, HostArray)
-        ary_origin, device_origin, shape, ary_strides, device_strides = \
+        ary_origin, device_origin, shape, ary_strides, device_strides = (
             self._region_transfer_params(ary, self, ary_region, device_region)
+        )
         self._transfer_region(
             command_queue.enqueue_write_buffer_rect,
-            self.buffer, self._contiguous(ary), device_origin, ary_origin,
-            shape, device_strides, ary_strides, blocking=blocking)
+            self.buffer,
+            self._contiguous(ary),
+            device_origin,
+            ary_origin,
+            shape,
+            device_strides,
+            ary_strides,
+            blocking=blocking,
+        )
 
     def zero(self, command_queue: AbstractCommandQueue) -> None:
         """Memset with zeros (asynchronously)."""
@@ -851,8 +950,14 @@ class SVMArray(HostArray, DeviceArray):
         If specified, provides the backing memory
     """
 
-    def __new__(cls, context: AbstractContext, shape: Tuple[int, ...], dtype: DTypeLike,
-                padded_shape: Optional[Tuple[int, ...]] = None, raw: Any = None) -> 'SVMArray':
+    def __new__(
+        cls,
+        context: AbstractContext,
+        shape: Tuple[int, ...],
+        dtype: DTypeLike,
+        padded_shape: Optional[Tuple[int, ...]] = None,
+        raw: Any = None,
+    ) -> "SVMArray":
         if padded_shape is None:
             padded_shape = shape
         assert len(padded_shape) == len(shape)
@@ -878,8 +983,7 @@ class SVMArray(HostArray, DeviceArray):
 
     def _copyable(self, ary: np.ndarray) -> bool:
         """Whether `ary` can be copied to/from this array directly."""
-        return (ary.dtype == self.dtype
-                and ary.shape == self.shape)
+        return ary.dtype == self.dtype and ary.shape == self.shape
 
     def set(self, command_queue: AbstractCommandQueue, ary: np.ndarray) -> None:
         """Copy synchronously from `ary` to self.
@@ -890,8 +994,9 @@ class SVMArray(HostArray, DeviceArray):
         command_queue.finish()
         self[...] = ary
 
-    def get(self, command_queue: AbstractCommandQueue,
-            ary: Optional[np.ndarray] = None) -> np.ndarray:
+    def get(
+        self, command_queue: AbstractCommandQueue, ary: Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """Copy synchronously copy from self to `ary`.
 
         If `ary` is None, or if it is not suitable as a target, the copy is to
@@ -914,8 +1019,9 @@ class SVMArray(HostArray, DeviceArray):
         """
         self.set(command_queue, ary)
 
-    def get_async(self, command_queue: AbstractCommandQueue,
-                  ary: Optional[np.ndarray] = None) -> np.ndarray:
+    def get_async(
+        self, command_queue: AbstractCommandQueue, ary: Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """Copy asynchronously from self to `ary` (see `get`).
 
         This is implemented synchronously for SVMArray, but exists for
@@ -923,14 +1029,26 @@ class SVMArray(HostArray, DeviceArray):
         """
         return self.get(command_queue, ary)
 
-    def set_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
-                   device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
+    def set_region(
+        self,
+        command_queue: AbstractCommandQueue,
+        ary: np.ndarray,
+        device_region: _Slice,
+        ary_region: _Slice,
+        blocking: bool = True,
+    ) -> None:
         # Ensure that it synchronises with previous work in the queue
         command_queue.finish()
         self[device_region] = ary[ary_region]
 
-    def get_region(self, command_queue: AbstractCommandQueue, ary: np.ndarray,
-                   device_region: _Slice, ary_region: _Slice, blocking: bool = True) -> None:
+    def get_region(
+        self,
+        command_queue: AbstractCommandQueue,
+        ary: np.ndarray,
+        device_region: _Slice,
+        ary_region: _Slice,
+        blocking: bool = True,
+    ) -> None:
         # Ensure that it synchronises with previous work in the queue
         command_queue.finish()
         ary[ary_region] = self[device_region]
@@ -942,9 +1060,13 @@ class AbstractAllocator(ABC, Generic[_RB]):
     context: AbstractContext
 
     @abstractmethod
-    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
-                 padded_shape: Optional[Tuple[int, ...]] = None,
-                 raw: Optional[_RB] = None) -> DeviceArray:
+    def allocate(
+        self,
+        shape: Tuple[int, ...],
+        dtype: DTypeLike,
+        padded_shape: Optional[Tuple[int, ...]] = None,
+        raw: Optional[_RB] = None,
+    ) -> DeviceArray:
         pass
 
     @abstractmethod
@@ -958,9 +1080,13 @@ class DeviceAllocator(Generic[_B, _RB, _RS, _D, _P, _Q, _TQ], AbstractAllocator[
     def __init__(self, context: AbstractContext[_B, _RB, _RS, _D, _P, _Q, _TQ]) -> None:
         self.context = context
 
-    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
-                 padded_shape: Optional[Tuple[int, ...]] = None,
-                 raw: Optional[_RB] = None) -> DeviceArray:
+    def allocate(
+        self,
+        shape: Tuple[int, ...],
+        dtype: DTypeLike,
+        padded_shape: Optional[Tuple[int, ...]] = None,
+        raw: Optional[_RB] = None,
+    ) -> DeviceArray:
         return DeviceArray(self.context, shape, dtype, padded_shape, raw)
 
     def allocate_raw(self, n_bytes: int) -> _RB:
@@ -973,9 +1099,13 @@ class SVMAllocator(Generic[_B, _RB, _RS, _D, _P, _Q, _TQ], AbstractAllocator[_RS
     def __init__(self, context: AbstractContext[_B, _RB, _RS, _D, _P, _Q, _TQ]) -> None:
         self.context = context
 
-    def allocate(self, shape: Tuple[int, ...], dtype: DTypeLike,
-                 padded_shape: Optional[Tuple[int, ...]] = None,
-                 raw: Optional[_RS] = None) -> SVMArray:
+    def allocate(
+        self,
+        shape: Tuple[int, ...],
+        dtype: DTypeLike,
+        padded_shape: Optional[Tuple[int, ...]] = None,
+        raw: Optional[_RS] = None,
+    ) -> SVMArray:
         return SVMArray(self.context, shape, dtype, padded_shape, raw)
 
     def allocate_raw(self, n_bytes: int) -> _RS:
@@ -1030,10 +1160,15 @@ class Dimension:
     def _is_power2(cls, value: int) -> bool:
         return value > 0 and (value & (value - 1)) == 0
 
-    def __init__(self, size: int,
-                 min_padded_round: Optional[int] = None, min_padded_size: Optional[int] = None,
-                 alignment: int = 1, align_dtype: Optional[DTypeLike] = None,
-                 exact: bool = False) -> None:
+    def __init__(
+        self,
+        size: int,
+        min_padded_round: Optional[int] = None,
+        min_padded_size: Optional[int] = None,
+        alignment: int = 1,
+        align_dtype: Optional[DTypeLike] = None,
+        exact: bool = False,
+    ) -> None:
         if min_padded_size is None:
             if min_padded_round is not None:
                 min_padded_size = roundup(size, min_padded_round)
@@ -1041,9 +1176,9 @@ class Dimension:
                 min_padded_size = size
 
         if not self._is_power2(alignment):
-            raise ValueError('alignment is not a power of 2')
+            raise ValueError("alignment is not a power of 2")
         if min_padded_size < size:
-            raise ValueError('padded size is less than size')
+            raise ValueError("padded size is less than size")
 
         self._parent: Optional[Dimension] = None
         self._size = size
@@ -1055,7 +1190,7 @@ class Dimension:
         if align_dtype is not None:
             self.add_align_dtype(align_dtype)
 
-    def _root(self) -> 'Dimension':
+    def _root(self) -> "Dimension":
         if self._parent is None:
             return self
         else:
@@ -1102,8 +1237,7 @@ class Dimension:
         if root._exact:
             return padded_size == root.required_padded_size()
         else:
-            return (padded_size >= root._min_padded_size
-                    and padded_size % root._alignment == 0)
+            return padded_size >= root._min_padded_size and padded_size % root._alignment == 0
 
     def add_align_dtype(self, dtype: DTypeLike) -> None:
         """Add an alignment hint.
@@ -1113,13 +1247,13 @@ class Dimension:
         ignored.
         """
         if self.frozen:
-            raise ValueError('cannot modify a frozen requirement')
+            raise ValueError("cannot modify a frozen requirement")
         itemsize = np.dtype(dtype).itemsize
         if self._is_power2(itemsize):
             root = self._root()
             root._alignment_hint = max(root._alignment_hint, self.ALIGN_BYTES // itemsize)
 
-    def link(self, other: 'Dimension') -> None:
+    def link(self, other: "Dimension") -> None:
         """Make both `self` and `other` reference a single shared requirement.
 
         Raises
@@ -1130,19 +1264,19 @@ class Dimension:
         root1 = self._root()
         root2 = other._root()
         if root1._frozen or root2._frozen:
-            raise ValueError('cannot link frozen requirements')
+            raise ValueError("cannot link frozen requirements")
         if root1 is root2:
             return
         if root1._size != root2._size:
-            raise ValueError('sizes are incompatible')
+            raise ValueError("sizes are incompatible")
         if root1._exact:
             actual1 = root1.required_padded_size()
             if not root2.valid(actual1):
-                raise ValueError('linked requirement is unsatisfiable')
+                raise ValueError("linked requirement is unsatisfiable")
         if root2._exact:
             actual2 = root2.required_padded_size()
             if not root2.valid(actual2):
-                raise ValueError('linked requirement is unsatisfiable')
+                raise ValueError("linked requirement is unsatisfiable")
         root1._min_padded_size = max(root1._min_padded_size, root2._min_padded_size)
         root1._alignment = max(root1._alignment, root2._alignment)
         root1._alignment_hint = max(root1._alignment_hint, root2._alignment_hint)
@@ -1178,7 +1312,7 @@ class IOSlotBase(ABC):
     def check_root(self) -> None:
         """Check whether this slot is a root slot, and raise an exception if not."""
         if not self.is_root:
-            raise ValueError('not a root slot')
+            raise ValueError("not a root slot")
 
     @abstractmethod
     def required_bytes(self) -> int:
@@ -1193,12 +1327,22 @@ class IOSlotBase(ABC):
         return self.is_root and not self.is_bound()
 
     @abstractmethod
-    def _allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None,
-                  *, bind: bool) -> Any:
+    def _allocate(
+        self,
+        allocator: AbstractAllocator[_RB],
+        raw: Optional[_RB] = None,
+        *,
+        bind: bool,
+    ) -> Any:
         """Variant of :meth:`allocate` that does not check whether this is a root slot."""
 
-    def allocate(self, allocator: AbstractAllocator[_RB], raw: Optional[_RB] = None,
-                 *, bind: bool = True) -> Any:
+    def allocate(
+        self,
+        allocator: AbstractAllocator[_RB],
+        raw: Optional[_RB] = None,
+        *,
+        bind: bool = True,
+    ) -> Any:
         """Allocate and optionally bind a buffer satisfying the requirements.
 
         .. warning:: When `raw` is provided, there is no check that the storage is large enough.
@@ -1288,14 +1432,14 @@ class IOSlot(IOSlotBase):
             If a padded size does not match :meth:`Dimension.required_padded_size`
         """
         if buffer.dtype != self.dtype:
-            raise TypeError('dtype does not match')
+            raise TypeError("dtype does not match")
         if len(buffer.shape) != len(self.shape):
-            raise ValueError('number of dimensions does not match')
+            raise ValueError("number of dimensions does not match")
         for size, padded_size, dimension in zip(buffer.shape, buffer.padded_shape, self.dimensions):
             if size != dimension.size:
-                raise ValueError('size does not match')
+                raise ValueError("size does not match")
             if padded_size != dimension.required_padded_size():
-                raise ValueError('padded size does not match')
+                raise ValueError("padded size does not match")
 
     def _bind(self, buffer: Optional[DeviceArray]) -> None:
         """Variant of :meth:`bind` that does not check whether this is a root slot."""
@@ -1332,8 +1476,13 @@ class IOSlot(IOSlotBase):
     def required_bytes(self) -> int:
         return int(np.prod(self.required_padded_shape()) * self.dtype.itemsize)
 
-    def _allocate(self, allocator: AbstractAllocator[_RB],
-                  raw: Optional[_RB] = None, *, bind: bool = True) -> DeviceArray:
+    def _allocate(
+        self,
+        allocator: AbstractAllocator[_RB],
+        raw: Optional[_RB] = None,
+        *,
+        bind: bool = True,
+    ) -> DeviceArray:
         buffer = allocator.allocate(self.shape, self.dtype, self.required_padded_shape(), raw=raw)
         if bind:
             self._bind(buffer)
@@ -1342,8 +1491,13 @@ class IOSlot(IOSlotBase):
     def _allocate_host(self, context: AbstractContext) -> HostArray:
         return HostArray(self.shape, self.dtype, self.required_padded_shape(), context=context)
 
-    def allocate(self, allocator: AbstractAllocator[_RB],
-                 raw: Optional[_RB] = None, *, bind: bool = True) -> DeviceArray:
+    def allocate(
+        self,
+        allocator: AbstractAllocator[_RB],
+        raw: Optional[_RB] = None,
+        *,
+        bind: bool = True,
+    ) -> DeviceArray:
         # Overloaded just to restrict the type signature
         return super().allocate(allocator, raw, bind=bind)
 
@@ -1372,21 +1526,21 @@ class CompoundIOSlot(IOSlot):
     def __init__(self, children: Iterable[IOSlot]) -> None:
         self.children = list(children)
         if not len(self.children):
-            raise ValueError('empty child list')
+            raise ValueError("empty child list")
         shape = self.children[0].shape
         dtype = self.children[0].dtype
         dimensions = self.children[0].dimensions
         # Validate consistency and compute combined requirements
         for child in self.children:
             if not child.attachable():
-                raise ValueError('child is not attachable')
+                raise ValueError("child is not attachable")
             if child.shape != shape:
-                raise ValueError('inconsistent shapes')
+                raise ValueError("inconsistent shapes")
             if child.dtype != dtype:
-                raise TypeError('inconsistent dtypes')
+                raise TypeError("inconsistent dtypes")
             for dimension in child.dimensions:
                 if dimension.frozen:
-                    raise ValueError('child has frozen dimensions')
+                    raise ValueError("child has frozen dimensions")
         for child in self.children:
             for x, y in zip(dimensions, child.dimensions):
                 x.link(y)
@@ -1422,10 +1576,10 @@ class AliasIOSlot(IOSlotBase):
         self.children = list(children)
         self.raw: Optional[Any] = None
         if not len(self.children):
-            raise ValueError('empty child list')
+            raise ValueError("empty child list")
         for child in self.children:
             if not child.attachable():
-                raise ValueError('child is not attachable')
+                raise ValueError("child is not attachable")
         for child in self.children:
             child.is_root = False
 
@@ -1438,8 +1592,13 @@ class AliasIOSlot(IOSlotBase):
     def _allocate_host(self, context: AbstractContext) -> HostArray:
         return HostArray((self.required_bytes(),), np.uint8, context=context)
 
-    def _allocate(self, allocator: AbstractAllocator[_RB],
-                  raw: Optional[_RB] = None, *, bind: bool = True) -> _RB:
+    def _allocate(
+        self,
+        allocator: AbstractAllocator[_RB],
+        raw: Optional[_RB] = None,
+        *,
+        bind: bool = True,
+    ) -> _RB:
         if raw is None:
             raw = allocator.allocate_raw(self.required_bytes())
         if bind:
@@ -1490,13 +1649,16 @@ class Operation(ABC):
         True if this operation is not part of an :class:`OperationSequence`.
     """
 
-    def __init__(self, command_queue: AbstractCommandQueue,
-                 allocator: Optional[AbstractAllocator] = None) -> None:
+    def __init__(
+        self,
+        command_queue: AbstractCommandQueue,
+        allocator: Optional[AbstractAllocator] = None,
+    ) -> None:
         if allocator is None:
             allocator = DeviceAllocator(command_queue.context)
         elif allocator.context is not None:
             if allocator.context is not command_queue.context:
-                raise ValueError('command_queue and allocator have different contexts')
+                raise ValueError("command_queue and allocator have different contexts")
         self.slots: Dict[str, IOSlotBase] = {}
         self.hidden_slots: Dict[str, IOSlotBase] = {}
         self.command_queue = command_queue
@@ -1518,7 +1680,7 @@ class Operation(ABC):
         for name, buffer in kwargs.items():
             slot = self.slots[name]
             if not isinstance(slot, IOSlot):
-                raise TypeError(f'Slot {slot} is not an IOSlot')
+                raise TypeError(f"Slot {slot} is not an IOSlot")
             slot.bind(buffer)
 
     def ensure_bound(self, name: str) -> None:
@@ -1563,13 +1725,13 @@ class Operation(ABC):
             try:
                 slot = self.hidden_slots[name]
             except KeyError:
-                raise KeyError('no slot named ' + name) from None
+                raise KeyError("no slot named " + name) from None
         if isinstance(slot, IOSlot):
             if slot.buffer is None:
-                raise ValueError('slot ' + name + ' has no buffer bound')
+                raise ValueError("slot " + name + " has no buffer bound")
             return slot.buffer
         else:
-            raise TypeError('slot ' + name + ' is an alias slot')
+            raise TypeError("slot " + name + " is an alias slot")
 
     def required_bytes(self) -> int:
         """Return number of bytes of device storage required."""
@@ -1581,7 +1743,7 @@ class Operation(ABC):
 
     @abstractmethod
     def _run(self) -> Any:
-        raise NotImplementedError('abstract base class')
+        raise NotImplementedError("abstract base class")
 
     def __call__(self, **kwargs) -> Any:
         """Run the operation.
@@ -1620,30 +1782,33 @@ class OperationSequence(Operation):
         Allocator used to allocate unbound slots
     """
 
-    def __init__(self, command_queue: AbstractCommandQueue,
-                 operations: Iterable[Tuple[str, Operation]],
-                 compounds: Optional[Mapping[str, Iterable[str]]] = None,
-                 aliases: Optional[Mapping[str, Iterable[str]]] = None,
-                 allocator: Optional[AbstractAllocator] = None) -> None:
+    def __init__(
+        self,
+        command_queue: AbstractCommandQueue,
+        operations: Iterable[Tuple[str, Operation]],
+        compounds: Optional[Mapping[str, Iterable[str]]] = None,
+        aliases: Optional[Mapping[str, Iterable[str]]] = None,
+        allocator: Optional[AbstractAllocator] = None,
+    ) -> None:
         super().__init__(command_queue, allocator)
         self.operations = OrderedDict(operations)
-        for (name, operation) in self.operations.items():
+        for name, operation in self.operations.items():
             if operation.command_queue is not command_queue:
-                raise ValueError('child has a different command queue to the parent')
+                raise ValueError("child has a different command queue to the parent")
             if not operation.is_root:
-                raise ValueError('child already has another parent')
-            for (slot_name, slot) in operation.slots.items():
-                self.slots[name + ':' + slot_name] = slot
+                raise ValueError("child already has another parent")
+            for slot_name, slot in operation.slots.items():
+                self.slots[name + ":" + slot_name] = slot
         if compounds is not None:
-            for (name, child_names) in compounds.items():
+            for name, child_names in compounds.items():
                 children = self._extract_slots(child_names, False)
                 if children:
                     for child in children:
                         if not isinstance(child, IOSlot):
-                            raise TypeError(f'Children of {name} must all be IOSlots')
+                            raise TypeError(f"Children of {name} must all be IOSlots")
                     self.slots[name] = CompoundIOSlot(cast(Iterable[IOSlot], children))
         if aliases is not None:
-            for (name, child_names) in aliases.items():
+            for name, child_names in aliases.items():
                 children = self._extract_slots(child_names, True)
                 if children:
                     self.slots[name] = AliasIOSlot(children)
@@ -1679,25 +1844,27 @@ def _slot_label(slot: IOSlotBase, name: str, hide_detail: bool) -> str:
     if isinstance(slot, AliasIOSlot):
         return f'<b>{name}</b><br/><font color="red">alias slot</font>'
     elif hide_detail:
-        return f'<b>{name}</b>'
+        return f"<b>{name}</b>"
     else:
         assert isinstance(slot, IOSlot)
-        shape = '×'.join(str(x) for x in slot.shape)
+        shape = "×".join(str(x) for x in slot.shape)
         if not shape:
-            shape = 'scalar'
-        padded_shape = '×'.join(str(x) for x in slot.required_padded_shape())
+            shape = "scalar"
+        padded_shape = "×".join(str(x) for x in slot.required_padded_shape())
         dtype = str(np.dtype(slot.dtype))
-        return '<b>{name}</b><br/>{shape}<br/>{padded_shape}<br/>{dtype}'.format(
-            name=name, shape=shape, padded_shape=padded_shape, dtype=dtype)
+        return "<b>{name}</b><br/>{shape}<br/>{padded_shape}<br/>{dtype}".format(
+            name=name, shape=shape, padded_shape=padded_shape, dtype=dtype
+        )
 
 
 def _visualize_operation(
-        g: 'graphviz.Graph',
-        operation: Operation,
-        path: Tuple[str, ...],
-        slot_map: MutableMapping[IOSlotBase, str],
-        no_detail_slots: Set[IOSlotBase],
-        edges: Set[Tuple[IOSlotBase, IOSlotBase]]) -> None:
+    g: "graphviz.Graph",
+    operation: Operation,
+    path: Tuple[str, ...],
+    slot_map: MutableMapping[IOSlotBase, str],
+    no_detail_slots: Set[IOSlotBase],
+    edges: Set[Tuple[IOSlotBase, IOSlotBase]],
+) -> None:
     """Recursive implementation of :func:`visualize_operation`.
 
     Parameters
@@ -1725,41 +1892,48 @@ def _visualize_operation(
     if isinstance(operation, OperationSequence):
         # Graphviz treats subgraphs with the prefix 'cluster_' specially. We
         # only want this for real subgraphs, not the root.
-        node_name = 'cluster_' + '!'.join(path) if len(path) > 1 else 'root'
+        node_name = "cluster_" + "!".join(path) if len(path) > 1 else "root"
         for slot_name, slot in all_slots.items():
             if isinstance(slot, CompoundIOSlot):
                 for child_slot in slot.children:
                     no_detail_slots.add(child_slot)
         with g.subgraph(name=node_name) as sub:
-            sub.attr('graph', label=path[-1])
+            sub.attr("graph", label=path[-1])
             for child_name, child in operation.operations.items():
-                _visualize_operation(sub, child, path + (child_name,),
-                                     slot_map, no_detail_slots, edges)
+                _visualize_operation(
+                    sub, child, path + (child_name,), slot_map, no_detail_slots, edges
+                )
             for slot_name, slot in list(all_slots.items()):
-                if slot not in slot_map:     # It's already represented in the child
+                if slot not in slot_map:  # It's already represented in the child
                     # ":" has special meaning to graphviz, so we replace it with "+".
-                    full_name = 'slot_{}_{}'.format('!'.join(path), slot_name.replace(':', '+'))
+                    full_name = "slot_{}_{}".format("!".join(path), slot_name.replace(":", "+"))
                     slot_map[slot] = full_name
-                    slot_label = '<' + _slot_label(slot, slot_name, slot in no_detail_slots) + '>'
-                    sub.node(full_name, label=slot_label, shape='box')
+                    slot_label = "<" + _slot_label(slot, slot_name, slot in no_detail_slots) + ">"
+                    sub.node(full_name, label=slot_label, shape="box")
                 else:
                     del all_slots[slot_name]
     else:
-        node_name = 'op_' + '!'.join(path)
+        node_name = "op_" + "!".join(path)
         label = io.StringIO()
-        label.write('<<table border="1" cellborder="0" rows="*" columns="*">'
-                    '<tr><td colspan="{n_slots}">{name}</td></tr><tr>'
-                    .format(name=path[-1], n_slots=len(operation.slots)))
+        label.write(
+            '<<table border="1" cellborder="0" rows="*" columns="*">'
+            '<tr><td colspan="{n_slots}">{name}</td></tr><tr>'.format(
+                name=path[-1], n_slots=len(operation.slots)
+            )
+        )
         for slot_name, slot in operation.slots.items():
-            label.write('<td port="{name}"><font point-size="9"><i>{name}</i></font></td>'
-                        .format(name=slot_name))
-            slot_map[slot] = node_name + ':' + slot_name.replace(':', '+')
-        label.write('</tr></table>>')
-        g.node(node_name, label=label.getvalue(), shape='plain')
+            label.write(
+                '<td port="{name}"><font point-size="9"><i>{name}</i></font></td>'.format(
+                    name=slot_name
+                )
+            )
+            slot_map[slot] = node_name + ":" + slot_name.replace(":", "+")
+        label.write("</tr></table>>")
+        g.node(node_name, label=label.getvalue(), shape="plain")
 
     for slot in all_slots.values():
-        if hasattr(slot, 'children'):
-            children: Sequence[IOSlotBase] = getattr(slot, 'children')
+        if hasattr(slot, "children"):
+            children: Sequence[IOSlotBase] = getattr(slot, "children")
             for child2 in children:
                 edges.add((child2, slot))
 
@@ -1783,10 +1957,10 @@ def visualize_operation(operation: Operation, filename: str) -> None:
     from graphviz import Graph
 
     g = Graph()
-    g.attr('graph', clusterrank='local', ranksep='3', compound='yes')
+    g.attr("graph", clusterrank="local", ranksep="3", compound="yes")
     slot_map: Dict[IOSlotBase, str] = {}
     edges: Set[Tuple[IOSlotBase, IOSlotBase]] = set()
-    _visualize_operation(g, operation, ('root',), slot_map, set(), edges)
+    _visualize_operation(g, operation, ("root",), slot_map, set(), edges)
     for a, b in edges:
         g.edge(slot_map[a], slot_map[b])
     g.render(filename)

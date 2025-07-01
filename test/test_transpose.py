@@ -33,22 +33,27 @@ class TestTranspose:
         newdim = accel.Dimension(dim.size, min_padded_size=dim.size + extra)
         newdim.link(dim)
 
-    @pytest.mark.parametrize('R, C', [(4, 5), (53, 7), (53, 81), (32, 64)])
-    def test_transpose(self, R: int, C: int,
-                       context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
-        template = transpose.TransposeTemplate(context, np.float32, 'float')
+    @pytest.mark.parametrize("R, C", [(4, 5), (53, 7), (53, 81), (32, 64)])
+    def test_transpose(
+        self,
+        R: int,
+        C: int,
+        context: AbstractContext,
+        command_queue: AbstractCommandQueue,
+    ) -> None:
+        template = transpose.TransposeTemplate(context, np.float32, "float")
         fn = template.instantiate(command_queue, (R, C))
         # Force some padded, to check that stride calculation works
-        src_slot = cast(accel.IOSlot, fn.slots['src'])
-        dest_slot = cast(accel.IOSlot, fn.slots['dest'])
+        src_slot = cast(accel.IOSlot, fn.slots["src"])
+        dest_slot = cast(accel.IOSlot, fn.slots["dest"])
         self.pad_dimension(src_slot.dimensions[0], 1)
         self.pad_dimension(src_slot.dimensions[1], 4)
         self.pad_dimension(dest_slot.dimensions[0], 2)
         self.pad_dimension(dest_slot.dimensions[1], 3)
 
         ary = np.random.randn(R, C).astype(np.float32)
-        src = fn.slots['src'].allocate(fn.allocator)
-        dest = fn.slots['dest'].allocate(fn.allocator)
+        src = fn.slots["src"].allocate(fn.allocator)
+        dest = fn.slots["dest"].allocate(fn.allocator)
         src.set_async(command_queue, ary)
         fn()
         out = dest.get(command_queue)
@@ -57,4 +62,4 @@ class TestTranspose:
     @pytest.mark.force_autotune
     def test_autotune(self, context: AbstractContext) -> None:
         """Check that the autotuner runs successfully."""
-        transpose.TransposeTemplate(context, np.uint8, 'unsigned char')
+        transpose.TransposeTemplate(context, np.uint8, "unsigned char")

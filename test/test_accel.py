@@ -24,16 +24,18 @@ from unittest import mock
 from typing import Tuple, Optional, Callable, Type, Any
 
 import numpy as np
+
 try:
     from numpy.typing import DTypeLike
 except ImportError:
-    DTypeLike = Any     # type: ignore
+    DTypeLike = Any  # type: ignore
 import pytest
 from mako.template import Template
 
 from katsdpsigproc import accel
 from katsdpsigproc.accel import HostArray, DeviceArray, SVMArray, LinenoLexer
 from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
+
 if accel.have_cuda:
     import pycuda
 if accel.have_opencl:
@@ -56,22 +58,28 @@ class TestLinenoLexer:
             line 2
             #line 3 "<string>"
             line 3
-            """)
+            """
+        )
 
 
 class TestHostArray:
     cls: Type[HostArray] = HostArray
 
     @pytest.fixture
-    def factory(self) -> Callable[[Tuple[int, ...], DTypeLike, Tuple[int, ...]], HostArray]:
-        def allocate(shape: Tuple[int, ...], dtype: DTypeLike,
-                     padded_shape: Tuple[int, ...]) -> HostArray:
+    def factory(
+        self,
+    ) -> Callable[[Tuple[int, ...], DTypeLike, Tuple[int, ...]], HostArray]:
+        def allocate(
+            shape: Tuple[int, ...], dtype: DTypeLike, padded_shape: Tuple[int, ...]
+        ) -> HostArray:
             return self.cls(shape, dtype, padded_shape)
+
         return allocate
 
     def test_safe(
-            self,
-            factory: Callable[[Tuple[int, ...], DTypeLike, Tuple[int, ...]], HostArray]) -> None:
+        self,
+        factory: Callable[[Tuple[int, ...], DTypeLike, Tuple[int, ...]], HostArray],
+    ) -> None:
         shape = (17, 13)
         padded_shape = (32, 16)
         constructed = factory(shape, np.int32, padded_shape)
@@ -99,16 +107,21 @@ class TestDeviceArray:
         return (64, 4)
 
     @pytest.fixture
-    def array(self, context: AbstractContext,
-              shape: Tuple[int, ...], padded_shape: Tuple[int, ...]) -> DeviceArray:
-        return self.cls(
-            context=context,
-            shape=shape,
-            dtype=np.int32,
-            padded_shape=padded_shape)
+    def array(
+        self,
+        context: AbstractContext,
+        shape: Tuple[int, ...],
+        padded_shape: Tuple[int, ...],
+    ) -> DeviceArray:
+        return self.cls(context=context, shape=shape, dtype=np.int32, padded_shape=padded_shape)
 
-    def test_properties(self, array: DeviceArray, shape: Tuple[int, ...],
-                        padded_shape: Tuple[int, ...], strides: Tuple[int, ...]) -> None:
+    def test_properties(
+        self,
+        array: DeviceArray,
+        shape: Tuple[int, ...],
+        padded_shape: Tuple[int, ...],
+        strides: Tuple[int, ...],
+    ) -> None:
         assert array.shape == shape
         assert array.padded_shape == padded_shape
         assert array.strides == strides
@@ -120,8 +133,12 @@ class TestDeviceArray:
         assert ary.strides == array.strides
         assert HostArray.safe(ary)
 
-    def test_set_get(self, array: DeviceArray,
-                     context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
+    def test_set_get(
+        self,
+        array: DeviceArray,
+        context: AbstractContext,
+        command_queue: AbstractCommandQueue,
+    ) -> None:
         ary = np.random.randint(0, 100, array.shape).astype(np.int32)
         array.set(command_queue, ary)
         # Read back results, check that it matches
@@ -133,20 +150,24 @@ class TestDeviceArray:
                 pycuda.driver.memcpy_dtoh(buf, array.buffer.gpudata)
         else:
             assert isinstance(command_queue, opencl.CommandQueue)
-            pyopencl.enqueue_copy(
-                command_queue._pyopencl_command_queue,
-                buf, array.buffer.data)
-        buf = buf[0:array.shape[0], 0:array.shape[1]]
+            pyopencl.enqueue_copy(command_queue._pyopencl_command_queue, buf, array.buffer.data)
+        buf = buf[0 : array.shape[0], 0 : array.shape[1]]
         np.testing.assert_equal(ary, buf)
         # Check that it matches get
         buf = array.get(command_queue)
         np.testing.assert_equal(ary, buf)
 
     def _test_copy_region(
-            self, context: AbstractContext, command_queue: AbstractCommandQueue,
-            src_shape: Tuple[int, ...], src_padded_shape: Optional[Tuple[int, ...]],
-            dest_shape: Tuple[int, ...], dest_padded_shape: Optional[Tuple[int, ...]],
-            src_region: accel._Slice, dest_region: accel._Slice) -> None:
+        self,
+        context: AbstractContext,
+        command_queue: AbstractCommandQueue,
+        src_shape: Tuple[int, ...],
+        src_padded_shape: Optional[Tuple[int, ...]],
+        dest_shape: Tuple[int, ...],
+        dest_padded_shape: Optional[Tuple[int, ...]],
+        src_region: accel._Slice,
+        dest_region: accel._Slice,
+    ) -> None:
         # copy_region test
         dtype = np.int32
         src = self.cls(context, src_shape, dtype, src_padded_shape)
@@ -156,7 +177,7 @@ class TestDeviceArray:
         src.set(command_queue, h_src)
         dest.zero(command_queue)
         src.copy_region(command_queue, dest, src_region, dest_region)
-        command_queue.finish()   # Needed for the SVMArray test, since the next line is a CPU copy
+        command_queue.finish()  # Needed for the SVMArray test, since the next line is a CPU copy
         h_dest = dest.get(command_queue)
         expected = np.zeros_like(h_dest)
         expected[dest_region] = h_src[src_region]
@@ -173,78 +194,151 @@ class TestDeviceArray:
         command_queue.finish()
         np.testing.assert_array_equal(expected, h_dest)
 
-    def test_copy_region_4d(self, context: AbstractContext,
-                            command_queue: AbstractCommandQueue) -> None:
+    def test_copy_region_4d(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         self._test_copy_region(
-            context, command_queue,
-            (7, 5, 12, 19), (8, 9, 14, 25),
-            (7, 5, 12, 19), (10, 8, 12, 21),
-            np.s_[2:4, :, 3:7:2, 10:], np.s_[1:3, 0:5, 4:8:2, 10:])
+            context,
+            command_queue,
+            (7, 5, 12, 19),
+            (8, 9, 14, 25),
+            (7, 5, 12, 19),
+            (10, 8, 12, 21),
+            np.s_[2:4, :, 3:7:2, 10:],
+            np.s_[1:3, 0:5, 4:8:2, 10:],
+        )
 
-    def test_copy_region_0d(self, context: AbstractContext,
-                            command_queue: AbstractCommandQueue) -> None:
+    def test_copy_region_0d(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         self._test_copy_region(context, command_queue, (), (), (), (), (), ())
 
-    def test_copy_region_1d(self, context: AbstractContext,
-                            command_queue: AbstractCommandQueue) -> None:
+    def test_copy_region_1d(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         self._test_copy_region(
-            context, command_queue, (3, 5), (4, 6), (5, 7), (7, 10),
-            np.s_[1, 0:3], np.s_[2, 1:4])
+            context,
+            command_queue,
+            (3, 5),
+            (4, 6),
+            (5, 7),
+            (7, 10),
+            np.s_[1, 0:3],
+            np.s_[2, 1:4],
+        )
 
-    def test_copy_region_2d(self, context: AbstractContext,
-                            command_queue: AbstractCommandQueue) -> None:
+    def test_copy_region_2d(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         self._test_copy_region(
-            context, command_queue, (3, 5), (4, 6), (5, 7), (7, 10),
-            np.s_[:1, 0:3], np.s_[-1:, 1:4])
+            context,
+            command_queue,
+            (3, 5),
+            (4, 6),
+            (5, 7),
+            (7, 10),
+            np.s_[:1, 0:3],
+            np.s_[-1:, 1:4],
+        )
 
-    def test_copy_region_missing_axes(self, context: AbstractContext,
-                                      command_queue: AbstractCommandQueue) -> None:
+    def test_copy_region_missing_axes(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         self._test_copy_region(
-            context, command_queue, (3, 5), (4, 6), (5, 5), (7, 10),
-            np.s_[:1], np.s_[-1:])
+            context,
+            command_queue,
+            (3, 5),
+            (4, 6),
+            (5, 5),
+            (7, 10),
+            np.s_[:1],
+            np.s_[-1:],
+        )
 
-    def test_copy_region_newaxis(self, context: AbstractContext,
-                                 command_queue: AbstractCommandQueue) -> None:
+    def test_copy_region_newaxis(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         self._test_copy_region(
-            context, command_queue, (10,), None, (10, 10), None,
-            np.s_[np.newaxis, 4:6], np.s_[:1, 7:9])
+            context,
+            command_queue,
+            (10,),
+            None,
+            (10, 10),
+            None,
+            np.s_[np.newaxis, 4:6],
+            np.s_[:1, 7:9],
+        )
 
-    def test_copy_region_negative(self, context: AbstractContext,
-                                  command_queue: AbstractCommandQueue) -> None:
+    def test_copy_region_negative(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         self._test_copy_region(
-            context, command_queue, (10, 12), None, (7, 8), None,
-            np.s_[-4, -3:-1], np.s_[-7, -8:-4:2])
+            context,
+            command_queue,
+            (10, 12),
+            None,
+            (7, 8),
+            None,
+            np.s_[-4, -3:-1],
+            np.s_[-7, -8:-4:2],
+        )
 
-    def test_copy_region_errors(self, context: AbstractContext,
-                                command_queue: AbstractCommandQueue) -> None:
+    def test_copy_region_errors(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         # Too many axes
         with pytest.raises(IndexError):
             self._test_copy_region(
-                context, command_queue, (10,), None, (10,), None,
-                np.s_[3, 4], np.s_[5, 6])
+                context,
+                command_queue,
+                (10,),
+                None,
+                (10,),
+                None,
+                np.s_[3, 4],
+                np.s_[5, 6],
+            )
         # Out-of-range single index
         with pytest.raises(IndexError):
             self._test_copy_region(
-                context, command_queue, (10,), None, (10,), None,
-                np.s_[5], np.s_[10])
+                context, command_queue, (10,), None, (10,), None, np.s_[5], np.s_[10]
+            )
         # Out-of-range slice
         with pytest.raises(IndexError):
             self._test_copy_region(
-                context, command_queue, (10,), None, (10,), None,
-                np.s_[10:12], np.s_[8:10])
+                context,
+                command_queue,
+                (10,),
+                None,
+                (10,),
+                None,
+                np.s_[10:12],
+                np.s_[8:10],
+            )
         # Empty slice
         with pytest.raises(IndexError):
             self._test_copy_region(
-                context, command_queue, (10,), None, (10,), None,
-                np.s_[2:2], np.s_[3:3])
+                context, command_queue, (10,), None, (10,), None, np.s_[2:2], np.s_[3:3]
+            )
         # Negative stride
         with pytest.raises(IndexError):
             self._test_copy_region(
-                context, command_queue, (10,), None, (10,), None,
-                np.s_[3:0:-1], np.s_[4:1:-1])
+                context,
+                command_queue,
+                (10,),
+                None,
+                (10,),
+                None,
+                np.s_[3:0:-1],
+                np.s_[4:1:-1],
+            )
 
-    def test_zero(self, array: DeviceArray, context: AbstractContext,
-                  command_queue: AbstractCommandQueue) -> None:
+    def test_zero(
+        self,
+        array: DeviceArray,
+        context: AbstractContext,
+        command_queue: AbstractCommandQueue,
+    ) -> None:
         ary = np.random.randint(0x12345678, 0x23456789, array.shape).astype(np.int32)
         array.set(command_queue, ary)
         before = array.get(command_queue)
@@ -256,15 +350,20 @@ class TestDeviceArray:
     def _allocate_raw(self, context: AbstractContext, n_bytes: int) -> Any:
         return context.allocate_raw(n_bytes)
 
-    def test_raw(self, shape: Tuple[int, ...], padded_shape: Tuple[int, ...],
-                 context: AbstractContext) -> None:
+    def test_raw(
+        self,
+        shape: Tuple[int, ...],
+        padded_shape: Tuple[int, ...],
+        context: AbstractContext,
+    ) -> None:
         raw = self._allocate_raw(context, 2048)
         ary = self.cls(
             context=context,
             shape=shape,
             dtype=np.int32,
             padded_shape=padded_shape,
-            raw=raw)
+            raw=raw,
+        )
         actual_raw = None
         try:
             # CUDA
@@ -284,9 +383,9 @@ class TestPinnedAMD(TestDeviceArray):
 
     @pytest.fixture(autouse=True)
     def setup(self, context: AbstractContext):
-        context._force_pinned_amd = True        # type: ignore
+        context._force_pinned_amd = True  # type: ignore
         yield
-        context._force_pinned_amd = False       # type: ignore
+        context._force_pinned_amd = False  # type: ignore
 
 
 @pytest.mark.cuda_only
@@ -297,12 +396,15 @@ class TestSVMArrayHost(TestHostArray):
 
     # Function is given a different name to avoid mypy complaining about the
     # signature being different.
-    @pytest.fixture(name='factory')
-    def factory_override(self, context: AbstractContext) -> \
-            Callable[[Tuple[int, ...], DTypeLike, Tuple[int, ...]], HostArray]:
-        def allocate(shape: Tuple[int, ...], dtype: DTypeLike,
-                     padded_shape: Tuple[int, ...]) -> HostArray:
+    @pytest.fixture(name="factory")
+    def factory_override(
+        self, context: AbstractContext
+    ) -> Callable[[Tuple[int, ...], DTypeLike, Tuple[int, ...]], HostArray]:
+        def allocate(
+            shape: Tuple[int, ...], dtype: DTypeLike, padded_shape: Tuple[int, ...]
+        ) -> HostArray:
             return self.cls(context, shape, dtype, padded_shape)
+
         return allocate
 
 
@@ -323,7 +425,7 @@ class TestSVMArray(TestDeviceArray):
             {
                 data[get_global_id(0)] *= 3;
             }"""
-        program = accel.build(context, 'not a file', source=source)
+        program = accel.build(context, "not a file", source=source)
         kernel = program.get_kernel("triple")
         ary = SVMArray(context, (123,), np.uint32, (128,))
         ary[:] = np.arange(123, dtype=np.uint32)
@@ -343,8 +445,9 @@ class TestSVMAllocator:
         assert ary.padded_shape == (13, 35)
         ary.fill(1)  # Just to make sure it doesn't crash
 
-    def test_allocate_raw(self, context: AbstractContext,
-                          command_queue: AbstractCommandQueue) -> None:
+    def test_allocate_raw(
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
+    ) -> None:
         allocator = accel.SVMAllocator(context)
         raw = allocator.allocate_raw(13 * 35 * 4)
         ary = allocator.allocate((12, 34), np.int32, (13, 35), raw=raw)
@@ -471,12 +574,12 @@ class TestIOSlot:
     """Tests for :class:`katsdpsigproc.accel.IOSlot`."""
 
     @pytest.mark.parametrize("bind", [True, False])
-    @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
+    @mock.patch("katsdpsigproc.accel.DeviceArray", spec=True)
     def test_allocate(self, DeviceArray: mock.Mock, bind: bool) -> None:
         """IOSlot.allocate must correctly allocate a buffer."""
         dims = (
             accel.Dimension(50, min_padded_size=60, alignment=8),
-            accel.Dimension(30, min_padded_size=50, alignment=4)
+            accel.Dimension(30, min_padded_size=50, alignment=4),
         )
         shape = (50, 30)
         padded_shape = (64, 52)
@@ -498,16 +601,15 @@ class TestIOSlot:
             assert slot.buffer == ary
         else:
             assert slot.buffer is None
-        DeviceArray.assert_called_once_with(
-            mock.sentinel.context, shape, dtype, padded_shape, None)
+        DeviceArray.assert_called_once_with(mock.sentinel.context, shape, dtype, padded_shape, None)
         # Check that the inner dimension had a type hint set
         assert dims[1].alignment_hint == accel.Dimension.ALIGN_BYTES
 
-    @mock.patch('katsdpsigproc.accel.HostArray', spec=True)
+    @mock.patch("katsdpsigproc.accel.HostArray", spec=True)
     def test_allocate_host(self, HostArray: mock.Mock) -> None:
         dims = (
             accel.Dimension(50, min_padded_size=60, alignment=8),
-            accel.Dimension(30, min_padded_size=50, alignment=4)
+            accel.Dimension(30, min_padded_size=50, alignment=4),
         )
         shape = (50, 30)
         padded_shape = (64, 52)
@@ -518,7 +620,7 @@ class TestIOSlot:
         assert ret is mock.sentinel.host_array
         HostArray.assert_called_with(shape, dtype, padded_shape, context=mock.sentinel.context)
 
-    @mock.patch('katsdpsigproc.accel.DeviceArray', spec=True)
+    @mock.patch("katsdpsigproc.accel.DeviceArray", spec=True)
     def test_allocate_raw(self, DeviceArray: mock.Mock) -> None:
         """Test IOSlot.allocate with a raw parameter."""
         shape = (50, 30)
@@ -538,8 +640,7 @@ class TestIOSlot:
         slot.allocate(accel.DeviceAllocator(mock.sentinel.context), raw)
         # Validation
         assert slot.buffer == ary
-        DeviceArray.assert_called_once_with(
-            mock.sentinel.context, shape, dtype, shape, raw)
+        DeviceArray.assert_called_once_with(mock.sentinel.context, shape, dtype, shape, raw)
 
     def test_validate_shape(self) -> None:
         """IOSlot.validate must check that the shape matches."""
@@ -592,7 +693,8 @@ class TestIOSlot:
     def test_required_bytes(self) -> None:
         slot = accel.IOSlot(
             (accel.Dimension(27, alignment=4), accel.Dimension(33, alignment=32)),
-            np.float32)
+            np.float32,
+        )
         assert slot.required_bytes() == 4 * 28 * 64
 
     def test_bind_none(self) -> None:
@@ -615,12 +717,12 @@ class TestCompoundIOSlot:
         self.dims1 = (
             accel.Dimension(13, min_padded_size=17, alignment=1),
             accel.Dimension(7, min_padded_size=8, alignment=8),
-            accel.Dimension(22, min_padded_size=25, alignment=4)
+            accel.Dimension(22, min_padded_size=25, alignment=4),
         )
         self.dims2 = (
             accel.Dimension(13, min_padded_size=14, alignment=4),
             accel.Dimension(7, min_padded_size=10, alignment=4),
-            accel.Dimension(22, min_padded_size=22, alignment=1)
+            accel.Dimension(22, min_padded_size=22, alignment=1),
         )
         self.slot1 = accel.IOSlot(self.dims1, np.float32)
         self.slot2 = accel.IOSlot(self.dims2, np.float32)
@@ -716,7 +818,7 @@ class TestAliasIOSlot:
         assert self.slot1.buffer is not None
         assert self.slot2.buffer is not None
 
-    @mock.patch('katsdpsigproc.accel.HostArray', spec=True)
+    @mock.patch("katsdpsigproc.accel.HostArray", spec=True)
     def test_allocate_host(self, HostArray: mock.Mock) -> None:
         HostArray.return_value = mock.sentinel.host_array
         slot = accel.AliasIOSlot([self.slot1, self.slot2])
@@ -744,18 +846,18 @@ class TestVisualizeOperation:
 
     def test(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         inner = TestVisualizeOperation.Inner(command_queue)
-        inner.slots['foo'] = accel.IOSlot((3, 4), np.float32)
-        inner.slots['bar'] = accel.IOSlot((4, 3), np.float32)
+        inner.slots["foo"] = accel.IOSlot((3, 4), np.float32)
+        inner.slots["bar"] = accel.IOSlot((4, 3), np.float32)
 
         mid = accel.OperationSequence(
-            command_queue,
-            [('inner', inner)],
-            {'inner_foo': ['inner:foo']})
+            command_queue, [("inner", inner)], {"inner_foo": ["inner:foo"]}
+        )
 
         outer = accel.OperationSequence(
             command_queue,
-            [('mid', mid)],
-            {'mid_foo': ['mid:inner_foo']},
-            {'scratch': ['mid:inner:bar']})
+            [("mid", mid)],
+            {"mid_foo": ["mid:inner_foo"]},
+            {"scratch": ["mid:inner:bar"]},
+        )
 
-        accel.visualize_operation(outer, os.path.join(self.tmpdir, 'test_visualize.gv'))
+        accel.visualize_operation(outer, os.path.join(self.tmpdir, "test_visualize.gv"))

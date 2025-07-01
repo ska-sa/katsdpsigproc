@@ -75,20 +75,20 @@ _T = TypeVar("_T")
 
 KATSDPSIGPROC_TUNE_MATCH = os.getenv("KATSDPSIGPROC_TUNE_MATCH", "exact")
 if KATSDPSIGPROC_TUNE_MATCH not in ["exact", "nearest"]:
-    _logger.debug("KATSDPSIGPROC_TUNE_MATCH environment variable not one of [ exact | nearest ]: "
-                  "setting to 'exact'.")
+    _logger.debug(
+        "KATSDPSIGPROC_TUNE_MATCH environment variable not one of [ exact | nearest ]: "
+        "setting to 'exact'."
+    )
     KATSDPSIGPROC_TUNE_MATCH = "exact"
 
 
 class _TuningFunc(Protocol):
     @property
-    def __name__(self) -> str:
-        ...
+    def __name__(self) -> str: ...
 
     def __call__(
         self, __cls: Type, __context: AbstractContext, *args: Any, **kwargs: Any
-    ) -> Mapping[str, Any]:
-        ...
+    ) -> Mapping[str, Any]: ...
 
 
 def adapt_value(value: Any) -> Any:
@@ -219,7 +219,7 @@ def _save(
     keys: Mapping[str, Any],
     values: Mapping[str, Any],
 ) -> None:
-    """ Write cached result into the table, creating it if it does not already exist."""
+    """Write cached result into the table, creating it if it does not already exist."""
     _create_table(conn, tablename, keys, values)
     # Combine all fields
     entries = dict(keys)
@@ -261,9 +261,7 @@ def autotuner_impl(
     """
     cls = args[0]
     classname = f"{cls.__module__}.{cls.__name__}.{fn.__name__}"
-    tablename = (
-        classname.replace(".", "_") + "__" + str(getattr(cls, "autotune_version", 0))
-    )
+    tablename = classname.replace(".", "_") + "__" + str(getattr(cls, "autotune_version", 0))
     keys = _db_keys(fn, args, kwargs)
 
     conn = _open_db()
@@ -337,9 +335,7 @@ def stub_autotuner(
     return test
 
 
-def make_measure(
-    queue: AbstractTuningCommandQueue, function: Callable[[], None]
-) -> _ScoreFunc:
+def make_measure(queue: AbstractTuningCommandQueue, function: Callable[[], None]) -> _ScoreFunc:
     """Generate a measurement function.
 
     The result can be returned by the function passed to :func:`autotune`. It
@@ -412,9 +408,7 @@ def autotune(
             if not batch:
                 break
             batch_keywords = [dict(zip(kwargs.keys(), opt)) for opt in batch]
-            futures = [
-                thread_pool.submit(generate, **keywords) for keywords in batch_keywords
-            ]
+            futures = [thread_pool.submit(generate, **keywords) for keywords in batch_keywords]
             concurrent.futures.wait(futures)
             for keywords, future in zip(batch_keywords, futures):
                 try:

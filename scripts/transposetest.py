@@ -3,7 +3,7 @@ from katsdpsigproc import accel, transpose
 import numpy as np
 
 dtype = np.complex64
-ctype = 'float2'
+ctype = "float2"
 # dtype = np.float32
 # ctype = 'float'
 
@@ -15,8 +15,8 @@ template = transpose.TransposeTemplate(ctx, dtype, ctype)
 queue = ctx.create_tuning_command_queue()
 proc = template.instantiate(queue, (R, C))
 proc.ensure_all_bound()
-rm = proc.buffer('src')
-cm = proc.buffer('dest')
+rm = proc.buffer("src")
+cm = proc.buffer("dest")
 proc()  # Warmup
 for i in range(4):
     queue.start_tuning()

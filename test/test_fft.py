@@ -20,6 +20,7 @@ import ctypes
 from typing import Any, Tuple
 
 import numpy as np
+
 try:
     from numpy.typing import DTypeLike
 except ImportError:
@@ -59,11 +60,11 @@ class TestCufft:
 @pytest.mark.cuda_only
 class TestFft:
     @pytest.mark.parametrize(
-        'shape, dtype, padded_shape_src, padded_shape_dest',
+        "shape, dtype, padded_shape_src, padded_shape_dest",
         [
             ((7, 16, 48), np.complex64, (7, 16, 48), (7, 18, 51)),
-            ((7, 16, 48), np.complex128, (7, 16, 48), (7, 18, 51))
-        ]
+            ((7, 16, 48), np.complex128, (7, 16, 48), (7, 18, 51)),
+        ],
     )
     def test_c2c_forward(
         self,
@@ -72,15 +73,16 @@ class TestFft:
         shape: Tuple[int, ...],
         dtype: DTypeLike,
         padded_shape_src: Tuple[int, ...],
-        padded_shape_dest: Tuple[int, ...]
+        padded_shape_dest: Tuple[int, ...],
     ):
         rs = np.random.RandomState(1)
         template = fft.FftTemplate(
-            context, 2, shape, dtype, dtype, padded_shape_src, padded_shape_dest)
+            context, 2, shape, dtype, dtype, padded_shape_src, padded_shape_dest
+        )
         fn = template.instantiate(command_queue, fft.FftMode.FORWARD)
         fn.ensure_all_bound()
-        src = fn.buffer('src')
-        dest = fn.buffer('dest')
+        src = fn.buffer("src")
+        dest = fn.buffer("dest")
         src_host = complex_normal(rs, size=src.shape).astype(dtype)
         src.set(command_queue, src_host)
         fn()
@@ -89,11 +91,11 @@ class TestFft:
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
     @pytest.mark.parametrize(
-        'shape, dtype, padded_shape_src, padded_shape_dest',
+        "shape, dtype, padded_shape_src, padded_shape_dest",
         [
             ((7, 16, 48), np.complex64, (7, 16, 48), (7, 18, 51)),
-            ((7, 16, 48), np.complex128, (7, 16, 48), (7, 18, 51))
-        ]
+            ((7, 16, 48), np.complex128, (7, 16, 48), (7, 18, 51)),
+        ],
     )
     def test_c2c_inverse(
         self,
@@ -102,31 +104,32 @@ class TestFft:
         shape: Tuple[int, ...],
         dtype: DTypeLike,
         padded_shape_src: Tuple[int, ...],
-        padded_shape_dest: Tuple[int, ...]
+        padded_shape_dest: Tuple[int, ...],
     ):
         rs = np.random.RandomState(1)
         template = fft.FftTemplate(
-            context, 2, shape, dtype, dtype, padded_shape_src, padded_shape_dest)
+            context, 2, shape, dtype, dtype, padded_shape_src, padded_shape_dest
+        )
         fn = template.instantiate(command_queue, fft.FftMode.INVERSE)
         fn.ensure_all_bound()
-        src = fn.buffer('src')
-        dest = fn.buffer('dest')
+        src = fn.buffer("src")
+        dest = fn.buffer("dest")
         src_host = complex_normal(rs, size=src.shape).astype(dtype)
         src.set(command_queue, src_host)
         fn()
-        expected = np.fft.ifftn(
-            src_host.astype(np.complex128), axes=(-2, -1)
-        ) * (src.shape[-2] * src.shape[-1])
+        expected = np.fft.ifftn(src_host.astype(np.complex128), axes=(-2, -1)) * (
+            src.shape[-2] * src.shape[-1]
+        )
         tol = np.finfo(dtype).resolution * np.max(np.abs(expected))
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
     @pytest.mark.parametrize(
-        'shape, dtype_src, dtype_dest, padded_shape_src, padded_shape_dest',
+        "shape, dtype_src, dtype_dest, padded_shape_src, padded_shape_dest",
         [
             ((3, 2, 16, 48), np.float32, np.complex64, (3, 2, 24, 64), (3, 2, 20, 27)),
             ((3, 2, 15, 47), np.float32, np.complex64, (3, 2, 23, 63), (3, 2, 17, 24)),
-            ((3, 2, 16, 48), np.float64, np.complex128, (3, 2, 24, 64), (3, 2, 20, 27))
-        ]
+            ((3, 2, 16, 48), np.float64, np.complex128, (3, 2, 24, 64), (3, 2, 20, 27)),
+        ],
     )
     def test_r2c(
         self,
@@ -136,15 +139,22 @@ class TestFft:
         dtype_src: DTypeLike,
         dtype_dest: DTypeLike,
         padded_shape_src: Tuple[int, ...],
-        padded_shape_dest: Tuple[int, ...]
+        padded_shape_dest: Tuple[int, ...],
     ) -> None:
         rs = np.random.RandomState(1)
         template = fft.FftTemplate(
-            context, 2, shape, dtype_src, dtype_dest, padded_shape_src, padded_shape_dest)
+            context,
+            2,
+            shape,
+            dtype_src,
+            dtype_dest,
+            padded_shape_src,
+            padded_shape_dest,
+        )
         fn = template.instantiate(command_queue, fft.FftMode.FORWARD)
         fn.ensure_all_bound()
-        src = fn.buffer('src')
-        dest = fn.buffer('dest')
+        src = fn.buffer("src")
+        dest = fn.buffer("dest")
         src_host = rs.standard_normal(src.shape).astype(dtype_src)
         src.set(command_queue, src_host)
         fn()
@@ -153,12 +163,12 @@ class TestFft:
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
     @pytest.mark.parametrize(
-        'shape, dtype_src, dtype_dest, padded_shape_src, padded_shape_dest',
+        "shape, dtype_src, dtype_dest, padded_shape_src, padded_shape_dest",
         [
             ((3, 2, 16, 48), np.complex64, np.float32, (3, 2, 20, 27), (3, 2, 24, 64)),
             ((3, 2, 15, 47), np.complex64, np.float32, (3, 2, 17, 24), (3, 2, 23, 63)),
-            ((3, 2, 15, 47), np.complex128, np.float64, (3, 2, 17, 24), (3, 2, 23, 63))
-        ]
+            ((3, 2, 15, 47), np.complex128, np.float64, (3, 2, 17, 24), (3, 2, 23, 63)),
+        ],
     )
     def test_c2r(
         self,
@@ -168,15 +178,22 @@ class TestFft:
         dtype_src: DTypeLike,
         dtype_dest: DTypeLike,
         padded_shape_src: Tuple[int, ...],
-        padded_shape_dest: Tuple[int, ...]
+        padded_shape_dest: Tuple[int, ...],
     ) -> None:
         rs = np.random.RandomState(1)
         template = fft.FftTemplate(
-            context, 2, shape, dtype_src, dtype_dest, padded_shape_src, padded_shape_dest)
+            context,
+            2,
+            shape,
+            dtype_src,
+            dtype_dest,
+            padded_shape_src,
+            padded_shape_dest,
+        )
         fn = template.instantiate(command_queue, fft.FftMode.INVERSE)
         fn.ensure_all_bound()
-        src = fn.buffer('src')
-        dest = fn.buffer('dest')
+        src = fn.buffer("src")
+        dest = fn.buffer("dest")
         signal = rs.standard_normal(shape).astype(np.float32) + 3
         src.set(
             command_queue,
@@ -188,43 +205,51 @@ class TestFft:
         np.testing.assert_allclose(expected, dest.get(command_queue), atol=tol)
 
     def test_wrong_direction(
-        self,
-        context: AbstractContext,
-        command_queue: AbstractCommandQueue
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
     ) -> None:
-        template = fft.FftTemplate(context, 1, (16,), np.float32, np.complex64, (16,), (9,),)
-        with pytest.raises(ValueError, match='R2C transform must use FftMode.FORWARD'):
+        template = fft.FftTemplate(
+            context,
+            1,
+            (16,),
+            np.float32,
+            np.complex64,
+            (16,),
+            (9,),
+        )
+        with pytest.raises(ValueError, match="R2C transform must use FftMode.FORWARD"):
             template.instantiate(command_queue, fft.FftMode.INVERSE)
-        template = fft.FftTemplate(context, 1, (16,), np.complex64, np.float32, (9,), (16,),)
-        with pytest.raises(ValueError, match='C2R transform must use FftMode.INVERSE'):
+        template = fft.FftTemplate(
+            context,
+            1,
+            (16,),
+            np.complex64,
+            np.float32,
+            (9,),
+            (16,),
+        )
+        with pytest.raises(ValueError, match="C2R transform must use FftMode.INVERSE"):
             template.instantiate(command_queue, fft.FftMode.FORWARD)
 
     def test_bad_dtype_combination(
-        self,
-        context: AbstractContext,
-        command_queue: AbstractCommandQueue
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
     ) -> None:
-        with pytest.raises(ValueError, match='Invalid combination of dtypes'):
+        with pytest.raises(ValueError, match="Invalid combination of dtypes"):
             fft.FftTemplate(context, 1, (16,), np.float32, np.complex128, (16,), (16,))
-        with pytest.raises(ValueError, match='Invalid combination of dtypes'):
+        with pytest.raises(ValueError, match="Invalid combination of dtypes"):
             fft.FftTemplate(context, 1, (16,), np.int32, np.int32, (16,), (16,))
 
     def test_length_mismatch(
-        self,
-        context: AbstractContext,
-        command_queue: AbstractCommandQueue
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
     ) -> None:
-        with pytest.raises(ValueError, match='padded_shape_src and shape'):
+        with pytest.raises(ValueError, match="padded_shape_src and shape"):
             fft.FftTemplate(context, 1, (16, 16), np.float32, np.complex64, (16,), (16, 16))
-        with pytest.raises(ValueError, match='padded_shape_dest and shape'):
+        with pytest.raises(ValueError, match="padded_shape_dest and shape"):
             fft.FftTemplate(context, 1, (16, 16), np.float32, np.complex64, (16, 16), (16,))
 
     def test_bad_padding(
-        self,
-        context: AbstractContext,
-        command_queue: AbstractCommandQueue
+        self, context: AbstractContext, command_queue: AbstractCommandQueue
     ) -> None:
-        with pytest.raises(ValueError, match='Source must not be padded'):
+        with pytest.raises(ValueError, match="Source must not be padded"):
             fft.FftTemplate(context, 1, (16, 16), np.complex64, np.complex64, (17, 16), (16, 16))
-        with pytest.raises(ValueError, match='Destination must not be padded'):
+        with pytest.raises(ValueError, match="Destination must not be padded"):
             fft.FftTemplate(context, 1, (16, 16), np.complex64, np.complex64, (16, 16), (17, 16))
