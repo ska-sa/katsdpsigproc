@@ -1852,9 +1852,7 @@ def _slot_label(slot: IOSlotBase, name: str, hide_detail: bool) -> str:
             shape = "scalar"
         padded_shape = "×".join(str(x) for x in slot.required_padded_shape())
         dtype = str(np.dtype(slot.dtype))
-        return "<b>{name}</b><br/>{shape}<br/>{padded_shape}<br/>{dtype}".format(
-            name=name, shape=shape, padded_shape=padded_shape, dtype=dtype
-        )
+        return f"<b>{name}</b><br/>{shape}<br/>{padded_shape}<br/>{dtype}"
 
 
 def _visualize_operation(
@@ -1917,15 +1915,11 @@ def _visualize_operation(
         label = io.StringIO()
         label.write(
             '<<table border="1" cellborder="0" rows="*" columns="*">'
-            '<tr><td colspan="{n_slots}">{name}</td></tr><tr>'.format(
-                name=path[-1], n_slots=len(operation.slots)
-            )
+            f'<tr><td colspan="{len(operation.slots)}">{path[-1]}</td></tr><tr>'
         )
         for slot_name, slot in operation.slots.items():
             label.write(
-                '<td port="{name}"><font point-size="9"><i>{name}</i></font></td>'.format(
-                    name=slot_name
-                )
+                f'<td port="{slot_name}"><font point-size="9"><i>{slot_name}</i></font></td>'
             )
             slot_map[slot] = node_name + ":" + slot_name.replace(":", "+")
         label.write("</tr></table>>")

@@ -32,9 +32,7 @@ def _prepare_device_test() -> Tuple[AbstractContext, AbstractCommandQueue]:
             _test_context = accel.create_some_context(False)
             _test_command_queue = _test_context.create_command_queue()
             print(
-                "Testing on {} ({})".format(
-                    _test_context.device.name, _test_context.device.platform_name
-                ),
+                f"Testing on {_test_context.device.name} ({_test_context.device.platform_name})",
                 file=sys.stderr,
             )
         except RuntimeError:
