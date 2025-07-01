@@ -106,7 +106,7 @@ class _Cufft:
         CUFFT_INVERSE = 1
 
     class CufftError(Exception):
-        """Error raised from cuFFT"""
+        """Error raised from cuFFT."""
 
         def __init__(self, error_code: int):
             self.error_code = error_code
