@@ -1,8 +1,0 @@
-[flake8]
-exclude = doc/conf.py doc/user/examples/*.py
-max-line-length = 100
-ignore =
-    # whitespace before ':' - flake8 gets it wrong for : as binary operator
-    E203,
-    # line break before binary operator - it's what PEP8 recommends
-    W503
