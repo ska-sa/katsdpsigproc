@@ -881,7 +881,7 @@ def _get_baseline_flags(
     )
 
 
-def _get_flags_mp(in_data, in_flags, flagger):  # noqa: D401
+def _get_flags_mp(in_data, in_flags, flagger):
     """Callback function for ProcessPoolExecutor.
 
     It allocates its own storage for the output.

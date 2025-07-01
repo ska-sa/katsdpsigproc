@@ -76,7 +76,7 @@ else:
 from .abc import (
     AbstractContext,
     AbstractDevice,
-    AbstractCommandQueue,  # noqa: F401
+    AbstractCommandQueue,
     AbstractTuningCommandQueue,
     AbstractProgram,
 )
@@ -432,11 +432,10 @@ class HostArray(np.ndarray):
 
     @overload
     @classmethod
-    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:  # noqa: F811
-        ...
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]: ...
 
     @classmethod
-    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:  # noqa: F811
+    def padded_view(cls, obj: np.ndarray) -> Optional[np.ndarray]:
         """Retrieve the view of the full memory without padding.
 
         Returns `None` if `cls.safe(obj)` is `False`.

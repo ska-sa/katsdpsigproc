@@ -18,7 +18,7 @@
 
 import warnings
 
-from ..resource import *  # noqa: F401, F403
+from ..resource import *  # noqa: F403
 
 
 warnings.warn(
