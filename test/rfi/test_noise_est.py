@@ -31,15 +31,11 @@ _expected: np.ndarray
 
 
 @pytest.fixture(autouse=True)
-def setup():   # type: () -> None
+def setup() -> None:
     global _deviations, _deviations_big, _expected
     _deviations = np.array(
-        [
-            [0.0, 3.0, 2.4],
-            [1.5, -1.4, 4.6],
-            [0.0, 1.1, 3.3],
-            [5.0, 0.0, -3.1]
-        ]).astype(np.float32)
+        [[0.0, 3.0, 2.4], [1.5, -1.4, 4.6], [0.0, 1.1, 3.3], [5.0, 0.0, -3.1]]
+    ).astype(np.float32)
     _expected = np.array([3.25, 1.4, 3.2]) * 1.4826
     shape = (117, 273)
 
@@ -71,7 +67,7 @@ class BaseTestNoiseEstDeviceClass(ABC):
 
     @abstractmethod
     def factory(self, context: AbstractContext) -> device.AbstractNoiseEstDeviceTemplate:
-        pass       # pragma: nocover
+        pass  # pragma: nocover
 
 
 class TestNoiseEstMADDevice(BaseTestNoiseEstDeviceClass):

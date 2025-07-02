@@ -31,7 +31,7 @@ _spikes: np.ndarray
 
 
 @pytest.fixture(autouse=True)
-def setup():   # type: () -> None
+def setup() -> None:
     global _deviations, _spikes
     shape = (117, 273)
     # Use a fixed seed to make the test repeatable
@@ -76,7 +76,7 @@ class BaseTestDeviceClass(ABC):
 
     @abstractmethod
     def factory(self, context: AbstractContext) -> device.AbstractThresholdDeviceTemplate:
-        pass        # pragma: nocover
+        pass  # pragma: nocover
 
 
 class TestThresholdSimpleDevice(BaseTestDeviceClass):

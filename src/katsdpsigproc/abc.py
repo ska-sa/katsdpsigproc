@@ -21,29 +21,30 @@ from typing import List, Tuple, Sequence, Optional, Any, Type, TypeVar, Generic
 from types import TracebackType
 
 import numpy as np
+
 try:
     from numpy.typing import DTypeLike
 except ImportError:
-    DTypeLike = Any     # type: ignore
+    DTypeLike = Any  # type: ignore
 
 
-_B = TypeVar('_B')     # buffer type
-_RB = TypeVar('_RB')   # raw buffer type
-_RS = TypeVar('_RS')   # raw buffer for SVM
-_C = TypeVar('_C', bound='AbstractContext')
-_D = TypeVar('_D', bound='AbstractDevice')
-_E = TypeVar('_E', bound='AbstractEvent')
-_K = TypeVar('_K', bound='AbstractKernel')
-_P = TypeVar('_P', bound='AbstractProgram')
-_Q = TypeVar('_Q', bound='AbstractCommandQueue')
-_TQ = TypeVar('_TQ', bound='AbstractTuningCommandQueue')
+_B = TypeVar("_B")  # buffer type
+_RB = TypeVar("_RB")  # raw buffer type
+_RS = TypeVar("_RS")  # raw buffer for SVM
+_C = TypeVar("_C", bound="AbstractContext")
+_D = TypeVar("_D", bound="AbstractDevice")
+_E = TypeVar("_E", bound="AbstractEvent")
+_K = TypeVar("_K", bound="AbstractKernel")
+_P = TypeVar("_P", bound="AbstractProgram")
+_Q = TypeVar("_Q", bound="AbstractCommandQueue")
+_TQ = TypeVar("_TQ", bound="AbstractTuningCommandQueue")
 
 
 class AbstractProgram(ABC, Generic[_K]):
     """Abstraction of a program object."""
 
     @abstractmethod
-    def get_kernel(self, name: str) -> 'AbstractKernel':
+    def get_kernel(self, name: str) -> "AbstractKernel":
         """Create a new kernel.
 
         Parameters
@@ -98,7 +99,7 @@ class AbstractDevice(ABC, Generic[_C]):
     """Abstraction of a device."""
 
     @abstractmethod
-    def make_context(self) -> 'AbstractContext':
+    def make_context(self) -> "AbstractContext":
         """Create a new context associated with this device."""
 
     @property
@@ -211,12 +212,13 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
         """Allocate raw storage that can be passed to :meth:`allocate_svm`."""
 
     @abstractmethod
-    def allocate_svm(self, shape: Tuple[int, ...], dtype: DTypeLike,
-                     raw: Optional[_RS] = None) -> np.ndarray:
+    def allocate_svm(
+        self, shape: Tuple[int, ...], dtype: DTypeLike, raw: Optional[_RS] = None
+    ) -> np.ndarray:
         """Allocate shared virtual memory."""
 
     @abstractmethod
-    def create_command_queue(self, profile: bool = False) -> 'AbstractCommandQueue':
+    def create_command_queue(self, profile: bool = False) -> "AbstractCommandQueue":
         """Create a new command queue associated with this context.
 
         Parameters
@@ -226,7 +228,7 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
         """
 
     @abstractmethod
-    def create_tuning_command_queue(self) -> 'AbstractTuningCommandQueue':
+    def create_tuning_command_queue(self) -> "AbstractTuningCommandQueue":
         """Create a new command queue for doing autotuning."""
 
     @abstractmethod
@@ -234,17 +236,19 @@ class AbstractContext(ABC, Generic[_B, _RB, _RS, _D, _P, _Q, _TQ]):
         pass
 
     @abstractmethod
-    def __exit__(self,
-                 exc_type: Optional[Type[BaseException]],
-                 exc_val: Optional[BaseException],
-                 exc_tb: Optional[TracebackType]) -> None:
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         pass
 
 
 class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
     """Abstraction of a command queue."""
 
-    context = None     # type: _C
+    context: _C
 
     @abstractmethod
     def enqueue_read_buffer(self, buffer: _B, data: Any, blocking: bool = True) -> None:
@@ -285,8 +289,15 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
 
     @abstractmethod
     def enqueue_copy_buffer_rect(
-            self, src_buffer: _B, dest_buffer: _B, src_origin: int, dest_origin: int,
-            shape: Sequence[int], src_strides: Sequence[int], dest_strides: Sequence[int]) -> None:
+        self,
+        src_buffer: _B,
+        dest_buffer: _B,
+        src_origin: int,
+        dest_origin: int,
+        shape: Sequence[int],
+        src_strides: Sequence[int],
+        dest_strides: Sequence[int],
+    ) -> None:
         """Copy a subregion of one buffer to another.
 
         This is a low-level interface that ignores the shape, strides etc of
@@ -312,10 +323,16 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
 
     @abstractmethod
     def enqueue_read_buffer_rect(
-            self, buffer: _B, data: Any,
-            buffer_origin: int, data_origin: int, shape: Sequence[int],
-            buffer_strides: Sequence[int], data_strides: Sequence[int],
-            blocking: bool = True) -> None:
+        self,
+        buffer: _B,
+        data: Any,
+        buffer_origin: int,
+        data_origin: int,
+        shape: Sequence[int],
+        buffer_strides: Sequence[int],
+        data_strides: Sequence[int],
+        blocking: bool = True,
+    ) -> None:
         """Copy a region of a buffer to host memory.
 
         This is a low-level interface that ignores the shape, strides etc of
@@ -345,10 +362,16 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
 
     @abstractmethod
     def enqueue_write_buffer_rect(
-            self, buffer: _B, data: Any,
-            buffer_origin: int, data_origin: int, shape: Sequence[int],
-            buffer_strides: Sequence[int], data_strides: Sequence[int],
-            blocking: bool = True) -> None:
+        self,
+        buffer: _B,
+        data: Any,
+        buffer_origin: int,
+        data_origin: int,
+        shape: Sequence[int],
+        buffer_strides: Sequence[int],
+        data_strides: Sequence[int],
+        blocking: bool = True,
+    ) -> None:
         """Copy a region of host memory to a buffer.
 
         This is a low-level interface that ignores the shape, strides etc of
@@ -381,8 +404,13 @@ class AbstractCommandQueue(ABC, Generic[_B, _C, _E, _K]):
         """Fill a buffer with zero bytes."""
 
     @abstractmethod
-    def enqueue_kernel(self, kernel: _K, args: Sequence[Any],
-                       global_size: Tuple[int, ...], local_size: Tuple[int, ...]) -> None:
+    def enqueue_kernel(
+        self,
+        kernel: _K,
+        args: Sequence[Any],
+        global_size: Tuple[int, ...],
+        local_size: Tuple[int, ...],
+    ) -> None:
         """Enqueue a kernel to the command queue.
 
         .. warning:: It is not thread-safe to call this function in two threads

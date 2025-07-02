@@ -25,20 +25,22 @@ from types import TracebackType
 from .abc import AbstractEvent
 
 
-_T = TypeVar('_T')
+_T = TypeVar("_T")
 _logger = logging.getLogger(__name__)
 
 
-async def wait_until(future: Awaitable[_T], when: float,
-                     loop: Optional[asyncio.AbstractEventLoop] = None) -> _T:
+async def wait_until(
+    future: Awaitable[_T], when: float, loop: Optional[asyncio.AbstractEventLoop] = None
+) -> _T:
     """Like :func:`asyncio.wait_for`, but with an absolute timeout."""
+
     def ready(*args) -> None:
         if not waiter.done():
             waiter.set_result(None)
 
     if loop is None:
         loop = asyncio.get_event_loop()
-    waiter = asyncio.Future(loop=loop)    # type: asyncio.Future[None]
+    waiter: asyncio.Future[None] = asyncio.Future(loop=loop)
     timeout_handle = loop.call_at(when, ready)
     # Ensure that the future is really a future, not a coroutine object
     future = asyncio.ensure_future(future, loop=loop)
@@ -55,9 +57,11 @@ async def wait_until(future: Awaitable[_T], when: float,
         timeout_handle.cancel()
 
 
-async def async_wait_for_events(events: Iterable[AbstractEvent],
-                                loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+async def async_wait_for_events(
+    events: Iterable[AbstractEvent], loop: Optional[asyncio.AbstractEventLoop] = None
+) -> None:
     """Coroutine that waits for a list of device events."""
+
     def wait_for_events(events: List[AbstractEvent]) -> None:
         for event in events:
             event.wait()
@@ -99,16 +103,19 @@ class ResourceAllocation(Generic[_T]):
     resource cleanly.
     """
 
-    def __init__(self,
-                 start: 'asyncio.Future[List[AbstractEvent]]',
-                 end: 'asyncio.Future[List[AbstractEvent]]',
-                 value: _T, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(
+        self,
+        start: "asyncio.Future[List[AbstractEvent]]",
+        end: "asyncio.Future[List[AbstractEvent]]",
+        value: _T,
+        loop: asyncio.AbstractEventLoop,
+    ) -> None:
         self._start = start
         self._end = end
         self._loop = loop
         self.value = value
 
-    def wait(self) -> 'asyncio.Future[List[AbstractEvent]]':
+    def wait(self) -> "asyncio.Future[List[AbstractEvent]]":
         """Return a future that will be set to a list of device events to waited for."""
         return self._start
 
@@ -138,9 +145,12 @@ class ResourceAllocation(Generic[_T]):
     def __enter__(self) -> _T:
         return self.value
 
-    def __exit__(self, exc_type: Optional[Type[BaseException]],
-                 exc_value: Optional[BaseException],
-                 exc_tb: Optional[TracebackType]) -> None:
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         if not self._end.done():
             if exc_value is not None:
                 self._end.set_exception(exc_value)
@@ -150,7 +160,7 @@ class ResourceAllocation(Generic[_T]):
                 # the application to consume it a second time.
                 self._end.exception()
             else:
-                _logger.warning('Resource allocation was not explicitly made ready')
+                _logger.warning("Resource allocation was not explicitly made ready")
                 self.ready()
 
 
@@ -181,7 +191,7 @@ class Resource(Generic[_T]):
         if loop is None:
             loop = asyncio.get_event_loop()
         self._loop = loop
-        self._future = asyncio.Future(loop=loop)  # type: asyncio.Future[List[AbstractEvent]]
+        self._future: asyncio.Future[List[AbstractEvent]] = asyncio.Future(loop=loop)
         self._future.set_result([])
         self.value = value
 
@@ -203,7 +213,7 @@ class JobQueue:
     """Maintain a list of in-flight asynchronous jobs."""
 
     def __init__(self) -> None:
-        self._jobs = collections.deque()   # type: Deque[asyncio.Future]
+        self._jobs: Deque[asyncio.Future] = collections.deque()
 
     def add(self, job: Awaitable) -> None:
         """Append a job to the list.
@@ -215,7 +225,7 @@ class JobQueue:
     def clean(self) -> None:
         """Remove completed jobs from the front of the queue."""
         while self._jobs and self._jobs[0].done():
-            self._jobs.popleft().result()     # Re-throws any exception
+            self._jobs.popleft().result()  # Re-throws any exception
 
     async def finish(self, max_remaining: int = 0) -> None:
         """Wait for jobs to finish until there are at most `max_remaining` in the queue.
@@ -235,4 +245,10 @@ class JobQueue:
         return item in self._jobs
 
 
-__all__ = ['wait_until', 'async_wait_for_events', 'Resource', 'ResourceAllocation', 'JobQueue']
+__all__ = [
+    "wait_until",
+    "async_wait_for_events",
+    "Resource",
+    "ResourceAllocation",
+    "JobQueue",
+]

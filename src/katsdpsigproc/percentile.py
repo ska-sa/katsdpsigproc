@@ -27,7 +27,9 @@ from . import tune
 from .abc import AbstractContext, AbstractCommandQueue
 
 
-_TuningDict = TypedDict('_TuningDict', {'size': int, 'wgsy': int})
+class _TuningDict(TypedDict):
+    size: int
+    wgsy: int
 
 
 class Percentile5Template:
@@ -56,28 +58,38 @@ class Percentile5Template:
 
     autotune_version = 8
 
-    def __init__(self, context: AbstractContext, max_columns: int,
-                 is_amplitude: bool = True, tuning: Optional[_TuningDict] = None) -> None:
+    def __init__(
+        self,
+        context: AbstractContext,
+        max_columns: int,
+        is_amplitude: bool = True,
+        tuning: Optional[_TuningDict] = None,
+    ) -> None:
         self.context = context
         self.max_columns = max_columns
         self.is_amplitude = is_amplitude
 
         if tuning is None:
             tuning = self.autotune(context, max_columns, is_amplitude)
-        self.size = tuning['size']
-        self.wgsy = tuning['wgsy']
-        self.vt = accel.divup(max_columns, tuning['size'])
-        self.program = accel.build(context, "percentile.mako", {
-            'size': self.size,
-            'wgsy': self.wgsy,
-            'vt': self.vt,
-            'is_amplitude': self.is_amplitude
-        })
+        self.size = tuning["size"]
+        self.wgsy = tuning["wgsy"]
+        self.vt = accel.divup(max_columns, tuning["size"])
+        self.program = accel.build(
+            context,
+            "percentile.mako",
+            {
+                "size": self.size,
+                "wgsy": self.wgsy,
+                "vt": self.vt,
+                "is_amplitude": self.is_amplitude,
+            },
+        )
 
     @classmethod
-    @tune.autotuner(test={'size': 64, 'wgsy': 4})
-    def autotune(cls, context: AbstractContext, max_columns: int,
-                 is_amplitude: bool) -> _TuningDict:
+    @tune.autotuner(test={"size": 64, "wgsy": 4})
+    def autotune(
+        cls, context: AbstractContext, max_columns: int, is_amplitude: bool
+    ) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         in_shape = (4096, max_columns)
         rs = np.random.RandomState(seed=1)
@@ -89,24 +101,33 @@ class Percentile5Template:
 
         def generate(size: int, wgsy: int) -> Callable[[int], float]:
             if size * wgsy < 32 or size * wgsy > 1024:
-                raise RuntimeError('work group size is unnecessarily large or small, skipping')
+                raise RuntimeError("work group size is unnecessarily large or small, skipping")
             if max_columns > size * 256:
-                raise RuntimeError('too many columns')
-            fn = cls(context, max_columns, is_amplitude, {
-                'size': size, 'wgsy': wgsy}).instantiate(queue, in_shape)
-            inp = fn.slots['src'].allocate(fn.allocator)
-            fn.slots['dest'].allocate(fn.allocator)
+                raise RuntimeError("too many columns")
+            fn = cls(context, max_columns, is_amplitude, {"size": size, "wgsy": wgsy}).instantiate(
+                queue, in_shape
+            )
+            inp = fn.slots["src"].allocate(fn.allocator)
+            fn.slots["dest"].allocate(fn.allocator)
             inp.set(queue, host_data)
             return tune.make_measure(queue, fn)
 
-        return cast(_TuningDict, tune.autotune(generate,
-                                               size=[8, 16, 32, 64, 128, 256, 512, 1024],
-                                               wgsy=[1, 2, 4, 8, 16, 32]))
+        return cast(
+            _TuningDict,
+            tune.autotune(
+                generate,
+                size=[8, 16, 32, 64, 128, 256, 512, 1024],
+                wgsy=[1, 2, 4, 8, 16, 32],
+            ),
+        )
 
-    def instantiate(self, command_queue: AbstractCommandQueue,
-                    shape: Tuple[int, int],
-                    column_range: Optional[Tuple[int, int]] = None,
-                    allocator: Optional[accel.AbstractAllocator] = None) -> 'Percentile5':
+    def instantiate(
+        self,
+        command_queue: AbstractCommandQueue,
+        shape: Tuple[int, int],
+        column_range: Optional[Tuple[int, int]] = None,
+        allocator: Optional[accel.AbstractAllocator] = None,
+    ) -> "Percentile5":
         return Percentile5(self, command_queue, shape, column_range, allocator)
 
 
@@ -143,18 +164,23 @@ class Percentile5(accel.Operation):
         Allocator used to allocate unbound slots
     """
 
-    def __init__(self, template: Percentile5Template, command_queue: AbstractCommandQueue,
-                 shape: Tuple[int, int], column_range: Optional[Tuple[int, int]],
-                 allocator: Optional[accel.AbstractAllocator] = None) -> None:
+    def __init__(
+        self,
+        template: Percentile5Template,
+        command_queue: AbstractCommandQueue,
+        shape: Tuple[int, int],
+        column_range: Optional[Tuple[int, int]],
+        allocator: Optional[accel.AbstractAllocator] = None,
+    ) -> None:
         super().__init__(command_queue, allocator)
         if column_range is None:
             column_range = (0, shape[1])
         if column_range[1] <= column_range[0]:
-            raise ValueError('column range is empty')
+            raise ValueError("column range is empty")
         if column_range[0] < 0 or column_range[1] > shape[1]:
-            raise IndexError('column range is out of range')
+            raise IndexError("column range is out of range")
         if column_range[1] - column_range[0] > template.max_columns:
-            raise ValueError('columns exceeds max_columns')
+            raise ValueError("columns exceeds max_columns")
         self.template = template
         self.kernel = template.program.get_kernel("percentile5_float")
         self.shape = shape
@@ -162,29 +188,31 @@ class Percentile5(accel.Operation):
         src_type = np.float32 if self.template.is_amplitude else np.complex64
         row_dim = accel.Dimension(shape[0], self.template.wgsy)
         col_dim = accel.Dimension(shape[1])
-        self.slots['src'] = accel.IOSlot((row_dim, col_dim), src_type)
-        self.slots['dest'] = accel.IOSlot((5, row_dim), np.float32)
+        self.slots["src"] = accel.IOSlot((row_dim, col_dim), src_type)
+        self.slots["dest"] = accel.IOSlot((5, row_dim), np.float32)
 
     def _run(self) -> None:
-        src = self.buffer('src')
-        dest = self.buffer('dest')
+        src = self.buffer("src")
+        dest = self.buffer("dest")
         rows_padded = accel.roundup(src.shape[0], self.template.wgsy)
         self.command_queue.enqueue_kernel(
             self.kernel,
             [
-                src.buffer, dest.buffer,
+                src.buffer,
+                dest.buffer,
                 np.int32(src.padded_shape[1]),
                 np.int32(dest.padded_shape[1]),
                 np.int32(self.column_range[0]),
-                np.int32(self.column_range[1] - self.column_range[0])
+                np.int32(self.column_range[1] - self.column_range[0]),
             ],
             global_size=(self.template.size, rows_padded),
-            local_size=(self.template.size, self.template.wgsy))
+            local_size=(self.template.size, self.template.wgsy),
+        )
 
     def parameters(self) -> Mapping[str, Any]:
         return {
-            'max_columns': self.template.max_columns,
-            'is_amplitude': self.template.is_amplitude,
-            'shape': self.slots['src'].shape,      # type: ignore
-            'column_range': self.column_range
+            "max_columns": self.template.max_columns,
+            "is_amplitude": self.template.is_amplitude,
+            "shape": self.slots["src"].shape,  # type: ignore
+            "column_range": self.column_range,
         }

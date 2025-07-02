@@ -1,2 +1,31 @@
 [build-system]
 requires = ["setuptools", "wheel", "katversion", "setuptools_scm"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+# Note: "D" (pydocstyle) is disabled for now until the docstrings can
+# be cleaned up to pass.
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "UP",      # pyupgrade
+    "RUF100",  # Unnecessary noqa directives
+]
+extend-ignore = [
+    "D101",
+    "D102",
+    "D103",
+    "D105",
+    "D106",
+    "D107",
+    "D203",
+    "D213",
+    "D413",
+    "D415",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"

@@ -27,7 +27,8 @@ from . import tune
 from .abc import AbstractContext, AbstractCommandQueue
 
 
-_TuningDict = TypedDict('_TuningDict', {'size': int})
+class _TuningDict(TypedDict):
+    size: int
 
 
 class MaskedSumTemplate:
@@ -51,20 +52,25 @@ class MaskedSumTemplate:
 
     autotune_version = 1
 
-    def __init__(self, context: AbstractContext, use_amplitudes: bool = False,
-                 tuning: Optional[_TuningDict] = None) -> None:
+    def __init__(
+        self,
+        context: AbstractContext,
+        use_amplitudes: bool = False,
+        tuning: Optional[_TuningDict] = None,
+    ) -> None:
         self.context = context
         self.use_amplitudes = use_amplitudes
         if tuning is None:
             tuning = self.autotune(context, use_amplitudes)
-        self.size = tuning['size']
-        self.program = accel.build(context, "maskedsum.mako", {
-            'size': self.size,
-            'use_amplitudes': use_amplitudes
-        })
+        self.size = tuning["size"]
+        self.program = accel.build(
+            context,
+            "maskedsum.mako",
+            {"size": self.size, "use_amplitudes": use_amplitudes},
+        )
 
     @classmethod
-    @tune.autotuner(test={'size': 256})
+    @tune.autotuner(test={"size": 256})
     def autotune(cls, context: AbstractContext, use_amplitudes: bool) -> _TuningDict:
         queue = context.create_tuning_command_queue()
         columns = 5000
@@ -75,19 +81,22 @@ class MaskedSumTemplate:
         host_mask = np.ones((in_shape[0],)).astype(np.float32)
 
         def generate(size: int) -> Callable[[int], float]:
-            fn = cls(context, use_amplitudes, {
-                'size': size}).instantiate(queue, in_shape)
-            inp = fn.slots['src'].allocate(fn.allocator)
-            msk = fn.slots['mask'].allocate(fn.allocator)
-            fn.slots['dest'].allocate(fn.allocator)
+            fn = cls(context, use_amplitudes, {"size": size}).instantiate(queue, in_shape)
+            inp = fn.slots["src"].allocate(fn.allocator)
+            msk = fn.slots["mask"].allocate(fn.allocator)
+            fn.slots["dest"].allocate(fn.allocator)
             inp.set(queue, host_data)
             msk.set(queue, host_mask)
             return tune.make_measure(queue, fn)
 
         return cast(_TuningDict, tune.autotune(generate, size=[32, 64, 128, 256, 512, 1024]))
 
-    def instantiate(self, command_queue: AbstractCommandQueue, shape: Tuple[int, int],
-                    allocator: Optional[accel.AbstractAllocator] = None) -> 'MaskedSum':
+    def instantiate(
+        self,
+        command_queue: AbstractCommandQueue,
+        shape: Tuple[int, int],
+        allocator: Optional[accel.AbstractAllocator] = None,
+    ) -> "MaskedSum":
         return MaskedSum(self, command_queue, shape, allocator)
 
 
@@ -110,36 +119,45 @@ class MaskedSum(accel.Operation):
         Shape is (number of columns of input)
     """
 
-    def __init__(self, template: MaskedSumTemplate, command_queue: AbstractCommandQueue,
-                 shape: Tuple[int, int],
-                 allocator: Optional[accel.AbstractAllocator] = None) -> None:
+    def __init__(
+        self,
+        template: MaskedSumTemplate,
+        command_queue: AbstractCommandQueue,
+        shape: Tuple[int, int],
+        allocator: Optional[accel.AbstractAllocator] = None,
+    ) -> None:
         super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("maskedsum_float")
         self.shape = shape
-        self.slots['src'] = accel.IOSlot(
-            (shape[0], accel.Dimension(shape[1], template.size)),
-            np.complex64)
-        self.slots['mask'] = accel.IOSlot((shape[0],), np.float32)
-        self.slots['dest'] = accel.IOSlot(
+        self.slots["src"] = accel.IOSlot(
+            (shape[0], accel.Dimension(shape[1], template.size)), np.complex64
+        )
+        self.slots["mask"] = accel.IOSlot((shape[0],), np.float32)
+        self.slots["dest"] = accel.IOSlot(
             (accel.Dimension(shape[1], template.size),),
-            np.float32 if template.use_amplitudes else np.complex64)
+            np.float32 if template.use_amplitudes else np.complex64,
+        )
 
     def _run(self) -> None:
-        src = self.buffer('src')
-        mask = self.buffer('mask')
-        dest = self.buffer('dest')
+        src = self.buffer("src")
+        mask = self.buffer("mask")
+        dest = self.buffer("dest")
         self.command_queue.enqueue_kernel(
             self.kernel,
             [
-                src.buffer, mask.buffer, dest.buffer,
-                np.int32(src.padded_shape[1]), np.int32(src.shape[0])
+                src.buffer,
+                mask.buffer,
+                dest.buffer,
+                np.int32(src.padded_shape[1]),
+                np.int32(src.shape[0]),
             ],
             global_size=(accel.roundup(src.shape[1], self.template.size),),
-            local_size=(self.template.size, ))
+            local_size=(self.template.size,),
+        )
 
     def parameters(self) -> Mapping[str, Any]:
         return {
-            'shape': self.slots['src'].shape,       # type: ignore
-            'use_amplitudes': self.template.use_amplitudes
+            "shape": self.slots["src"].shape,  # type: ignore
+            "use_amplitudes": self.template.use_amplitudes,
         }

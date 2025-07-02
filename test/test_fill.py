@@ -35,13 +35,13 @@ class TestFill:
 
     def test_fill(self, context: AbstractContext, command_queue: AbstractCommandQueue) -> None:
         shape = (75, 63)
-        template = fill.FillTemplate(context, np.uint32, 'unsigned int')
+        template = fill.FillTemplate(context, np.uint32, "unsigned int")
         fn = template.instantiate(command_queue, shape)
-        data_slot = cast(accel.IOSlot, fn.slots['data'])
+        data_slot = cast(accel.IOSlot, fn.slots["data"])
         self.pad_dimension(data_slot.dimensions[0], 5)
         self.pad_dimension(data_slot.dimensions[1], 10)
         fn.ensure_all_bound()
-        data = fn.buffer('data')
+        data = fn.buffer("data")
         # Do the fill
         fn.set_value(0xDEADBEEF)
         fn()
@@ -54,4 +54,4 @@ class TestFill:
     @pytest.mark.force_autotune
     def test_autotune(self, context: AbstractContext) -> None:
         """Test that autotuner runs successfully."""
-        fill.FillTemplate(context, np.uint8, 'unsigned char')
+        fill.FillTemplate(context, np.uint8, "unsigned char")

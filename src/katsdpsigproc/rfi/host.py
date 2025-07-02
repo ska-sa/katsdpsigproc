@@ -28,7 +28,7 @@ from . import MAD_NORMAL
 class AbstractBackgroundHost(ABC):
     @abstractmethod
     def __init__(self, width: int, amplitudes: bool = False) -> None:
-        pass    # pragma: nocover
+        pass  # pragma: nocover
 
     @abstractmethod
     def __call__(self, vis: np.ndarray, flags: Optional[np.ndarray] = None) -> np.ndarray:
@@ -70,7 +70,7 @@ class AbstractNoiseEstHost(ABC):
 class AbstractThresholdHost(ABC):
     @abstractmethod
     def __init__(self, n_sigma: float) -> None:
-        pass        # pragma: nocover
+        pass  # pragma: nocover
 
     @abstractmethod
     def __call__(self, deviations: np.ndarray, noise: np.ndarray) -> np.ndarray:
@@ -203,10 +203,15 @@ class ThresholdSumHost(AbstractThresholdHost):
         Number stored in returned value to indicate RFI
     """
 
-    def __init__(self, n_sigma: float, n_windows: int = 4,
-                 threshold_falloff: float = 1.2, flag_value: int = 1) -> None:
+    def __init__(
+        self,
+        n_sigma: float,
+        n_windows: int = 4,
+        threshold_falloff: float = 1.2,
+        flag_value: int = 1,
+    ) -> None:
         self.n_sigma = n_sigma
-        self.windows = [2 ** i for i in range(n_windows)]
+        self.windows = [2**i for i in range(n_windows)]
         self.threshold_scales = [pow(threshold_falloff, -i) for i in range(n_windows)]
         self.flag_value = flag_value
 
@@ -232,7 +237,7 @@ class ThresholdSumHost(AbstractThresholdHost):
             deviations[flags] = threshold
             # Compute sums
             weight = np.ones(window)
-            sums = np.convolve(deviations, weight, mode='valid')
+            sums = np.convolve(deviations, weight, mode="valid")
             # Identify outlier sums
             sum_flags = sums > threshold * window
             # Distribute flags
@@ -252,8 +257,12 @@ class ThresholdSumHost(AbstractThresholdHost):
 class FlaggerHost(AbstractFlaggerHost):
     """Combine host background and thresholding implementations to make a flagger."""
 
-    def __init__(self, background: AbstractBackgroundHost, noise_est: AbstractNoiseEstHost,
-                 threshold: AbstractThresholdHost):
+    def __init__(
+        self,
+        background: AbstractBackgroundHost,
+        noise_est: AbstractNoiseEstHost,
+        threshold: AbstractThresholdHost,
+    ):
         self.background = background
         self.noise_est = noise_est
         self.threshold = threshold

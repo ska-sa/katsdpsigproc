@@ -39,7 +39,7 @@ def test_autotune_basic() -> None:
     best = tune.autotune(generate, time_limit=0.001, a=[1, 2], b=[7, 3])
     # Autotuning is parallel, so we can't assert anything about the order
     assert sorted(received) == [(1, 3), (1, 7), (2, 3), (2, 7)]
-    assert best == {'a': 1, 'b': 3}
+    assert best == {"a": 1, "b": 3}
 
 
 def test_autotune_empty() -> None:
@@ -54,27 +54,29 @@ class CustomError(RuntimeError):
 def test_autotune_some_raise() -> None:
     def generate(x):
         if x == 1:
-            raise CustomError('x = 1')
+            raise CustomError("x = 1")
 
         def measure(iters):
             if x == 3:
-                raise CustomError('x = 3')
+                raise CustomError("x = 3")
             return -x
+
         return measure
+
     best = tune.autotune(generate, x=[0, 1, 2, 3])
-    assert best == {'x': 2}
+    assert best == {"x": 2}
 
 
 def generate_raise(x: Any) -> NoReturn:
-    raise CustomError(f'x = {x}')
+    raise CustomError(f"x = {x}")
 
 
 def test_autotune_all_raise() -> None:
-    with pytest.raises(CustomError, match=r'^x = 3$') as exc_info:
+    with pytest.raises(CustomError, match=r"^x = 3$") as exc_info:
         tune.autotune(generate_raise, x=[1, 2, 3])
     # Check that the traceback refers to the original site, not
     # where it was re-raised
-    assert exc_info.traceback[-1].name == 'generate_raise'
+    assert exc_info.traceback[-1].name == "generate_raise"
 
 
 class TestAutotuner:
@@ -89,7 +91,7 @@ class TestAutotuner:
 
     @pytest.fixture
     def conn(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(':memory:')
+        conn = sqlite3.connect(":memory:")
         yield conn
         conn.close()
 
@@ -104,101 +106,109 @@ class TestAutotuner:
         self.autotune_mock.reset()
 
     @classmethod
-    @tune.autotuner(test={'a': 3, 'b': -1})
+    @tune.autotuner(test={"a": 3, "b": -1})
     def autotune(cls, context: AbstractContext, param: str) -> Mapping[str, Any]:
         return cls.autotune_mock(context, param)
 
     @classmethod
-    @tune.autotuner(test={'a': 3, 'b': -1})
+    @tune.autotuner(test={"a": 3, "b": -1})
     def autotune_no_args(cls, context: AbstractContext) -> Any:
         return cls.autotune_mock(context)
 
-    @mock.patch('katsdpsigproc.tune._close_db')
-    @mock.patch('katsdpsigproc.tune._open_db')
-    @mock.patch('katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH', 'exact')
-    def test_autotune_match(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
-                            conn: sqlite3.Connection) -> None:
+    @mock.patch("katsdpsigproc.tune._close_db")
+    @mock.patch("katsdpsigproc.tune._open_db")
+    @mock.patch("katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH", "exact")
+    def test_autotune_match(
+        self,
+        open_db_mock: mock.Mock,
+        close_db_mock: mock.Mock,
+        conn: sqlite3.Connection,
+    ) -> None:
         """Test behaviour of both autotune matching options ('exact' and 'nearest')."""
         open_db_mock.return_value = conn
         context = mock.NonCallableMock()
 
         # Check that autotuning is only performed once for a particular
         # context+arg_parameters set
-        tuning_1 = {'a': 1, 'b': 2}
+        tuning_1 = {"a": 1, "b": 2}
         self.autotune_mock.return_value = tuning_1
-        context.device.driver_version = 'mock version'
-        context.device.platform_name = 'mock platform'
-        context.device.name = 'mock device'
-        ret = self.autotune(context, 'xyz')
-        ret_2 = self.autotune(context, 'xyz')
-        self.autotune_mock.assert_called_once_with(context, 'xyz')
+        context.device.driver_version = "mock version"
+        context.device.platform_name = "mock platform"
+        context.device.name = "mock device"
+        ret = self.autotune(context, "xyz")
+        ret_2 = self.autotune(context, "xyz")
+        self.autotune_mock.assert_called_once_with(context, "xyz")
         assert ret == ret_2 == tuning_1
 
         # Check that using a different context+arg_parameters set causes tuning to be
         # re-run. This also populates the database with another set
-        tuning_2 = {'a': 3, 'b': 4}
+        tuning_2 = {"a": 3, "b": 4}
         self.autotune_mock.return_value = tuning_2
-        context.device.driver_version = 'another version'
-        context.device.platform_name = 'another platform'
-        context.device.name = 'another device'
-        ret = self.autotune(context, 'xyz')
+        context.device.driver_version = "another version"
+        context.device.platform_name = "another platform"
+        context.device.name = "another device"
+        ret = self.autotune(context, "xyz")
         assert ret == tuning_2
 
         # Now test incremental fallback on device  [ driver version | platform | name ]
         # when KATSDPSIGPROC_TUNE_MATCH is set to 'nearest'
-        with mock.patch('katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH', 'nearest'):
+        with mock.patch("katsdpsigproc.tune.KATSDPSIGPROC_TUNE_MATCH", "nearest"):
             # autotuning re-runs if arg_parameters are different
-            tuning_4 = {'a': 7, 'b': 8}
+            tuning_4 = {"a": 7, "b": 8}
             self.autotune_mock.return_value = tuning_4
-            context.device.driver_version = 'mock version'
-            context.device.platform_name = 'mock platform'
-            context.device.name = 'mock device'
-            ret = self.autotune(context, 'zzz')
+            context.device.driver_version = "mock version"
+            context.device.platform_name = "mock platform"
+            context.device.name = "mock device"
+            ret = self.autotune(context, "zzz")
             assert ret == tuning_4
 
             # Re-run with different configurations making sure the cached values are returned if
             # they exist in any configuration, and that autotuning does not run.
             self.autotune_mock.side_effect = RuntimeError
 
-            context.device.driver_version = 'abc'
-            context.device.platform_name = 'mock platform'
-            context.device.name = 'mock device'
-            ret = self.autotune(context, 'xyz')
+            context.device.driver_version = "abc"
+            context.device.platform_name = "mock platform"
+            context.device.name = "mock device"
+            ret = self.autotune(context, "xyz")
             assert ret == tuning_1
 
-            context.device.driver_version = 'abc'
-            context.device.platform_name = 'abc'
-            context.device.name = 'another device'
-            ret = self.autotune(context, 'xyz')
+            context.device.driver_version = "abc"
+            context.device.platform_name = "abc"
+            context.device.name = "another device"
+            ret = self.autotune(context, "xyz")
             assert ret == tuning_2
 
-            context.device.driver_version = 'mock version'
-            context.device.platform_name = 'mock platform'
-            context.device.name = 'mock device'
-            ret = self.autotune(context, 'xyz')
+            context.device.driver_version = "mock version"
+            context.device.platform_name = "mock platform"
+            context.device.name = "mock device"
+            ret = self.autotune(context, "xyz")
             assert ret == tuning_1
 
             # If there is no match in the database, any tuning (for that parameter set) will
             # suffice
-            context.device.driver_version = 'x'
-            context.device.platform_name = 'y'
-            context.device.name = 'z'
-            ret = self.autotune(context, 'xyz')
+            context.device.driver_version = "x"
+            context.device.platform_name = "y"
+            context.device.name = "z"
+            ret = self.autotune(context, "xyz")
             assert ret == tuning_1 or ret == tuning_2
 
-    @mock.patch('katsdpsigproc.tune._close_db')
-    @mock.patch('katsdpsigproc.tune._open_db')
-    def test_autotune_empty_arg(self, open_db_mock: mock.Mock, close_db_mock: mock.Mock,
-                                conn: sqlite3.Connection) -> None:
+    @mock.patch("katsdpsigproc.tune._close_db")
+    @mock.patch("katsdpsigproc.tune._open_db")
+    def test_autotune_empty_arg(
+        self,
+        open_db_mock: mock.Mock,
+        close_db_mock: mock.Mock,
+        conn: sqlite3.Connection,
+    ) -> None:
         """Test behaviour of empty parameter sets."""
         open_db_mock.return_value = conn
         context = mock.NonCallableMock()
 
-        tuning = {'a': 1, 'b': 2}
+        tuning = {"a": 1, "b": 2}
         self.autotune_mock.return_value = tuning
-        context.device.driver_version = 'mock version'
-        context.device.platform_name = 'mock platform'
-        context.device.name = 'mock device'
+        context.device.driver_version = "mock version"
+        context.device.platform_name = "mock platform"
+        context.device.name = "mock device"
 
         ret = self.autotune_no_args(context)
         assert ret == tuning

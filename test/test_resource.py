@@ -31,7 +31,7 @@ from katsdpsigproc.abc import AbstractEvent
 class TestWaitUntil:
     async def test_result(self) -> None:
         """wait_until returns before the timeout if a result is set."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
         loop.call_later(0.1, future.set_result, 42)
         result = await resource.wait_until(future, loop.time() + 1000000)
@@ -39,7 +39,7 @@ class TestWaitUntil:
 
     async def test_already_set(self) -> None:
         """wait_until returns if a future has a result set before the call."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         future.set_result(42)
         loop = asyncio.get_event_loop()
         result = await resource.wait_until(future, loop.time() + 1000000)
@@ -47,15 +47,15 @@ class TestWaitUntil:
 
     async def test_exception(self) -> None:
         """wait_until rethrows an exception set on the future."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
-        loop.call_later(0.1, future.set_exception, ValueError('test'))
+        loop.call_later(0.1, future.set_exception, ValueError("test"))
         with pytest.raises(ValueError):
             await resource.wait_until(future, loop.time() + 1000000)
 
     async def test_timeout(self) -> None:
         """wait_until throws `asyncio.TimeoutError` if it times out, and cancels the future."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
         with pytest.raises(asyncio.TimeoutError):
             await resource.wait_until(future, loop.time() + 0.01)
@@ -63,7 +63,7 @@ class TestWaitUntil:
 
     async def test_shield(self) -> None:
         """wait_until does not cancel the future if it is wrapped in shield."""
-        future = asyncio.Future()     # type: asyncio.Future[int]
+        future: asyncio.Future[int] = asyncio.Future()
         loop = asyncio.get_event_loop()
         with pytest.raises(asyncio.TimeoutError):
             await resource.wait_until(asyncio.shield(future), loop.time() + 0.01)
@@ -87,19 +87,18 @@ class DummyEvent(AbstractEvent):
             self.completed.put(self)
             self.complete = True
 
-    def time_since(self, prior_event: 'DummyEvent') -> float:
+    def time_since(self, prior_event: "DummyEvent") -> float:
         return 0.0
 
-    def time_till(self, next_event: 'DummyEvent') -> float:
+    def time_till(self, next_event: "DummyEvent") -> float:
         return 0.0
 
 
 class TestResource:
     def setup_method(self) -> None:
-        self.completed = queue.Queue()      # type: queue.Queue[resource.ResourceAllocation[int]]
+        self.completed: queue.Queue[resource.ResourceAllocation[int]] = queue.Queue()
 
-    async def _run_frame(self, acq: resource.ResourceAllocation[int],
-                         event: AbstractEvent) -> None:
+    async def _run_frame(self, acq: resource.ResourceAllocation[int], event: AbstractEvent) -> None:
         with acq as value:
             assert value == 42
             await acq.wait_events()
@@ -134,7 +133,7 @@ class TestResource:
         with pytest.raises(RuntimeError):
             with a0:
                 await a0.wait_events()
-                raise RuntimeError('test exception')
+                raise RuntimeError("test exception")
         with pytest.raises(RuntimeError):
             with a1:
                 await a1.wait_events()
@@ -143,26 +142,26 @@ class TestResource:
     async def test_context_manager_no_ready(self, caplog) -> None:
         """Test using :class:`resource.ResourceAllocation` as a context \
         manager when the user does not call :meth:`.ResourceAllocation.ready`."""
-        with caplog.at_level(logging.WARNING, logger='katsdpsigproc.resource'):
+        with caplog.at_level(logging.WARNING, logger="katsdpsigproc.resource"):
             r = resource.Resource(None)
             a0 = r.acquire()
             with a0:
                 pass
-        assert caplog.record_tuples == [(
-            'katsdpsigproc.resource',
-            logging.WARNING,
-            'Resource allocation was not explicitly made ready'
-        )]
+        assert caplog.record_tuples == [
+            (
+                "katsdpsigproc.resource",
+                logging.WARNING,
+                "Resource allocation was not explicitly made ready",
+            )
+        ]
 
 
 class TestJobQueue:
     @pytest.fixture(autouse=True)
     def setup(self, event_loop) -> None:
         self.jobs = resource.JobQueue()
-        self.finished = [event_loop.create_future()
-                         for i in range(5)]      # type: List[asyncio.Future[int]]
-        self.unfinished = [event_loop.create_future()
-                           for i in range(5)]    # type: List[asyncio.Future[int]]
+        self.finished: List[asyncio.Future[int]] = [event_loop.create_future() for i in range(5)]
+        self.unfinished: List[asyncio.Future[int]] = [event_loop.create_future() for i in range(5)]
         for i, future in enumerate(self.finished):
             future.set_result(i)
 

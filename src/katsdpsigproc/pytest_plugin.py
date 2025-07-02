@@ -36,8 +36,9 @@ def patch_autotune(request, monkeypatch) -> None:
 
 
 @pytest.fixture
-def context(device: abc.AbstractDevice,
-            patch_autotune) -> Generator[abc.AbstractContext, None, None]:
+def context(
+    device: abc.AbstractDevice, patch_autotune
+) -> Generator[abc.AbstractContext, None, None]:
     # Make the context current (for CUDA contexts). Ideally the test
     # should not depend on this, but PyCUDA leaks memory if objects
     # are deleted without the context current.
@@ -56,7 +57,7 @@ def pytest_addoption(parser):
         "--devices",
         choices=["first-per-api", "all", "none"],
         default="first-per-api",
-        help="Select which devices to use for testing"
+        help="Select which devices to use for testing",
     )
 
 
@@ -65,7 +66,8 @@ def pytest_configure(config) -> None:
     config.addinivalue_line("markers", "cuda_only: run test only on CUDA devices")
     config.addinivalue_line("markers", "opencl_only: run test only on OpenCL devices")
     config.addinivalue_line(
-        "markers", "device_filter(filter): run test only on devices matching 'filter'")
+        "markers", "device_filter(filter): run test only on devices matching 'filter'"
+    )
 
 
 def pytest_generate_tests(metafunc) -> None:
@@ -76,9 +78,10 @@ def pytest_generate_tests(metafunc) -> None:
                 "device",
                 [
                     pytest.param(
-                        None, marks=pytest.mark.skip(reason="--devices=none passed on command line")
+                        None,
+                        marks=pytest.mark.skip(reason="--devices=none passed on command line"),
                     )
-                ]
+                ],
             )
             return
 
@@ -94,7 +97,8 @@ def pytest_generate_tests(metafunc) -> None:
             devices = [
                 device
                 for device in devices
-                if device.is_cuda and device.compute_capability >= min_cc]  # type: ignore
+                if device.is_cuda and device.compute_capability >= min_cc  # type: ignore
+            ]
         if metafunc.definition.get_closest_marker("opencl_only") is not None:
             devices = [device for device in devices if not device.is_cuda]
         for marker in metafunc.definition.iter_markers("device_filter"):
@@ -118,9 +122,10 @@ def pytest_generate_tests(metafunc) -> None:
                 "device",
                 [
                     pytest.param(
-                        None, marks=pytest.mark.xfail(reason="No matching device found", run=False)
+                        None,
+                        marks=pytest.mark.xfail(reason="No matching device found", run=False),
                     )
-                ]
+                ],
             )
         else:
             metafunc.parametrize("device", devices, ids=ids)

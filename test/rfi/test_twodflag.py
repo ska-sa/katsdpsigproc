@@ -59,8 +59,9 @@ class TestAverageFreq:
 
     def test_one(self):
         """_average_freq with 1 channel must have no effect on unflagged data."""
-        avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
-                                                     twodflag._as_min_dtype(1))
+        avg_data, avg_flags = twodflag._average_freq(
+            self.small_data, self.small_flags, twodflag._as_min_dtype(1)
+        )
         expected = self.small_data.copy()
         expected[self.small_flags] = 0
         assert avg_data.dtype == np.float32
@@ -70,32 +71,40 @@ class TestAverageFreq:
 
     def test_divides(self):
         """Test _average_freq when averaging factor divides in exactly."""
-        expected_data = np.array([
+        expected_data = np.array(
             [
-                [0.5, 2.5, 5.0],
-                [6.5, 8.5, 11.0],
-                [13.0, 14.5, 0.0],
-                [0.0, 0.0, 0.0],
-                [24.5, 26.5, 29.0]
+                [
+                    [0.5, 2.5, 5.0],
+                    [6.5, 8.5, 11.0],
+                    [13.0, 14.5, 0.0],
+                    [0.0, 0.0, 0.0],
+                    [24.5, 26.5, 29.0],
+                ],
+                [
+                    [0.5, 2.5, 4.5],
+                    [6.5, 8.5, 10.5],
+                    [13.0, 14.5, 16.0],
+                    [18.5, 20.5, 22.5],
+                    [24.5, 26.5, 28.5],
+                ],
             ],
+            np.float32,
+        )
+        expected_flags = np.array(
             [
-                [0.5, 2.5, 4.5],
-                [6.5, 8.5, 10.5],
-                [13.0, 14.5, 16.0],
-                [18.5, 20.5, 22.5],
-                [24.5, 26.5, 28.5]
-            ]], np.float32)
-        expected_flags = np.array([
-            [
-                [False, False, False],
-                [False, False, False],
-                [False, False, True],
-                [True, True, True],
-                [False, False, False]
-            ],
-            [[False, False, False]] * 5])
-        avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
-                                                     twodflag._as_min_dtype(2))
+                [
+                    [False, False, False],
+                    [False, False, False],
+                    [False, False, True],
+                    [True, True, True],
+                    [False, False, False],
+                ],
+                [[False, False, False]] * 5,
+            ]
+        )
+        avg_data, avg_flags = twodflag._average_freq(
+            self.small_data, self.small_flags, twodflag._as_min_dtype(2)
+        )
         assert avg_data.dtype == np.float32
         assert avg_flags.dtype == np.bool_
         np.testing.assert_array_equal(expected_data, avg_data)
@@ -103,31 +112,35 @@ class TestAverageFreq:
 
     def test_uneven(self):
         """Test _average_freq when averaging factor does not divide number of channels."""
-        expected_data = np.array([
+        expected_data = np.array(
             [
-                [1.5, 5.0],
-                [7.5, 11.0],
-                [14.0, 0.0],
-                [0.0, 0.0],
-                [25.5, 29.0],
+                [
+                    [1.5, 5.0],
+                    [7.5, 11.0],
+                    [14.0, 0.0],
+                    [0.0, 0.0],
+                    [25.5, 29.0],
+                ],
+                [[1.5, 4.5], [7.5, 10.5], [14.0, 16.0], [19.5, 22.5], [25.5, 28.5]],
             ],
+            np.float32,
+        )
+        expected_flags = np.array(
             [
-                [1.5, 4.5],
-                [7.5, 10.5],
-                [14.0, 16.0],
-                [19.5, 22.5],
-                [25.5, 28.5]
-            ]], np.float32)
-        expected_flags = np.array([
-            [
-                [False, False],
-                [False, False],
-                [False, True],
-                [True, True],
-                [False, False]
-            ], [[False, False]] * 5], np.bool_)
-        avg_data, avg_flags = twodflag._average_freq(self.small_data, self.small_flags,
-                                                     twodflag._as_min_dtype(4))
+                [
+                    [False, False],
+                    [False, False],
+                    [False, True],
+                    [True, True],
+                    [False, False],
+                ],
+                [[False, False]] * 5,
+            ],
+            np.bool_,
+        )
+        avg_data, avg_flags = twodflag._average_freq(
+            self.small_data, self.small_flags, twodflag._as_min_dtype(4)
+        )
         assert avg_data.dtype == np.float32
         assert avg_flags.dtype == np.bool_
         np.testing.assert_array_equal(expected_data, avg_data)
@@ -136,18 +149,19 @@ class TestAverageFreq:
 
 def test_time_median():
     """Test for :func:`katsdpsigproc.rfi.twodflag._time_median`."""
-    data = np.array([
-        [2.0, 1.0, 2.0, 5.0],
-        [3.0, 1.0, 8.0, 6.0],
-        [4.0, 1.0, 4.0, 7.0],
-        [5.0, 1.0, 5.0, 6.5],
-        [1.5, 1.0, 1.5, 5.5]], np.float32)
-    flags = np.array([
-        [0, 1, 0, 1],
-        [0, 1, 1, 0],
-        [0, 1, 0, 1],
-        [0, 1, 0, 1],
-        [0, 1, 0, 1]], np.bool_)
+    data = np.array(
+        [
+            [2.0, 1.0, 2.0, 5.0],
+            [3.0, 1.0, 8.0, 6.0],
+            [4.0, 1.0, 4.0, 7.0],
+            [5.0, 1.0, 5.0, 6.5],
+            [1.5, 1.0, 1.5, 5.5],
+        ],
+        np.float32,
+    )
+    flags = np.array(
+        [[0, 1, 0, 1], [0, 1, 1, 0], [0, 1, 0, 1], [0, 1, 0, 1], [0, 1, 0, 1]], np.bool_
+    )
     out_data, out_flags = twodflag._time_median(data, flags)
     expected_data = np.array([[3.0, 0.0, 3.0, 6.0]], np.float32)
     expected_flags = np.array([[0, 1, 0, 0]], np.bool_)
@@ -229,8 +243,7 @@ class TestBoxGaussianFilter:
         a = np.array([50.0, 10.0, 60.0, -70.0, 30.0, 20.0, -15.0], np.float32)
         b = np.empty_like(a)
         twodflag._box_gaussian_filter1d(a, 2, b, 1)
-        np.testing.assert_equal(
-            np.array([24.0, 10.0, 16.0, 10.0, 5.0, -7.0, 7.0], np.float32), b)
+        np.testing.assert_equal(np.array([24.0, 10.0, 16.0, 10.0, 5.0, -7.0, 7.0], np.float32), b)
 
     def test_width(self):
         """Impulse response must have approximately correct standard deviation, \
@@ -259,7 +272,7 @@ class TestBoxGaussianFilter:
         shape = (77, 53)
         sigma = np.array([8, 2.3])
         data = rs.uniform(size=shape).astype(np.float32)
-        expected = gaussian_filter(data, sigma, mode='constant')
+        expected = gaussian_filter(data, sigma, mode="constant")
         actual = np.zeros_like(data)
         twodflag._box_gaussian_filter(data, sigma, actual)
         np.testing.assert_allclose(expected, actual, rtol=1e-1)
@@ -299,9 +312,9 @@ class TestMaskedGaussianFilter:
         weight = 1.0 - self.flags
         data = self.data * weight
         for i, (s, t) in enumerate(zip(sigma, truncate)):
-            weight = gaussian_filter1d(weight, s, axis=i, mode='constant', truncate=t)
-            data = gaussian_filter1d(data, s, axis=i, mode='constant', truncate=t)
-        with np.errstate(invalid='ignore'):
+            weight = gaussian_filter1d(weight, s, axis=i, mode="constant", truncate=t)
+            data = gaussian_filter1d(data, s, axis=i, mode="constant", truncate=t)
+        with np.errstate(invalid="ignore"):
             data /= weight
         return data
 
@@ -342,15 +355,23 @@ class TestGetBackground2D:
         self.data = np.ones(self.shape, np.float32) * 7.5
         self.flags = np.zeros(self.shape, np.uint8)
 
-    def _get_background2d(self, data, flags=None, iterations=1, spike_width=(10.0, 10.0),
-                          reject_threshold=2.0, freq_chunks=None):
+    def _get_background2d(
+        self,
+        data,
+        flags=None,
+        iterations=1,
+        spike_width=(10.0, 10.0),
+        reject_threshold=2.0,
+        freq_chunks=None,
+    ):
         if flags is None:
             flags = np.zeros(data.shape, np.uint8)
         if freq_chunks is None:
             freq_chunks = np.array([0, data.shape[1]])
         spike_width = np.array(spike_width, np.float32)
-        return twodflag._get_background2d(data, flags, iterations, spike_width, reject_threshold,
-                                          freq_chunks)
+        return twodflag._get_background2d(
+            data, flags, iterations, spike_width, reject_threshold, freq_chunks
+        )
 
     def test_no_flags(self):
         background = self._get_background2d(self.data)
@@ -390,8 +411,9 @@ class TestGetBackground2D:
 
         # The rejection threshold is adjusted, because the default doesn't do
         # well when only about half the data is noisy.
-        background = self._get_background2d(self.data, self.flags, spike_width=(2.5, 2.5),
-                                            reject_threshold=5.0)
+        background = self._get_background2d(
+            self.data, self.flags, spike_width=(2.5, 2.5), reject_threshold=5.0
+        )
         expected = np.zeros_like(self.data)
         expected[:, :37] = 7.5
         expected[:, 63:] = 3.0
@@ -426,8 +448,14 @@ class TestSumThreshold:
 
     def test_sum_threshold_all_flagged(self):
         self.small_flags[:] = True
-        out_flags = twodflag._sum_threshold(self.small_data, self.small_flags, 0,
-                                            np.array([1, 2, 4]), self.outlier_nsigma, self.rho)
+        out_flags = twodflag._sum_threshold(
+            self.small_data,
+            self.small_flags,
+            0,
+            np.array([1, 2, 4]),
+            self.outlier_nsigma,
+            self.rho,
+        )
         np.testing.assert_array_equal(np.zeros_like(self.small_flags), out_flags)
 
     def _test_sum_threshold_basic(self, axis):
@@ -450,8 +478,9 @@ class TestSumThreshold:
             rfi = rfi.T.copy()
             data = data.T.copy()
             in_flags = in_flags.T.copy()
-        out_flags = twodflag._sum_threshold(data, in_flags, axis,
-                                            self.windows, self.outlier_nsigma, self.rho)
+        out_flags = twodflag._sum_threshold(
+            data, in_flags, axis, self.windows, self.outlier_nsigma, self.rho
+        )
         if axis == 0:
             out_flags = out_flags.T
         # Due to random data, won't get perfect agreement, but should get close
@@ -501,7 +530,7 @@ class TestSumThresholdFlagger:
         y[:, 0, :] = 0.1
         y[:, -1, :] = 0.1
         y[:] += rs.uniform(0.0, 0.1, y.shape)
-        f = scipy.interpolate.interp1d(x, y, axis=1, kind='cubic', assume_sorted=True)
+        f = scipy.interpolate.interp1d(x, y, axis=1, kind="cubic", assume_sorted=True)
         return f(np.arange(nfreq))
 
     def _make_data(self, flagger, rs, shape=(234, 345, 1)):
@@ -590,7 +619,7 @@ class TestSumThresholdFlagger:
 
     # TODO: fix up the overflagging of the background in the flagger,
     # which currently causes this to fail.
-    @pytest.mark.skip(reason='Backgrounder overflags edges of the slope')
+    @pytest.mark.skip(reason="Backgrounder overflags edges of the slope")
     def test_get_flags_iterations(self):
         flagger = twodflag.SumThresholdFlagger(background_iterations=3)
         self._test_get_flags(flagger)
@@ -619,8 +648,8 @@ class TestSumThresholdFlagger:
         noise = rs.standard_normal(shape)
         noise *= np.arange(shape[1])[np.newaxis, :, np.newaxis] / shape[1]
         noise = noise.astype(np.float32)
-        noise[100, 17] = 1.0    # About 20 sigma - must be detected
-        noise[200, 170] = 1.0   # About 2 sigma -  must not be detected
+        noise[100, 17] = 1.0  # About 20 sigma - must be detected
+        noise[200, 170] = 1.0  # About 2 sigma -  must not be detected
         data = np.abs(background + noise)
         in_flags = np.zeros(shape, np.bool_)
         out_flags = self.flagger.get_flags(data, in_flags)

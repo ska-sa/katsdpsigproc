@@ -19,10 +19,11 @@
 from typing import Tuple, Mapping, Callable, Optional, Any
 
 import numpy as np
+
 try:
     from numpy.typing import DTypeLike
 except ImportError:
-    DTypeLike = Any     # type: ignore
+    DTypeLike = Any  # type: ignore
 
 from . import accel
 from . import tune
@@ -52,35 +53,41 @@ class FillTemplate:
         - wgs: number of workitems per workgroup
     """
 
-    def __init__(self, context: AbstractContext, dtype: DTypeLike, ctype: str,
-                 tuning: Optional[Mapping[str, Any]] = None) -> None:
+    def __init__(
+        self,
+        context: AbstractContext,
+        dtype: DTypeLike,
+        ctype: str,
+        tuning: Optional[Mapping[str, Any]] = None,
+    ) -> None:
         self.context = context
         self.dtype: np.dtype = np.dtype(dtype)
         self.ctype = ctype
         if tuning is None:
             tuning = self.autotune(context, dtype, ctype)
-        self.wgs = tuning['wgs']
-        self.program = accel.build(context, "fill.mako", {
-            'wgs': self.wgs,
-            'ctype': ctype
-        })
+        self.wgs = tuning["wgs"]
+        self.program = accel.build(context, "fill.mako", {"wgs": self.wgs, "ctype": ctype})
 
     @classmethod
-    @tune.autotuner(test={'wgs': 128})
+    @tune.autotuner(test={"wgs": 128})
     def autotune(cls, context: AbstractContext, dtype: DTypeLike, ctype: str) -> Mapping[str, Any]:
         queue = context.create_tuning_command_queue()
         shape = (1048576,)
         data = accel.DeviceArray(context, shape, dtype=dtype)
 
         def generate(wgs: int) -> Callable[[int], float]:
-            fn = cls(context, dtype, ctype, {'wgs': wgs}).instantiate(queue, shape)
+            fn = cls(context, dtype, ctype, {"wgs": wgs}).instantiate(queue, shape)
             fn.bind(data=data)
             return tune.make_measure(queue, fn)
 
         return tune.autotune(generate, wgs=[64, 128, 256, 512])
 
-    def instantiate(self, command_queue: AbstractCommandQueue, shape: Tuple[int, ...],
-                    allocator: Optional[accel.AbstractAllocator] = None) -> 'Fill':
+    def instantiate(
+        self,
+        command_queue: AbstractCommandQueue,
+        shape: Tuple[int, ...],
+        allocator: Optional[accel.AbstractAllocator] = None,
+    ) -> "Fill":
         return Fill(self, command_queue, shape, allocator)
 
 
@@ -104,21 +111,25 @@ class Fill(accel.Operation):
         Allocator used to allocate unbound slots
     """
 
-    def __init__(self, template: FillTemplate, command_queue: AbstractCommandQueue,
-                 shape: Tuple[int, ...],
-                 allocator: Optional[accel.AbstractAllocator] = None) -> None:
+    def __init__(
+        self,
+        template: FillTemplate,
+        command_queue: AbstractCommandQueue,
+        shape: Tuple[int, ...],
+        allocator: Optional[accel.AbstractAllocator] = None,
+    ) -> None:
         super().__init__(command_queue, allocator)
         self.template = template
         self.kernel = template.program.get_kernel("fill")
         self.shape = shape
-        self.slots['data'] = accel.IOSlot(shape, self.template.dtype)
+        self.slots["data"] = accel.IOSlot(shape, self.template.dtype)
         self.value = self.template.dtype.type()
 
     def set_value(self, value: Any) -> None:
         self.value = self.template.dtype.type(value)
 
     def _run(self) -> None:
-        data = self.buffer('data')
+        data = self.buffer("data")
 
         elements = int(np.prod(data.padded_shape))
         global_size = accel.roundup(elements, self.template.wgs)
@@ -126,12 +137,13 @@ class Fill(accel.Operation):
             self.kernel,
             [data.buffer, np.uint32(elements), self.value],
             global_size=(global_size,),
-            local_size=(self.template.wgs,))
+            local_size=(self.template.wgs,),
+        )
 
     def parameters(self) -> Mapping[str, Any]:
         return {
-            'dtype': self.template.dtype,
-            'ctype': self.template.ctype,
-            'shape': self.slots['data'].shape,     # type: ignore
-            'value': self.value
+            "dtype": self.template.dtype,
+            "ctype": self.template.ctype,
+            "shape": self.slots["data"].shape,  # type: ignore
+            "value": self.value,
         }
