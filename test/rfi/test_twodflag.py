@@ -21,7 +21,7 @@ import concurrent.futures
 import numpy as np
 import pytest
 import scipy.interpolate
-from scipy.ndimage import gaussian_filter1d, gaussian_filter
+from scipy.ndimage import gaussian_filter, gaussian_filter1d
 
 from katsdpsigproc.rfi import twodflag
 

@@ -27,9 +27,10 @@ except ImportError:
     DTypeLike = Any  # type: ignore
 import pytest
 
-from . import complex_normal
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
 from katsdpsigproc import fft
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext
+
+from . import complex_normal
 
 
 class TestCufft:

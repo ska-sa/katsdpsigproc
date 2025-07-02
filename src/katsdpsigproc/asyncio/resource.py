@@ -20,7 +20,6 @@ import warnings
 
 from ..resource import *  # noqa: F403
 
-
 warnings.warn(
     "katsdpsigproc.asyncio.resource is deprecated. Use katsdpsigproc.resource instead",
     DeprecationWarning,

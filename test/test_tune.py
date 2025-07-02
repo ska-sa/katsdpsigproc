@@ -16,12 +16,12 @@
 
 """Tests for :mod:`katsdpsigproc.tune`."""
 
+import sqlite3
 import threading
-from unittest import mock
 from typing import Any, Generator, Mapping, NoReturn
+from unittest import mock
 
 import pytest
-import sqlite3
 
 from katsdpsigproc import tune
 from katsdpsigproc.abc import AbstractContext

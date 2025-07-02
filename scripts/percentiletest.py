@@ -17,7 +17,9 @@
 ################################################################################
 
 import time
+
 import numpy as np
+
 from katsdpsigproc import accel
 from katsdpsigproc import percentile as perc5
 

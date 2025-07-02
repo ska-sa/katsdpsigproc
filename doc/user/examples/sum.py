@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 
-from katsdpsigproc.accel import Operation, IOSlot, create_some_context, build
+from katsdpsigproc.accel import IOSlot, Operation, build, create_some_context
 
 
 class SumTemplate:

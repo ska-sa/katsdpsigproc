@@ -1,5 +1,6 @@
 import numpy as np
-from katsdpsigproc.accel import Operation, IOSlot, Dimension, build, roundup
+
+from katsdpsigproc.accel import Dimension, IOSlot, Operation, build, roundup
 
 pytest_plugins = ["katsdpsigproc.pytest_plugin"]
 

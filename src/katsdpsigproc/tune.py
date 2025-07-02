@@ -39,15 +39,16 @@ corresponding to each autotuning method. The table has the following columns:
 The database is stored in the user cache directory.
 """
 
-import itertools
-import inspect
-import os
-import os.path
+import concurrent.futures
 import enum
-import time
+import inspect
+import itertools
 import logging
 import multiprocessing
-import concurrent.futures
+import os
+import os.path
+import sqlite3
+import time
 from typing import (
     Any,
     Callable,
@@ -61,13 +62,11 @@ from typing import (
 )
 
 import appdirs
-import sqlite3
 import numpy as np
 from decorator import decorator
 from typing_extensions import Protocol
 
 from .abc import AbstractContext, AbstractTuningCommandQueue
-
 
 _logger = logging.getLogger(__name__)
 _ScoreFunc = Callable[[int], float]

@@ -19,12 +19,12 @@
 It implements the abstract interfaces defined by :mod:`katsdpsigproc.abc`.
 """
 
-from typing import List, Tuple, Sequence, Optional, Callable, Type, TypeVar, Union, Any
 from types import TracebackType
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Type, TypeVar, Union
 
+import numpy as np
 import pyopencl
 import pyopencl.array
-import numpy as np
 
 try:
     from numpy.typing import DTypeLike
@@ -32,15 +32,14 @@ except ImportError:
     DTypeLike = Any  # type: ignore
 
 from .abc import (
-    AbstractProgram,
-    AbstractKernel,
-    AbstractDevice,
-    AbstractContext,
-    AbstractEvent,
     AbstractCommandQueue,
+    AbstractContext,
+    AbstractDevice,
+    AbstractEvent,
+    AbstractKernel,
+    AbstractProgram,
     AbstractTuningCommandQueue,
 )
-
 
 _T = TypeVar("_T")
 _D = TypeVar("_D", bound="Device")

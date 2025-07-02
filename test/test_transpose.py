@@ -21,9 +21,8 @@ from typing import cast
 import numpy as np
 import pytest
 
-from katsdpsigproc import accel
-from katsdpsigproc import transpose
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
+from katsdpsigproc import accel, transpose
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext
 
 
 class TestTranspose:

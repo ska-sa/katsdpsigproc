@@ -22,16 +22,15 @@ from typing import Any
 import numpy as np
 
 try:
-    from numpy.typing import DTypeLike, ArrayLike
+    from numpy.typing import ArrayLike, DTypeLike
 except ImportError:
     DTypeLike = Any  # type: ignore
     ArrayLike = Any  # type: ignore
 import pytest
 
 from katsdpsigproc import accel
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext, AbstractProgram
 from katsdpsigproc.accel import DeviceArray, build
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue, AbstractProgram
-
 
 _wgs = 128
 _M = 1000

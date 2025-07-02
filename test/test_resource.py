@@ -16,10 +16,10 @@
 
 """Tests for :mod:`katsdpsigproc.resource`."""
 
-import time
 import asyncio
-import queue
 import logging
+import queue
+import time
 from typing import List
 
 import pytest

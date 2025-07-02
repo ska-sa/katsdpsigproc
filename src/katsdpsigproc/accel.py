@@ -31,31 +31,31 @@ have_opencl : bool
     True if PyOpenCL could be imported (does not guarantee any OpenCL devices)
 """
 
-import re
-import os
-import sys
 import io
-from abc import ABC, abstractmethod
 import itertools
+import os
+import re
+import sys
+from abc import ABC, abstractmethod
 from collections import OrderedDict
 from typing import (
-    List,
-    Tuple,
+    TYPE_CHECKING,
+    Any,
+    Callable,
     Dict,
-    Set,
+    Generic,
+    Iterable,
+    List,
     Mapping,
     MutableMapping,
-    Sequence,
-    Callable,
-    Iterable,
     Optional,
-    Union,
+    Sequence,
+    Set,
+    Tuple,
     TypeVar,
-    Generic,
-    Any,
+    Union,
     cast,
     overload,
-    TYPE_CHECKING,
 )
 
 import numpy as np
@@ -65,8 +65,8 @@ try:
 except ImportError:
     DTypeLike = Any  # type: ignore
 import mako.lexer
-from mako.template import Template
 from mako.lookup import TemplateLookup
+from mako.template import Template
 
 if sys.version_info >= (3, 9):
     import importlib.resources as importlib_resources
@@ -74,15 +74,16 @@ else:
     import importlib_resources
 
 from .abc import (
+    AbstractCommandQueue,
     AbstractContext,
     AbstractDevice,
-    AbstractCommandQueue,
-    AbstractTuningCommandQueue,
     AbstractProgram,
+    AbstractTuningCommandQueue,
 )
 
 try:
     import pycuda.driver
+
     from . import cuda
 
     have_cuda = True

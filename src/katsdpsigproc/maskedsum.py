@@ -17,14 +17,13 @@
 """Perform on-device percentile calculation of 2D arrays."""
 # see scripts/maskedsumtest.py for an example
 
-from typing import Tuple, Mapping, Callable, Optional, Any, cast
-from typing_extensions import TypedDict
+from typing import Any, Callable, Mapping, Optional, Tuple, cast
 
 import numpy as np
+from typing_extensions import TypedDict
 
-from . import accel
-from . import tune
-from .abc import AbstractContext, AbstractCommandQueue
+from . import accel, tune
+from .abc import AbstractCommandQueue, AbstractContext
 
 
 class _TuningDict(TypedDict):

@@ -25,17 +25,14 @@ kernel at the appropriate point.
 
 import enum
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional, Mapping, Union, Callable, Type, Any
+from typing import Any, Callable, List, Mapping, Optional, Tuple, Type, Union
 
 import numpy as np
 
-from .. import accel
-from .. import tune
-from .. import transpose
-from ..abc import AbstractContext, AbstractCommandQueue
-from ..accel import DeviceArray, AbstractAllocator
+from .. import accel, transpose, tune
+from ..abc import AbstractCommandQueue, AbstractContext
+from ..accel import AbstractAllocator, DeviceArray
 from . import host
-
 
 _THRESHOLD_SUM_DEFAULT_THRESHOLD_FALLOFF = 1.2
 

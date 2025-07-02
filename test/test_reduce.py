@@ -22,9 +22,9 @@ from typing import Tuple
 import numpy as np
 import pytest
 
-from katsdpsigproc.accel import DeviceArray, build
 from katsdpsigproc import reduce
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext
+from katsdpsigproc.accel import DeviceArray, build
 
 
 @pytest.mark.parametrize("size", [1, 4, 12, 16, 32, 87, 97, 160, 256])

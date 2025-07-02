@@ -23,10 +23,10 @@ that they can be glued together properly.
 import numpy as np
 import pytest
 
-from katsdpsigproc.rfi import host, device
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
-from .. import complex_normal
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext
+from katsdpsigproc.rfi import device, host
 
+from .. import complex_normal
 
 _vis: np.ndarray
 _spikes: np.ndarray

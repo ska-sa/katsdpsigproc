@@ -7,14 +7,14 @@ pytest instead.
 import functools
 import inspect
 import sys
+from typing import Awaitable, Callable, Optional, Tuple, TypeVar
 from unittest import mock
-from typing import Tuple, Optional, Callable, Awaitable, TypeVar
 
 from decorator import decorator
-# Don't import nose here, to allow docs to build even without nose installed.
 
+# Don't import nose here, to allow docs to build even without nose installed.
 from katsdpsigproc import accel, tune
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext
 
 _T = TypeVar("_T")
 _F = TypeVar("_F", bound=Callable)

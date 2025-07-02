@@ -17,13 +17,12 @@
 """Utilities for scheduling device operations with asyncio."""
 
 import asyncio
-import logging
 import collections
-from typing import List, Deque, Awaitable, Iterable, Optional, Type, Generic, TypeVar
+import logging
 from types import TracebackType
+from typing import Awaitable, Deque, Generic, Iterable, List, Optional, Type, TypeVar
 
 from .abc import AbstractEvent
-
 
 _T = TypeVar("_T")
 _logger = logging.getLogger(__name__)
