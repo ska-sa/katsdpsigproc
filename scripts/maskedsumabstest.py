@@ -17,7 +17,9 @@
 ################################################################################
 
 import time
+
 import numpy as np
+
 from katsdpsigproc import accel, maskedsum
 
 context = accel.create_some_context(True)

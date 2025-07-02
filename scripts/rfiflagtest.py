@@ -19,17 +19,17 @@
 """Test script that runs RFI flagging on random or real data."""
 
 import argparse
-import time
-import sys
-import json
 import concurrent.futures
+import json
+import sys
+import time
 
 import numpy as np
 
-import katsdpsigproc.rfi.host
-import katsdpsigproc.rfi.device
-import katsdpsigproc.rfi.twodflag
 import katsdpsigproc.accel as accel
+import katsdpsigproc.rfi.device
+import katsdpsigproc.rfi.host
+import katsdpsigproc.rfi.twodflag
 
 
 def generate_data(times, channels, baselines):

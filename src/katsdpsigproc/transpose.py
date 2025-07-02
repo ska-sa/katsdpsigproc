@@ -16,19 +16,18 @@
 
 """Transpose 2D arrays on a device."""
 
-from typing import Tuple, Optional, Mapping, Callable, Any, cast
-from typing_extensions import TypedDict
+from typing import Any, Callable, Mapping, Optional, Tuple, cast
 
 import numpy as np
+from typing_extensions import TypedDict
 
 try:
     from numpy.typing import DTypeLike
 except ImportError:
     DTypeLike = Any  # type: ignore
 
-from . import accel
-from . import tune
-from .abc import AbstractContext, AbstractCommandQueue
+from . import accel, tune
+from .abc import AbstractCommandQueue, AbstractContext
 
 
 class _TuningDict(TypedDict):

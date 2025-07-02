@@ -16,11 +16,11 @@
 
 """Library to contain 2d RFI flagging routines and other RFI related functions."""
 
+import concurrent.futures
 import multiprocessing
 
-import concurrent.futures
-import numpy as np
 import numba
+import numpy as np
 
 from . import MAD_NORMAL
 

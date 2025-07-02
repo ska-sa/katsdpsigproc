@@ -16,7 +16,7 @@
 
 """Fill device array with a constant value."""
 
-from typing import Tuple, Mapping, Callable, Optional, Any
+from typing import Any, Callable, Mapping, Optional, Tuple
 
 import numpy as np
 
@@ -25,9 +25,8 @@ try:
 except ImportError:
     DTypeLike = Any  # type: ignore
 
-from . import accel
-from . import tune
-from .abc import AbstractContext, AbstractCommandQueue
+from . import accel, tune
+from .abc import AbstractCommandQueue, AbstractContext
 
 
 class FillTemplate:

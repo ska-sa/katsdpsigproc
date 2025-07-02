@@ -22,9 +22,8 @@ from typing import Type
 import numpy as np
 import pytest
 
-from katsdpsigproc.rfi import host, device
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
-
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext
+from katsdpsigproc.rfi import device, host
 
 _deviations: np.ndarray
 _spikes: np.ndarray

@@ -18,5 +18,4 @@
 
 from setuptools import setup
 
-
 setup(use_katversion=True)

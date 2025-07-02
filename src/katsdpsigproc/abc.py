@@ -17,8 +17,8 @@
 """Abstract base classes for :mod:`.opencl` and :mod:`.cuda`."""
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Sequence, Optional, Any, Type, TypeVar, Generic
 from types import TracebackType
+from typing import Any, Generic, List, Optional, Sequence, Tuple, Type, TypeVar
 
 import numpy as np
 

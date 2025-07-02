@@ -19,8 +19,8 @@
 It implements the abstract interfaces defined in :mod:`katsdpsigproc.abc`.
 """
 
-from typing import List, Tuple, Sequence, Optional, Type, TypeVar, Union, Any
 from types import TracebackType
+from typing import Any, List, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import numpy as np
 
@@ -28,21 +28,20 @@ try:
     from numpy.typing import DTypeLike
 except ImportError:
     DTypeLike = Any  # type: ignore
-import pycuda.driver
-import pycuda.compiler
-import pycuda.gpuarray
 import pycuda.characterize
+import pycuda.compiler
+import pycuda.driver
+import pycuda.gpuarray
 
 from .abc import (
-    AbstractProgram,
-    AbstractKernel,
-    AbstractDevice,
-    AbstractContext,
-    AbstractEvent,
     AbstractCommandQueue,
+    AbstractContext,
+    AbstractDevice,
+    AbstractEvent,
+    AbstractKernel,
+    AbstractProgram,
     AbstractTuningCommandQueue,
 )
-
 
 # When building with autodoc_mock_imports, DEFAULT_NVCC_FLAGS is a mock that
 # doesn't have a + operator.

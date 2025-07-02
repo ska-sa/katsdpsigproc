@@ -27,9 +27,9 @@ Only Linux is supported. Windows and MacOS support would require changing the
 code for locating the library.
 """
 
-from enum import Enum
 import ctypes.util
 import threading
+from enum import Enum
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
@@ -40,8 +40,8 @@ except ImportError:
     DTypeLike = Any  # type: ignore
 
 from . import accel, cuda
+from .abc import AbstractCommandQueue, AbstractContext
 from .accel import AbstractAllocator
-from .abc import AbstractContext, AbstractCommandQueue
 
 
 class FftMode(Enum):

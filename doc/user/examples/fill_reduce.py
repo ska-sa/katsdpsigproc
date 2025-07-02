@@ -1,4 +1,5 @@
 import numpy as np
+
 import katsdpsigproc.accel
 import katsdpsigproc.fill
 import katsdpsigproc.reduce

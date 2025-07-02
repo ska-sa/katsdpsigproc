@@ -1,8 +1,10 @@
 import logging
+
 import numpy as np
+
 import katsdpsigproc.accel
-from katsdpsigproc.accel import Operation, IOSlot, Dimension, build, roundup
 import katsdpsigproc.tune
+from katsdpsigproc.accel import Dimension, IOSlot, Operation, build, roundup
 
 SOURCE = """
 <%include file="/port.mako"/>

@@ -16,15 +16,15 @@
 
 """Tests for :mod:`katsdpsigproc.percentile`."""
 
-from typing import Tuple, Optional, cast
+from typing import Optional, Tuple, cast
 
 import numpy as np
 import pytest
 
+from katsdpsigproc import accel, percentile
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext
+
 from . import complex_normal
-from katsdpsigproc import accel
-from katsdpsigproc import percentile
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
 
 
 class TestPercentile5:

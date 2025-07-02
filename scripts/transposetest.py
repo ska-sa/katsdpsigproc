@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-from katsdpsigproc import accel, transpose
 import numpy as np
+
+from katsdpsigproc import accel, transpose
 
 dtype = np.complex64
 ctype = "float2"

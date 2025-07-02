@@ -16,12 +16,12 @@
 
 """Tests for :mod:`katsdpsigproc.accel`."""
 
-import shutil
 import os
+import shutil
 import tempfile
 from textwrap import dedent
+from typing import Any, Callable, Optional, Tuple, Type
 from unittest import mock
-from typing import Tuple, Optional, Callable, Type, Any
 
 import numpy as np
 
@@ -33,14 +33,15 @@ import pytest
 from mako.template import Template
 
 from katsdpsigproc import accel
-from katsdpsigproc.accel import HostArray, DeviceArray, SVMArray, LinenoLexer
-from katsdpsigproc.abc import AbstractContext, AbstractCommandQueue
+from katsdpsigproc.abc import AbstractCommandQueue, AbstractContext
+from katsdpsigproc.accel import DeviceArray, HostArray, LinenoLexer, SVMArray
 
 if accel.have_cuda:
     import pycuda
 if accel.have_opencl:
-    from katsdpsigproc import opencl
     import pyopencl
+
+    from katsdpsigproc import opencl
 
 
 class TestLinenoLexer:
