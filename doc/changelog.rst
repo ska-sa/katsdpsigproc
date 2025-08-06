@@ -1,6 +1,16 @@
 Changelog
 =========
 
+.. rubric:: 1.10.0
+
+- Support numpy 2.x.
+- Support pytest 8.
+- Drop support for Python versions older than 3.8, and update the code to
+  use modern syntax.
+- Autoformat the code with ruff_, and use ruff for linting.
+
+.. _ruff: https://docs.astral.sh/ruff/
+
 .. rubric:: 1.9.0
 
 - Make :class:`.Fft` work with CUDA 12.9. Note that the ``work_area`` slot may
