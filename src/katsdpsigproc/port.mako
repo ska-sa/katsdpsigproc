@@ -50,6 +50,7 @@ DEVICE_FN ${type}4 make_${type}4(${type} x, ${type} y, ${type} z, ${type} w)
 
 #include <math.h>
 #include <float.h>
+#include <limits.h>
 #include <stdio.h>
 
 /* System headers may provide some of these, but it's OS dependent. It's
