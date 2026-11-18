@@ -158,10 +158,11 @@ class TestResource:
 
 class TestJobQueue:
     @pytest.fixture(autouse=True)
-    def setup(self, event_loop) -> None:
+    async def setup(self) -> None:
         self.jobs = resource.JobQueue()
-        self.finished: List[asyncio.Future[int]] = [event_loop.create_future() for i in range(5)]
-        self.unfinished: List[asyncio.Future[int]] = [event_loop.create_future() for i in range(5)]
+        loop = asyncio.get_event_loop()
+        self.finished: List[asyncio.Future[int]] = [loop.create_future() for i in range(5)]
+        self.unfinished: List[asyncio.Future[int]] = [loop.create_future() for i in range(5)]
         for i, future in enumerate(self.finished):
             future.set_result(i)
 
