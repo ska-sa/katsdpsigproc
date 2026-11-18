@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright (c) 2014-2021, National Research Foundation (SARAO)
+# Copyright (c) 2014-2021,2026, National Research Foundation (SARAO)
 #
 # Licensed under the BSD 3-Clause License (the "License"); you may not use
 # this file except in compliance with the License. You may obtain a copy
@@ -437,8 +437,10 @@ class CommandQueue(AbstractCommandQueue[pyopencl.array.Array, Context, Event, Ke
     ) -> None:
         if hasattr(data, "enqueue_read_buffer"):
             data.enqueue_read_buffer(self, buffer, blocking)
+        elif blocking:
+            buffer.get(queue=self._pyopencl_command_queue, ary=data)
         else:
-            buffer.get(ary=data, queue=self._pyopencl_command_queue, async_=not blocking)
+            buffer.get_async(queue=self._pyopencl_command_queue, ary=data)
 
     def enqueue_write_buffer(
         self, buffer: pyopencl.array.Array, data: Any, blocking: bool = True
