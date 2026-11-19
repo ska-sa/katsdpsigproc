@@ -446,14 +446,14 @@ class HostArray(np.ndarray):
         except AttributeError:
             return None
 
-    def __array_finalize__(self, obj: "HostArray") -> None:
+    def __array_finalize__(self, obj: Optional[np.ndarray]) -> None:
         if obj is not None:
             # View casting or created from a template: we cannot vouch for it.
-            self._owner = None
+            self._owner: Optional[np.ndarray] = None
             if isinstance(obj, HostArray):
                 self.padded_shape: Tuple[int, ...] = obj.padded_shape
             else:
-                self.padded_shape = None
+                self.padded_shape = self.shape
 
 
 class DeviceArray:

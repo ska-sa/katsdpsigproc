@@ -80,7 +80,7 @@ class TestPercentile5:
             np.abs(ary[:, column_range[0] : column_range[1]]),
             [0, 100, 25, 75, 50],
             axis=1,
-            interpolation="lower",
+            method="lower",
         )
         expected = expected.astype(dtype=np.float32)
         # When amplitudes are being computed, we won't get a bit-exact match

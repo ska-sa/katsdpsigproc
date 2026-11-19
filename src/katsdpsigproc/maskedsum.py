@@ -75,7 +75,7 @@ class MaskedSumTemplate:
         columns = 5000
         in_shape = (4096, columns)
         rs = np.random.RandomState(seed=1)
-        host_data = rs.uniform(size=(in_shape[0], in_shape[1], 2)).astype(np.float32)
+        host_data: np.ndarray = rs.uniform(size=(in_shape[0], in_shape[1], 2)).astype(np.float32)
         host_data = host_data.view(dtype=np.complex64)[..., 0]
         host_mask = np.ones((in_shape[0],)).astype(np.float32)
 
