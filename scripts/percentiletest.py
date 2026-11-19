@@ -38,7 +38,7 @@ end_event = queue.enqueue_marker()
 out = perc.buffer("dest").get(queue)
 
 t0 = time.time()
-expected = np.percentile(data, [0, 100, 25, 75, 50], axis=1, interpolation="lower")
+expected = np.percentile(data, [0, 100, 25, 75, 50], axis=1, method="lower")
 t1 = time.time()
 print("gpu:", end_event.time_since(start_event), "cpu:", t1 - t0)
 np.testing.assert_equal(out, expected)

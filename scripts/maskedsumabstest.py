@@ -29,7 +29,8 @@ data = np.random.randn(4000, 5000, 2).astype(np.float32).view(dtype=np.complex64
 mask = np.ones((4000,)).astype(np.float32)
 
 template = maskedsum.MaskedSumTemplate(context, use_amplitudes=True)
-msum = template.instantiate(queue, data.shape)
+rows, cols = data.shape
+msum = template.instantiate(queue, (rows, cols))
 msum.ensure_all_bound()
 msum.buffer("src").set(queue, data)
 msum.buffer("mask").set(queue, mask)

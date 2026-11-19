@@ -72,7 +72,7 @@ class TestFft:
         context: AbstractContext,
         command_queue: AbstractCommandQueue,
         shape: Tuple[int, ...],
-        dtype: DTypeLike,
+        dtype: type[np.inexact],
         padded_shape_src: Tuple[int, ...],
         padded_shape_dest: Tuple[int, ...],
     ):
@@ -103,7 +103,7 @@ class TestFft:
         context: AbstractContext,
         command_queue: AbstractCommandQueue,
         shape: Tuple[int, ...],
-        dtype: DTypeLike,
+        dtype: type[np.inexact],
         padded_shape_src: Tuple[int, ...],
         padded_shape_dest: Tuple[int, ...],
     ):
@@ -137,8 +137,8 @@ class TestFft:
         context: AbstractContext,
         command_queue: AbstractCommandQueue,
         shape: Tuple[int, ...],
-        dtype_src: DTypeLike,
-        dtype_dest: DTypeLike,
+        dtype_src: type[np.inexact],
+        dtype_dest: type[np.inexact],
         padded_shape_src: Tuple[int, ...],
         padded_shape_dest: Tuple[int, ...],
     ) -> None:
@@ -176,8 +176,8 @@ class TestFft:
         context: AbstractContext,
         command_queue: AbstractCommandQueue,
         shape: Tuple[int, ...],
-        dtype_src: DTypeLike,
-        dtype_dest: DTypeLike,
+        dtype_src: type[np.inexact],
+        dtype_dest: type[np.inexact],
         padded_shape_src: Tuple[int, ...],
         padded_shape_dest: Tuple[int, ...],
     ) -> None:
