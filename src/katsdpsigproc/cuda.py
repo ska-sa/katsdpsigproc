@@ -130,6 +130,10 @@ class Device(AbstractDevice["Context"]):
         return self._pycuda_device.warp_size
 
     @property
+    def cache_size(self) -> int:
+        return self._pycuda_device.l2_cache_size
+
+    @property
     def compute_capability(self) -> Tuple[int, int]:
         return self._pycuda_device.compute_capability()
 

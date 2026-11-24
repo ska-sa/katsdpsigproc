@@ -146,6 +146,11 @@ class AbstractDevice(ABC, Generic[_C]):
         guarantees about memory coherency, forward progress etc.
         """
 
+    @property
+    @abstractmethod
+    def cache_size(self) -> int:
+        """Size in bytes of the device cache."""
+
     @classmethod
     @abstractmethod
     def get_devices(cls: Type[_D]) -> Sequence[_D]:
