@@ -295,7 +295,13 @@ def candidate_devices(
             if device_id is not None:
                 devices = [devices[device_id]]
     except IndexError:
-        raise RuntimeError("Out-of-range device selected")
+        msg = [
+            "Out-of-range device selected:",
+            f"CUDA {cuda_devices} [{cuda_id}]",
+            f"OpenCL {opencl_devices} [{opencl_id}]",
+            f"Combined {devices} [{device_id}]",
+        ]
+        raise RuntimeError("\n".join(msg))
     return devices
 
 
