@@ -276,6 +276,10 @@ class Device(AbstractDevice["Context"]):
     def simd_group_size(self) -> int:
         return pyopencl.characterize.get_simd_group_size(self._pyopencl_device, 4)
 
+    @property
+    def cache_size(self) -> int:
+        return self._pyopencl_device.get_info(pyopencl.device_info.GLOBAL_MEM_CACHE_SIZE)
+
     @classmethod
     def _get_platforms(cls) -> List[pyopencl.Platform]:
         """Return all platforms."""

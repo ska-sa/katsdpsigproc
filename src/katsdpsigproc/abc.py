@@ -146,6 +146,15 @@ class AbstractDevice(ABC, Generic[_C]):
         guarantees about memory coherency, forward progress etc.
         """
 
+    @property
+    @abstractmethod
+    def cache_size(self) -> int:
+        """Size in bytes of the device cache.
+
+        For CUDA this is the L2 cache size. For OpenCL it is up to the
+        driver what is reported.
+        """
+
     @classmethod
     @abstractmethod
     def get_devices(cls: Type[_D]) -> Sequence[_D]:
